@@ -20,5 +20,9 @@
     <ProjectReference Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Sample scripts next to the exe; SampleScripts copies them to %LOCALAPPDATA%\TaskbarTiles\scripts on first run. -->
+    <None Include="..\..\scripts\*.ps1" Link="scripts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <Import Project="..\..\build\CopyPlugins.targets" />
 </Project>

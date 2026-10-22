@@ -43,6 +43,7 @@ public partial class App : Application
             TaskScheduler.UnobservedTaskException += (_, a) => { log.Error("Unobserved task exception", a.Exception); a.SetObserved(); };
 
             var catalog = new PluginLoader(log).LoadFrom(AppPaths.PluginRoots);
+            SampleScripts.InstallIfAbsent(AppPaths.SampleScriptsDir, AppPaths.ScriptsDir, log);
             _config = new ConfigStore(AppPaths.ConfigFile, log);
             _config.Load();
             _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, OpenWithShell, log);

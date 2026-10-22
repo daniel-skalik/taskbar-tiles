@@ -9,11 +9,15 @@ public sealed class ConfigStore(string path, ITileLog log) : IDisposable
     public const string DefaultJson = """
     {
       // Each tile is driven by a connector (a plugin). Place tiles on displays under "displays".
+      // Script tiles run the files in the scripts folder next to this file (docs/script-connectors.md in the repo).
       "tiles": {
-        "spotify": { "connector": "media", "settings": { "app": "Spotify" } }
+        "spotify": { "connector": "media", "settings": { "app": "Spotify" } },
+        "uptime":  { "connector": "script", "settings": { "hooks": {
+                       "interval": { "every": "30s", "run": "scripts/uptime.ps1" },
+                       "flyout":   { "run": "scripts/uptime.ps1" } } } }
       },
       "displays": {
-        "primary": { "slots": [ { "tile": "spotify", "pin": true } ] },
+        "primary": { "slots": [ { "tile": "spotify", "pin": true }, "uptime" ] },
         "*":       { "slots": [] }
       }
     }

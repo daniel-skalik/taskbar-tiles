@@ -17,6 +17,7 @@ public class ConfigStoreTests
 
         Assert.True(File.Exists(dir.File("config.json")));
         Assert.Equal("media", store.Current.Tiles["spotify"].Connector);
+        Assert.Equal("script", store.Current.Tiles["uptime"].Connector);
         Assert.Null(store.LastError);
     }
 
