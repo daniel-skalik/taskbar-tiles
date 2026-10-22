@@ -120,12 +120,12 @@ public class TileRuntimeTests
         var c = new FakeConnector();
         var rt = Create(c, new ImmediateDispatcher());
         await rt.StartAsync();
-        var resumed = false;
-        c.Context!.Resumed += (_, _) => resumed = true;
+        var resumed = new TaskCompletionSource();
+        c.Context!.Resumed += (_, _) => resumed.TrySetResult();
 
         rt.RaiseResumed();
 
-        Assert.True(resumed);
+        await resumed.Task.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Fact]
@@ -149,5 +149,81 @@ public class TileRuntimeTests
 
         Assert.Equal("Unknown connector", rt.State.Title);
         Assert.Equal("ghost", rt.State.Subtitle);
+    }
+
+    [Fact]
+    public async Task Dispose_while_action_in_flight_does_not_show_error()
+    {
+        var c = new FakeConnector { OnAction = (_, ct) => Task.Delay(Timeout.Infinite, ct) };
+        var rt = Create(c, new ImmediateDispatcher());
+        await rt.StartAsync();
+
+        var action = rt.InvokeActionAsync("click");
+        await rt.DisposeAsync();
+        await action;
+
+        Assert.NotEqual("Error", rt.State.Title);
+        Assert.Null(rt.LastError);
+    }
+
+    [Fact]
+    public async Task Double_dispose_is_safe()
+    {
+        var rt = Create(new FakeConnector(), new ImmediateDispatcher());
+        await rt.StartAsync();
+
+        await rt.DisposeAsync();
+        await rt.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Update_after_dispose_is_ignored()
+    {
+        var c = new FakeConnector();
+        var rt = Create(c, new ImmediateDispatcher());
+        await rt.StartAsync();
+        await rt.DisposeAsync();
+        var raised = 0;
+        rt.StateChanged += (_, _) => raised++;
+
+        c.Context!.Update(new TileState { Title = "late" });
+
+        Assert.Equal(TileRuntime.Initial, rt.State);
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public async Task Not_responding_restores_error_state()
+    {
+        var c = new FakeConnector
+        {
+            OnStart = (_, _) => throw new InvalidOperationException("boom"),
+            OnAction = (_, ct) => Task.Delay(Timeout.Infinite, ct),
+        };
+        var rt = Create(c, new ImmediateDispatcher(), timeout: TimeSpan.FromMilliseconds(50), notResponding: TimeSpan.FromMilliseconds(100));
+        await rt.StartAsync();
+        Assert.Equal("Error", rt.State.Title);
+
+        await rt.InvokeActionAsync("click");
+        Assert.Equal("Not responding", rt.State.Title);
+
+        await Task.Delay(400);
+        Assert.Equal("Error", rt.State.Title);
+        Assert.NotNull(rt.LastError);
+    }
+
+    [Fact]
+    public async Task Update_during_not_responding_is_kept()
+    {
+        var c = new FakeConnector { OnAction = (_, ct) => Task.Delay(Timeout.Infinite, ct) };
+        var rt = Create(c, new ImmediateDispatcher(), timeout: TimeSpan.FromMilliseconds(50), notResponding: TimeSpan.FromMilliseconds(100));
+        await rt.StartAsync();
+
+        await rt.InvokeActionAsync("click");
+        Assert.Equal("Not responding", rt.State.Title);
+        c.Context!.Update(new TileState { Title = "fresh" });
+
+        await Task.Delay(400);
+        Assert.Equal("fresh", rt.State.Title);
     }
 }
