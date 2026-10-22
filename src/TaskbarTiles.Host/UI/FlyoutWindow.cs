@@ -35,11 +35,18 @@ public static class FlyoutWindow
             ResizeMode = ResizeMode.NoResize,
             SizeToContent = SizeToContent.Height,
             Width = WidthDip,
+            UseLayoutRounding = true,
+            Opacity = 0, // hidden until positioned on the target monitor at the right DPI
         };
         Theme.ApplyTo(window.Resources, light);
         window.Content = Build(state, runtime, window);
         window.Deactivated += (_, _) => { if (_open == window) CloseOpen(); };
-        window.Loaded += (_, _) => Position(window, anchor);
+        window.Loaded += (_, _) =>
+        {
+            try { Position(window, anchor); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Flyout position failed: {ex}"); }
+            finally { window.Opacity = 1; }
+        };
         _open = window;
         window.Show();
         window.Activate();
@@ -100,7 +107,11 @@ public static class FlyoutWindow
                     Style = (Style)Application.Current.FindResource(a.Primary ? "FlyoutPrimaryButton" : "FlyoutButton"),
                 };
                 var id = a.Id;
-                button.Click += async (_, _) => { CloseOpen(); await runtime.InvokeActionAsync(id); };
+                button.Click += async (_, _) =>
+                {
+                    try { CloseOpen(); await runtime.InvokeActionAsync(id); }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Flyout action failed: {ex}"); }
+                };
                 actions.Children.Add(button);
             }
             panel.Children.Add(actions);
@@ -125,19 +136,41 @@ public static class FlyoutWindow
         return tb;
     }
 
-    /// <summary>Centers the window above the anchor in physical pixels, 8 DIP above the taskbar.</summary>
+    /// <summary>
+    /// Centers the window above the anchor in physical pixels, 8 DIP above the taskbar, clamped to the work area
+    /// of the monitor holding the anchor. The window starts at Opacity 0; moving it onto the target monitor may
+    /// change its DPI (WPF rescales synchronously), so we re-measure and re-apply until the DPI is stable (max 3 passes).
+    /// </summary>
     static void Position(Window window, FrameworkElement anchor)
     {
-        var source = PresentationSource.FromVisual(anchor);
-        if (source?.CompositionTarget is null) return;
-        var scale = source.CompositionTarget.TransformToDevice.M11;
+        var anchorSource = PresentationSource.FromVisual(anchor) as HwndSource;
+        if (anchorSource?.CompositionTarget is null) return;
+        var anchorScale = anchorSource.CompositionTarget.TransformToDevice.M11;
         var topLeft = anchor.PointToScreen(new Point(0, 0));
-        var anchorWidthPx = anchor.ActualWidth * scale;
+        var anchorWidthPx = anchor.ActualWidth * anchorScale;
+
+        var info = new NativeMethods.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFOEX>() };
+        var monitor = NativeMethods.MonitorFromWindow(anchorSource.Handle, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var haveWork = monitor != IntPtr.Zero && NativeMethods.GetMonitorInfo(monitor, ref info);
 
         var hwnd = new WindowInteropHelper(window).Handle;
-        int w = (int)Math.Ceiling(window.ActualWidth * scale), h = (int)Math.Ceiling(window.ActualHeight * scale);
-        int x = (int)(topLeft.X + anchorWidthPx / 2 - w / 2.0);
-        int y = (int)(topLeft.Y - 4 * scale - 8 * scale - h); // anchor sits 4 DIP below the taskbar top
-        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, Math.Max(0, x), y, w, h, NativeMethods.SWP_SHOWWINDOW);
+        var dpi = VisualTreeHelper.GetDpi(window).DpiScaleX;
+        for (var pass = 0; pass < 3; pass++)
+        {
+            window.UpdateLayout();
+            int w = (int)Math.Ceiling(window.ActualWidth * dpi), h = (int)Math.Ceiling(window.ActualHeight * dpi);
+            int x = (int)(topLeft.X + anchorWidthPx / 2 - w / 2.0);
+            int y = (int)(topLeft.Y - 4 * anchorScale - 8 * anchorScale - h); // anchor sits 4 DIP below the taskbar top
+            if (haveWork)
+            {
+                x = Math.Max(info.rcWork.Left, Math.Min(x, info.rcWork.Right - w));
+                y = Math.Max(y, info.rcWork.Top);
+            }
+            NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, x, y, w, h, NativeMethods.SWP_SHOWWINDOW);
+
+            var after = VisualTreeHelper.GetDpi(window).DpiScaleX;
+            if (Math.Abs(after - dpi) < 0.001) break;
+            dpi = after;
+        }
     }
 }

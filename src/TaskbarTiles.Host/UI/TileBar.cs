@@ -31,6 +31,7 @@ public sealed class TileBar : Window
         ResizeMode = ResizeMode.NoResize;
         Width = 1;
         Height = 1;
+        UseLayoutRounding = true;
         Content = _panel;
         Theme.ApplyTo(Resources, light: false);
 
@@ -51,6 +52,9 @@ public sealed class TileBar : Window
             SetWindowLongPtr(_hwnd, GWL_EXSTYLE, new IntPtr(ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE));
             Reflow();
         };
+
+        // Create the HWND now (no Show) so _hwnd and ex-styles exist; Reflow alone owns Show/Hide.
+        _hwnd = new WindowInteropHelper(this).EnsureHandle();
     }
 
     public string DisplayId { get; }

@@ -1,3 +1,5 @@
+using System.Windows;
+using System.Windows.Media;
 using TaskbarTiles.Host.UI;
 
 namespace TaskbarTiles.Tests;
@@ -18,4 +20,13 @@ public class ThemeTests
 
     [Fact]
     public void Decode_returns_null_for_garbage() => Assert.Null(Theme.Decode([1, 2, 3]));
+
+    [Fact]
+    public void ApplyTo_dark_uses_constraint_colors()
+    {
+        var dict = new ResourceDictionary();
+        Theme.ApplyTo(dict, light: false);
+        Assert.Equal(Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF), ((SolidColorBrush)dict["TileFill"]).Color);
+        Assert.Equal(Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF), ((SolidColorBrush)dict["TileOutline"]).Color);
+    }
 }

@@ -13,6 +13,8 @@ public partial class TileView : UserControl
 {
     readonly Func<bool> _isLightTheme;
     bool _urgent;
+    bool _clickInFlight;
+    SolidColorBrush? _pulse;
 
     public TileView(TileRuntime runtime, Func<bool> isLightTheme)
     {
@@ -30,7 +32,11 @@ public partial class TileView : UserControl
 
     public TileRuntime Runtime { get; }
 
-    public void Detach() => Runtime.StateChanged -= OnStateChanged;
+    public void Detach()
+    {
+        Runtime.StateChanged -= OnStateChanged;
+        StopPulse();
+    }
 
     void OnStateChanged(object? sender, EventArgs e) => Render(Runtime.State);
 
@@ -58,7 +64,11 @@ public partial class TileView : UserControl
                 Style = (Style)FindResource("IconButton"),
             };
             var id = b.Id;
-            button.Click += async (_, _) => await Runtime.InvokeActionAsync(id);
+            button.Click += async (_, _) =>
+            {
+                try { await Runtime.InvokeActionAsync(id); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Tile button failed: {ex}"); }
+            };
             ButtonPanel.Children.Add(button);
         }
 
@@ -76,7 +86,10 @@ public partial class TileView : UserControl
             ProgressTrack.Visibility = Visibility.Collapsed;
         }
 
+        var wasUrgent = _urgent;
         _urgent = s.Urgent;
+        if (_urgent && !wasUrgent) StartPulse();
+        else if (!_urgent && wasUrgent) StopPulse();
         UpdateBackground();
     }
 
@@ -100,28 +113,43 @@ public partial class TileView : UserControl
         SparkHost.Visibility = Visibility.Visible;
     }
 
+    void StartPulse()
+    {
+        var bad = ((SolidColorBrush)Theme.ColorFor(TileColor.Bad)).Color;
+        _pulse ??= new SolidColorBrush(Color.FromArgb(0x10, bad.R, bad.G, bad.B));
+        Root.Background = _pulse;
+        Root.BorderBrush = Theme.ColorFor(TileColor.Bad);
+        if (SystemParameters.ClientAreaAnimation)
+            _pulse.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(Color.FromArgb(0x30, bad.R, bad.G, bad.B),
+                TimeSpan.FromSeconds(0.8)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+    }
+
+    void StopPulse() => _pulse?.BeginAnimation(SolidColorBrush.ColorProperty, null);
+
     void UpdateBackground()
     {
-        if (_urgent)
-        {
-            var bad = ((SolidColorBrush)Theme.ColorFor(TileColor.Bad)).Color;
-            var pulse = new SolidColorBrush(Color.FromArgb(0x10, bad.R, bad.G, bad.B));
-            Root.Background = pulse;
-            Root.BorderBrush = Theme.ColorFor(TileColor.Bad);
-            if (SystemParameters.ClientAreaAnimation)
-                pulse.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(Color.FromArgb(0x30, bad.R, bad.G, bad.B),
-                    TimeSpan.FromSeconds(0.8)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
-            return;
-        }
+        if (_urgent) return; // pulse owns the background while urgent
         Root.SetResourceReference(Border.BackgroundProperty, IsMouseOver ? "TileHover" : "TileFill");
         Root.SetResourceReference(Border.BorderBrushProperty, "TileOutline");
     }
 
     async void OnClick(object sender, MouseButtonEventArgs? e)
     {
-        if (e?.Handled == true) return;
-        var flyout = await Runtime.GetFlyoutAsync();
-        if (flyout is null) await Runtime.InvokeActionAsync("click");
-        else FlyoutWindow.ShowAbove(this, flyout, Runtime, _isLightTheme());
+        if (e?.Handled == true || _clickInFlight) return;
+        _clickInFlight = true;
+        try
+        {
+            var flyout = await Runtime.GetFlyoutAsync();
+            if (flyout is null) await Runtime.InvokeActionAsync("click");
+            else FlyoutWindow.ShowAbove(this, flyout, Runtime, _isLightTheme());
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Tile click failed: {ex}");
+        }
+        finally
+        {
+            _clickInFlight = false;
+        }
     }
 }

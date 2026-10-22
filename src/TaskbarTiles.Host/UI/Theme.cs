@@ -45,10 +45,11 @@ public static class Theme
         if (bytes is null || bytes.Length == 0) return null;
         try
         {
+            using var stream = new MemoryStream(bytes);
             var bmp = new BitmapImage();
             bmp.BeginInit();
             bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.StreamSource = stream;
             bmp.DecodePixelWidth = decodeWidth;
             bmp.EndInit();
             bmp.Freeze();
