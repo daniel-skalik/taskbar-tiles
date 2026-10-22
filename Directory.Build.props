@@ -4,8 +4,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
-  <ItemGroup>
-    <!-- WPF projects drop System.IO from implicit usings; add it back everywhere. -->
-    <Using Include="System.IO" />
-  </ItemGroup>
 </Project>
