@@ -293,7 +293,7 @@ public class ScriptConnectorTests
         Assert.Equal("boom", Assert.Single(flyout.Rows).Text);
         Assert.Empty(ctx.Errors); // not a tile error: the host would stop asking the connector for popups
         Assert.Contains(ctx.Logged.Snapshot(), m => m.StartsWith("ERROR flyout: exited with code 1"));
-        Assert.Equal(new[] { ("host:restart", "Restart tile", true), ("host:show-log", "Open log", false) },
+        Assert.Equal(new[] { (TileActions.Restart, "Restart tile", true), (TileActions.ShowLog, "Open log", false) },
             flyout.Actions.Select(a => (a.Id, a.Label, a.Primary)));
     }
 

@@ -123,7 +123,7 @@ public sealed class ScriptConnector : ITileConnector
             .Select(line => new FlyoutRow(line))
             .ToList();
         return new FlyoutState("Script error", outcome.ErrorMessage, rows,
-            [new FlyoutAction("host:restart", "Restart tile", true), new FlyoutAction("host:show-log", "Open log")]);
+            [new FlyoutAction(TileActions.Restart, "Restart tile", true), new FlyoutAction(TileActions.ShowLog, "Open log")]);
     }
 
     /// <summary>Runs an interactive call; logs when the host (not the tile's own shutdown) abandons it.</summary>

@@ -47,8 +47,8 @@ public sealed record TileRuntimeOptions
 /// </summary>
 public sealed class TileRuntime : IAsyncDisposable
 {
-    public const string RestartActionId = "host:restart";
-    public const string ShowLogActionId = "host:show-log";
+    public const string RestartActionId = TileActions.Restart;
+    public const string ShowLogActionId = TileActions.ShowLog;
 
     public static TileState Initial { get; } = new() { Title = "…" };
 

@@ -31,5 +31,7 @@ public class ContractsTests
     {
         Assert.Equal("click", TileActions.Click);
         Assert.Equal("refresh", TileActions.Refresh);
+        Assert.Equal("host:restart", TileActions.Restart);
+        Assert.Equal("host:show-log", TileActions.ShowLog);
     }
 }
