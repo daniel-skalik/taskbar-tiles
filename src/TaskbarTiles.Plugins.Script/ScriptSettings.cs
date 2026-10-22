@@ -17,6 +17,7 @@ public sealed class ScriptSettings
     public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(24);
 
     const string ActionPrefix = "action:";
+    const string HostPrefix = "host:";
     static readonly HashSet<string> PlainHooks = new(StringComparer.Ordinal) { "interval", "watch", "click", "flyout", "startup", "resume" };
 
     ScriptSettings(IReadOnlyDictionary<string, HookSpec> hooks, IReadOnlyList<string> errors)
@@ -59,6 +60,11 @@ public sealed class ScriptSettings
             if (isAction && name.Length == ActionPrefix.Length)
             {
                 errors.Add("Hook \"action:\" needs an id, e.g. \"action:rerun\".");
+                continue;
+            }
+            if (isAction && name.StartsWith(ActionPrefix + HostPrefix, StringComparison.Ordinal))
+            {
+                errors.Add($"Hook \"{name}\" uses a reserved id; ids starting with \"host:\" are reserved for the host.");
                 continue;
             }
             if (ReadHook(name, hook.Value, errors) is { } spec) hooks[name] = spec;

@@ -41,22 +41,24 @@ public class ExecutableLocatorTests
     }
 
     [Fact]
-    public void Empty_quoted_and_relative_entries_never_probe_the_working_directory()
+    public void Empty_quoted_and_relative_entries_are_skipped()
     {
-        using var cwd = new TempDir();
-        File.WriteAllText(cwd.File("tool.exe"), "");
-        var saved = Environment.CurrentDirectory;
+        // A relative PATH entry resolves against the working directory, so put the tool in a
+        // uniquely named folder relative to it. The process-wide current directory is never changed.
+        var relativeDir = "locator-" + Guid.NewGuid().ToString("N");
+        var absoluteDir = Path.GetFullPath(relativeDir);
+        Directory.CreateDirectory(absoluteDir);
         try
         {
-            Environment.CurrentDirectory = cwd.Path;
+            File.WriteAllText(Path.Combine(absoluteDir, "tool.exe"), "");
 
             Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\"\""));
-            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\" \";."));
-            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\"\";;relative\\dir"));
+            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\" \";" + relativeDir));
+            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\"\";;" + relativeDir));
         }
         finally
         {
-            Environment.CurrentDirectory = saved;
+            Directory.Delete(absoluteDir, recursive: true);
         }
     }
 }

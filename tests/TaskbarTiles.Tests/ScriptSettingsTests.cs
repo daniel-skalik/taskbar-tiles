@@ -56,6 +56,8 @@ public class ScriptSettingsTests
     [InlineData("""{ "hooks": { "click": 5 } }""", "must be an object")]
     [InlineData("""{ "hooks": { "hover": { "run": "a.ps1" } } }""", "Unknown hook")]
     [InlineData("""{ "hooks": { "action:": { "run": "a.ps1" } } }""", "needs an id")]
+    [InlineData("""{ "hooks": { "action:host:x": { "run": "a.ps1" } } }""", "reserved")]
+    [InlineData("""{ "hooks": { "action:host:": { "run": "a.ps1" } } }""", "reserved")]
     [InlineData("""{ "hooks": { "click": { "run": "a.ps1", "timeout": "x" } } }""", "timeout")]
     public void Invalid_settings_explain_themselves(string json, string expected)
     {
