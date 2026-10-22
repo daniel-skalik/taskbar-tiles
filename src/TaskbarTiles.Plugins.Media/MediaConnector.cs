@@ -162,7 +162,8 @@ public sealed class MediaConnector : ITileConnector
             {
                 _art = null;
                 _art = props.Thumbnail is null ? null : await ReadAllAsync(props.Thumbnail);
-                _artKey = key;
+                // Spotify often reports the track before its thumbnail; only cache once art arrived.
+                if (_art is not null) _artKey = key;
             }
 
             if (_disposed) return;
