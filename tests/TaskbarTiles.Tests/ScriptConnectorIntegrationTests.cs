@@ -17,7 +17,7 @@ public class ScriptConnectorIntegrationTests : IDisposable
     public async Task Interval_hook_updates_the_tile_repeatedly()
     {
         ScriptFiles.Write(_dir, "scripts/tick.ps1", "@{ title = 'tick'; subtitle = [string](Get-Date).Ticks } | ConvertTo-Json -Compress");
-        var ctx = Context("""{ "hooks": { "interval": { "every": "500ms", "run": "scripts/tick.ps1" } } }""");
+        var ctx = Context("""{ "hooks": { "interval": { "every": "1s", "run": "scripts/tick.ps1" } } }""");
         await using var c = new ScriptConnector();
 
         await c.StartAsync(ctx, CancellationToken.None);

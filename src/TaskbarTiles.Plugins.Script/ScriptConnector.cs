@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using TaskbarTiles.Contracts;
 
 namespace TaskbarTiles.Plugins.Script;
@@ -16,7 +17,7 @@ public sealed class ScriptConnector : ITileConnector
     readonly IScriptRunner _runner;
     readonly string _powerShell;
     readonly BackoffSchedule _backoff;
-    readonly List<Task> _background = [];
+    readonly ConcurrentDictionary<Task, byte> _inFlight = new(); // every run that may still be unwinding at dispose
     readonly object _stateLock = new();
     CancellationTokenSource _cts = new();
     TileState? _lastGood;
@@ -68,12 +69,12 @@ public sealed class ScriptConnector : ITileConnector
                 ex => ctx.Log.Error("interval hook failed", ex),
                 onSkipped: () => ctx.Log.Warn("interval: the previous run is still going; skipped this one"));
 
-        _background.Add(Guarded("startup/interval", async () =>
+        Guarded("startup/interval", async () =>
         {
             if (startup is not null) await RunTileHookAsync("startup", startup, null, token);
             if (_interval is not null) await _interval.RunAsync(token);
-        }));
-        if (watch is not null) _background.Add(Guarded("watch", () => WatchAsync(watch, token)));
+        });
+        if (watch is not null) Guarded("watch", () => WatchAsync(watch, token));
 
         ctx.Resumed += OnResumed;
         return Task.CompletedTask;
@@ -131,7 +132,7 @@ public sealed class ScriptConnector : ITileConnector
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
         try
         {
-            return await work(linked.Token);
+            return await Track(work(linked.Token));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested && !_cts.IsCancellationRequested)
         {
@@ -143,7 +144,7 @@ public sealed class ScriptConnector : ITileConnector
     void Refresh()
     {
         if (_interval is not null) _interval.Trigger(_cts.Token);
-        else if (_settings?.Hook("startup") is { } startup) _ = Guarded("startup", () => RunTileHookAsync("startup", startup, null, _cts.Token));
+        else if (_settings?.Hook("startup") is { } startup) Guarded("startup", () => RunTileHookAsync("startup", startup, null, _cts.Token));
     }
 
     void OnResumed(object? sender, EventArgs e)
@@ -152,7 +153,7 @@ public sealed class ScriptConnector : ITileConnector
         var token = _cts.Token;
         var resume = _settings.Hook("resume");
         // The data is likely stale after sleep: the resume hook runs first, then the interval refreshes.
-        _ = Guarded("resume", async () =>
+        Guarded("resume", async () =>
         {
             if (resume is not null) await RunTileHookAsync("resume", resume, null, token);
             _interval?.Trigger(token);
@@ -288,20 +289,38 @@ public sealed class ScriptConnector : ITileConnector
         }
     }
 
-    /// <summary>Background work: cancellation ends it quietly, anything else is logged.</summary>
-    Task Guarded(string what, Func<Task> work) => Task.Run(async () =>
+    /// <summary>Background work: cancellation ends it quietly, anything else is logged. Tracked until it ends.</summary>
+    void Guarded(string what, Func<Task> work) => Track(Task.Run(async () =>
     {
         try { await work(); }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
         catch (Exception ex) { _ctx?.Log.Error($"{what} hook failed", ex); }
-    });
+    }));
+
+    /// <summary>Remembers a run until it completes, so DisposeAsync can wait for it.</summary>
+    Task<T> Track<T>(Task<T> task)
+    {
+        _inFlight.TryAdd(task, 0);
+        _ = task.ContinueWith(t => _inFlight.TryRemove(t, out _), TaskScheduler.Default);
+        return task;
+    }
+
+    Task Track(Task task)
+    {
+        _inFlight.TryAdd(task, 0);
+        _ = task.ContinueWith(t => _inFlight.TryRemove(t, out _), TaskScheduler.Default);
+        return task;
+    }
 
     public async ValueTask DisposeAsync()
     {
         if (_ctx is not null) _ctx.Resumed -= OnResumed;
         _cts.Cancel(); // the runner kills running scripts on cancellation
-        try { await Task.WhenAll(_background).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); }
-        catch (TimeoutException) { /* don't hold up the host; the loops end on their own */ }
+        var runs = _inFlight.Keys.ToList();
+        if (_interval?.CurrentRun is { } current) runs.Add(current);
+        try { await Task.WhenAll(runs).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); }
+        catch (TimeoutException) { /* don't hold up the host; the runs end on their own */ }
+        catch (Exception) { /* the runs ended by cancelling or failing; they report their own problems */ }
         // _cts is deliberately not disposed: a run that is still unwinding may read its token.
     }
 }

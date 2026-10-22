@@ -387,6 +387,38 @@ public class ScriptConnectorTests
     }
 
     [Fact]
+    public async Task Dispose_waits_for_interval_and_click_runs_to_observe_cancellation()
+    {
+        var started = 0;
+        var finished = 0;
+        var runner = new FakeRunner
+        {
+            OnRun = async (_, ct) =>
+            {
+                Interlocked.Increment(ref started);
+                try { await Task.Delay(Timeout.Infinite, ct); }
+                catch (OperationCanceledException)
+                {
+                    await Task.Delay(300); // unwinding (killing the process tree) takes a moment
+                    Interlocked.Increment(ref finished);
+                    throw;
+                }
+                return FakeRunner.Ok("");
+            },
+        };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "interval": { "every": "1h", "run": "a.ps1" }, "click": "c.ps1" } }""");
+        var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        var click = c.OnActionAsync(TileActions.Click, CancellationToken.None);
+        await Eventually.Holds(() => Volatile.Read(ref started) == 2);
+
+        await c.DisposeAsync();
+
+        Assert.Equal(2, Volatile.Read(ref finished));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => click);
+    }
+
+    [Fact]
     public async Task No_error_is_reported_after_dispose_started()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

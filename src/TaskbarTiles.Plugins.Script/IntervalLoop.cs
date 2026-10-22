@@ -14,8 +14,12 @@ public sealed class IntervalLoop(
     readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? ((period, ct) => Task.Delay(period, ct));
     int _running;
     int _skipped;
+    Task? _current;
 
     public bool IsRunning => Volatile.Read(ref _running) != 0;
+    /// <summary>The run started last (possibly finished already), so a caller can wait for it to wind down.</summary>
+    public Task? CurrentRun => Volatile.Read(ref _current);
+
     public int Skipped => Volatile.Read(ref _skipped);
 
     /// <summary>Starts a run unless one is going. Returns false when this trigger was skipped.</summary>
@@ -28,7 +32,7 @@ public sealed class IntervalLoop(
             catch { /* a failing notification must not break the trigger; there is no logger here */ }
             return false;
         }
-        _ = RunOnceAsync(ct);
+        Volatile.Write(ref _current, RunOnceAsync(ct));
         return true;
     }
 
