@@ -72,6 +72,20 @@ public class ConfigParserTests
         Assert.Contains("connector", result.Error!.Message);
     }
 
+    [Theory]
+    [InlineData("5")]
+    [InlineData("null")]
+    [InlineData("\"99999999999h\"")]
+    public void Non_string_or_invalid_rotate_is_a_config_error(string rotateJson)
+    {
+        var json = "{ \"tiles\": { \"a\": { \"connector\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": " + rotateJson + " } ] } } }";
+
+        var result = ConfigParser.Parse(json);
+
+        Assert.False(result.Success);
+        Assert.Contains("rotate", result.Error!.Message);
+    }
+
     [Fact]
     public void Missing_displays_section_means_no_layouts()
     {

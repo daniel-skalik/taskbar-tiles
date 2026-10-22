@@ -120,7 +120,7 @@ public static class ConfigParser
                 .Select(x => x.ValueKind == JsonValueKind.String ? x.GetString()! : throw new ConfigException($"Stack in slot {index} on display '{display}' must list tile ids."))
                 .ToList();
             var rotate = DefaultRotate;
-            if (el.TryGetProperty("rotate", out var r) && !Duration.TryParse(r.GetString(), out rotate))
+            if (el.TryGetProperty("rotate", out var r) && !Duration.TryParse(r.ValueKind == JsonValueKind.String ? r.GetString() : null, out rotate))
                 throw new ConfigException($"Invalid \"rotate\" in slot {index} on display '{display}'. Use e.g. 5s.");
             return new StackSlot(ids, rotate);
         }

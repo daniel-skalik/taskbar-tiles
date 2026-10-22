@@ -18,5 +18,7 @@ public class DurationTests
     [InlineData("10")]
     [InlineData("5 days")]
     [InlineData(null)]
+    [InlineData("99999999999h")]
+    [InlineData("١٠s")]
     public void Rejects_invalid(string? text) => Assert.False(Duration.TryParse(text, out _));
 }
