@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The host provides Contracts at runtime; don't ship a copy with the plugin. -->
+    <ProjectReference Include="..\TaskbarTiles.Contracts\TaskbarTiles.Contracts.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TaskbarTiles.Tests" />
+  </ItemGroup>
+</Project>

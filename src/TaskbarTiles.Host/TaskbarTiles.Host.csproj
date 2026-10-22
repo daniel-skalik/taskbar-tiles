@@ -14,9 +14,11 @@
     <InternalsVisibleTo Include="TaskbarTiles.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Build order only; copied to plugins\TaskbarTiles.Plugins.Media\ by CopyPlugins.targets. -->
+    <!-- Build order only; each is copied to plugins\<AssemblyName>\ by CopyPlugins.targets. -->
     <ProjectReference Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" />
+    <ProjectReference Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>
   <Import Project="..\..\build\CopyPlugins.targets" />
 </Project>
