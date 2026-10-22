@@ -25,6 +25,7 @@ static class NativeMethods
     public const int WM_DISPLAYCHANGE = 0x007E;
     public const int WM_SETTINGCHANGE = 0x001A;
     public const int WM_DPICHANGED = 0x02E0;
+    public const uint MONITOR_DEFAULTTOPRIMARY = 1;
     public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const uint MONITORINFOF_PRIMARY = 1;
     public const uint EDD_GET_DEVICE_INTERFACE_NAME = 1;

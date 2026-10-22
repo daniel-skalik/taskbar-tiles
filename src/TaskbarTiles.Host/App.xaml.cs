@@ -52,10 +52,16 @@ public partial class App : Application
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
                 name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir);
 
-            _config.Changed += (_, _) => ui.Post(() => _host.ConfigChanged());
+            _config.Changed += (_, _) => ui.Post(() =>
+            {
+                NotificationWindow.CloseOpen(); // a notice about an earlier bad edit is stale now
+                _host.ConfigChanged();
+            });
+            _config.ReloadFailed += (_, error) => ui.Post(() => ShowConfigNotice(error, atStartup: false));
             _config.StartWatching();
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
             _host.Start();
+            if (_config.LastError is { } startupError) ShowConfigNotice(startupError, atStartup: true);
             log.Info($"Started with {catalog.Connectors.Count} connector(s): {string.Join(", ", catalog.Connectors.Keys)}");
         }
         catch (Exception ex)
@@ -66,6 +72,18 @@ public partial class App : Application
     }
 
     static void OpenWithShell(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
+    void ShowConfigNotice(ConfigError error, bool atStartup)
+    {
+        var log = FileLog.For(AppPaths.LogsDir, "host");
+        try
+        {
+            var light = _tracker?.Current.FirstOrDefault(t => t.IsPrimary)?.IsLightTheme ?? false;
+            NotificationWindow.Show(ConfigNotice.Title, ConfigNotice.Body(error, atStartup), light,
+                () => _commands?.OpenConfig(), log);
+        }
+        catch (Exception ex) { log.Error("Could not show the config notice", ex); }
+    }
 
     ITileBarView CreateBar(string displayId)
     {
@@ -83,6 +101,7 @@ public partial class App : Application
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         FlyoutWindow.CloseOpen();
+        NotificationWindow.CloseOpen();
         if (_host is not null)
         {
             // Bars close synchronously on this (UI) thread inside DisposeAsync before its first await;
