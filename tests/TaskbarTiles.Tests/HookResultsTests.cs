@@ -72,6 +72,16 @@ public class HookResultsTests
     }
 
     [Fact]
+    public void Invalid_output_details_include_stderr()
+    {
+        var o = HookResults.ForTile("interval", new ScriptResult(0, "oops", "traceback: boom\r\n"), Limit);
+
+        Assert.Equal("interval: invalid output", o.ErrorMessage);
+        Assert.Contains("oops", o.ErrorDetails);
+        Assert.EndsWith("traceback: boom", o.ErrorDetails);
+    }
+
+    [Fact]
     public void Warnings_name_the_hook()
     {
         var o = HookResults.ForTile("interval", new ScriptResult(0, """{ "tittle": "x" }""", ""), Limit);

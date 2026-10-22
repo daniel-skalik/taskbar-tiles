@@ -38,7 +38,11 @@ public static class HookResults
         var parsed = parse(result.StdOut);
         var warnings = parsed.Warnings.Select(w => $"{hook}: {w}").ToList();
         if (parsed.Error is not null)
-            return new(null, $"{hook}: invalid output", Shorten(parsed.Error + "\n" + result.StdOut.Trim()), warnings);
+        {
+            var details = parsed.Error + "\n" + result.StdOut.Trim();
+            if (!string.IsNullOrWhiteSpace(result.StdErr)) details += "\n" + result.StdErr.Trim();
+            return new(null, $"{hook}: invalid output", Shorten(details), warnings);
+        }
         return new(parsed.Value, null, "", warnings);
     }
 

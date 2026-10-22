@@ -151,6 +151,42 @@ public class ScriptOutputTests
         Assert.Equal("x", ScriptOutput.ParseTile("﻿{ \"title\": \"x\" }").Value!.Title);
 
     [Fact]
+    public void Lone_surrogate_escape_is_an_error_not_an_exception()
+    {
+        var r = ScriptOutput.ParseTile("{\"title\":\"\\ud800\"}");
+
+        Assert.Null(r.Value);
+        Assert.StartsWith("Invalid JSON:", r.Error);
+    }
+
+    [Fact]
+    public void Raw_lone_surrogate_is_an_error_not_an_exception()
+    {
+        var r = ScriptOutput.ParseTile("{\"title\":\"\uD800\"}");
+
+        Assert.Null(r.Value);
+        Assert.StartsWith("Invalid JSON:", r.Error);
+    }
+
+    [Fact]
+    public void Non_finite_progress_is_dropped_with_a_warning()
+    {
+        var r = ScriptOutput.ParseTile("""{ "progress": 1e999 }""");
+
+        Assert.Null(r.Value!.Progress);
+        Assert.Contains(r.Warnings, w => w.Contains("finite"));
+    }
+
+    [Fact]
+    public void Non_finite_sparkline_points_are_removed_with_a_warning()
+    {
+        var r = ScriptOutput.ParseTile("""{ "sparkline": [1, 1e999, -1e999, 2] }""");
+
+        Assert.Equal(new[] { 1.0, 2.0 }, r.Value!.Sparkline);
+        Assert.Contains(r.Warnings, w => w.Contains("finite"));
+    }
+
+    [Fact]
     public void Flyout_maps_rows_and_actions()
     {
         var r = ScriptOutput.ParseFlyout("""

@@ -39,7 +39,8 @@ public static class ScriptOutput
             var warnings = new List<string>();
             return new(read(doc.RootElement, warnings), null, warnings);
         }
-        catch (JsonException ex)
+        // Lone surrogates make parsing (ArgumentException) or reading strings (InvalidOperationException) throw.
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
         {
             return new(null, "Invalid JSON: " + ex.Message, []);
         }
@@ -88,7 +89,12 @@ public static class ScriptOutput
     static double? Number(JsonElement o, string name, List<string> w)
     {
         if (!o.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null) return null;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d)) return d;
+        if (v.ValueKind == JsonValueKind.Number)
+        {
+            if (v.TryGetDouble(out var d) && double.IsFinite(d)) return d;
+            w.Add($"\"{name}\" must be a finite number; dropped.");
+            return null;
+        }
         w.Add($"\"{name}\" must be a number; got {Kind(v)}.");
         return null;
     }
@@ -111,12 +117,15 @@ public static class ScriptOutput
         }
         var list = new List<double>();
         var skipped = 0;
+        var nonFinite = 0;
         foreach (var item in v.EnumerateArray())
         {
-            if (item.ValueKind == JsonValueKind.Number && item.TryGetDouble(out var d)) list.Add(d);
-            else skipped++;
+            if (item.ValueKind != JsonValueKind.Number) skipped++;
+            else if (item.TryGetDouble(out var d) && double.IsFinite(d)) list.Add(d);
+            else nonFinite++;
         }
         if (skipped > 0) w.Add($"\"{name}\": {skipped} value(s) that are not numbers were skipped.");
+        if (nonFinite > 0) w.Add($"\"{name}\": {nonFinite} value(s) that are not finite numbers were skipped.");
         return list;
     }
 
