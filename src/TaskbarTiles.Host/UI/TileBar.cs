@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.Taskbar;
 using static TaskbarTiles.Host.Taskbar.NativeMethods;
@@ -15,12 +16,15 @@ public sealed class TileBar : Window, ITileBarView
 
     readonly StackPanel _panel = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
     readonly List<TileView> _views = [];
+    readonly ITileLog _log;
+    IReadOnlyList<TileRuntime> _requested = [];
     IntPtr _hwnd;
     TaskbarInfo? _info;
     bool? _light;
 
-    public TileBar(string displayId)
+    public TileBar(string displayId, ITileLog log)
     {
+        _log = log;
         DisplayId = displayId;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -64,7 +68,8 @@ public sealed class TileBar : Window, ITileBarView
     /// <summary>Replaces the tiles unless the same runtimes are already shown in the same order.</summary>
     public void SetTiles(IReadOnlyList<TileRuntime> runtimes)
     {
-        if (_views.Select(v => v.Runtime).SequenceEqual(runtimes)) return;
+        if (_requested.SequenceEqual(runtimes)) return;
+        _requested = runtimes.ToList();
 
         foreach (var v in _views) v.Detach();
         _views.Clear();
@@ -78,7 +83,7 @@ public sealed class TileBar : Window, ITileBarView
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Tile '{rt.TileId}' failed to render: {ex}");
+                _log.Error($"Tile '{rt.TileId}' could not be shown", ex);
                 continue;
             }
             _views.Add(view);

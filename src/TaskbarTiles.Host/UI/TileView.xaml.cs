@@ -22,12 +22,13 @@ public partial class TileView : UserControl
         Runtime = runtime;
         _isLightTheme = isLightTheme;
         Width = runtime.Width;
-        Runtime.StateChanged += OnStateChanged;
         MouseLeftButtonUp += OnClick;
         MouseEnter += (_, _) => UpdateBackground();
         MouseLeave += (_, _) => UpdateBackground();
         KeyDown += (_, e) => { if (e.Key == Key.Enter) OnClick(this, null); };
         Render(runtime.State);
+        // Subscribe last: a constructor that throws must not leave a subscription behind.
+        Runtime.StateChanged += OnStateChanged;
     }
 
     public TileRuntime Runtime { get; }

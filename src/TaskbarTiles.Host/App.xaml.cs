@@ -65,7 +65,7 @@ public partial class App : Application
 
     ITileBarView CreateBar(string displayId)
     {
-        var bar = new TileBar(displayId);
+        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"));
         bar.OpenConfigRequested += (_, _) => Process.Start(new ProcessStartInfo(AppPaths.ConfigFile) { UseShellExecute = true });
         bar.ExitRequested += (_, _) => Shutdown();
         return bar;
