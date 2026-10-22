@@ -34,8 +34,8 @@ The default `config.json` (written only when none exists) already contains the `
 
 | Hook | `TILE_HOOK` | When it runs | What it prints |
 |---|---|---|---|
-| `interval` `{ every, run }` | `interval` | At start and every `every` (e.g. `"30s"`, `"10m"`). A run is skipped while the previous one is still going. Also on "Refresh now", after the PC wakes from sleep, and after an action hook that printed nothing. | Tile JSON |
-| `watch` `{ run }` | `watch` | At start; meant to run forever. Every line it prints is one tile update. When it exits it is started again after 2 s, 10 s, 1 min, then every 5 min (back to 2 s after a valid line). | One tile JSON object per line |
+| `interval` `{ every, run }` | `interval` | At start and every `every` (e.g. `"30s"`, `"10m"`; from `1s` to `24h`). A run is skipped while the previous one is still going. Also on "Refresh now", after the PC wakes from sleep, and after an action hook that printed nothing. | Tile JSON |
+| `watch` `{ run }` | `watch` | At start; meant to run forever. Every line it prints is one tile update. When it exits it is started again after 2 s, 10 s, 1 min, then every 5 min (back to 2 s after a valid line). A non-zero exit or a failure to start shows the error look until the next valid line; a clean exit is only logged. | One tile JSON object per line |
 | `click` `{ run }` | `click` | On a plain click, only when the tile has no popup. | Tile JSON, or nothing |
 | `flyout` `{ run }` | `flyout` | When the tile is clicked, to build its popup. | Popup JSON; print nothing for no popup (the click then goes to `click`) |
 | `action:<id>` `{ run }` | `action` | When a tile button or popup action with that `id` is pressed. `TILE_ACTION` holds the id. | Tile JSON, or nothing |
@@ -48,7 +48,7 @@ A tile that has only `click`, `flyout` or `action:` hooks shows its tile id unti
 
 ### Timeouts
 
-Each run may take up to `timeout` (default 60 s), then the script and everything it started is killed and the tile shows an error. `watch` has no timeout.
+Each run may take up to `timeout` (default 60 s; any duration above 0 up to `24h`), then the script and everything it started is killed and the tile shows an error. `watch` has no timeout.
 
 `click`, `flyout` and `action:` runs are interactive, and the host gives up on any tile action after 10 s. So for these hooks the effective limit is 10 s even if you set a longer `timeout`: past that, the script is killed and the tile shows "Not responding" for 3 s. Keep interactive scripts quick, and do slow work in an `interval` or `watch` script instead.
 
@@ -101,10 +101,10 @@ Print one JSON object. Every field is optional; field names are camelCase.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `title` | string | Popup heading. |
+| `title` | string | Popup heading. Without it the popup gets a warning in the log and an empty heading. |
 | `subtitle` | string | Under the heading. |
 | `rows` | array | Each row is a string, or `{ "text": "Build #41", "value": "2 min", "icon": { "glyph": "check", "color": "ok" } }`; the icon shows as a colored dot. |
-| `actions` | array | Buttons at the bottom: `{ "id": "rerun", "label": "Run again", "primary": true }`. `id` is required and runs the `action:<id>` hook; `label` defaults to the id. |
+| `actions` | array | Buttons at the bottom: `{ "id": "rerun", "label": "Run again", "primary": true }`. `id` is required and runs the `action:<id>` hook; `label` defaults to the id. Ids starting with `host:` are reserved for the host (for example `host:restart` and `host:show-log` on the error popup); do not use them. |
 | `image` | string | Base64 PNG or JPEG shown next to the heading. |
 
 ```json
@@ -115,7 +115,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 
 ## Glyphs and colors
 
-Glyph names: `play`, `pause`, `previous`, `next`, `check`, `cancel`, `warning`, `refresh`, `music`, `info`, `sync`, `cloud`, `clock`. An unknown name shows `info`.
+Glyph names: `play`, `pause`, `previous`, `next`, `check`, `cancel`, `warning`, `refresh`, `music`, `info`, `sync`, `cloud`, `clock`. Names are case-insensitive. An unknown name shows `info`.
 
 Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (green), `warn` (amber), `bad` (red). An unknown name is `neutral`.
 
