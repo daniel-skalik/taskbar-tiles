@@ -22,6 +22,8 @@
     <!-- Build order only; the plugin is copied to plugins\ by CopyPlugins.targets, not referenced. -->
     <ProjectReference Include="..\TaskbarTiles.Tests.SamplePlugin\TaskbarTiles.Tests.SamplePlugin.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Tests.SamplePlugin\TaskbarTiles.Tests.SamplePlugin.csproj" />
+    <!-- Also laid out like the host's plugins folder so the loader test can discover it. -->
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>
   <Import Project="..\..\build\CopyPlugins.targets" />
 </Project>

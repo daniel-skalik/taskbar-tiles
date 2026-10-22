@@ -46,6 +46,15 @@ public class PluginLoaderTests
     }
 
     [Fact]
+    public void Script_plugin_is_discovered()
+    {
+        var catalog = new PluginLoader(new CollectingLog()).LoadFrom([PluginsRoot]);
+
+        Assert.Equal(PluginLoader.DefaultTileWidth, catalog.Connectors["script"].Width);
+        Assert.IsAssignableFrom<ITileConnector>(catalog.Create("script"));
+    }
+
+    [Fact]
     public void Unknown_connector_id_creates_null() =>
         Assert.Null(new PluginLoader(new CollectingLog()).LoadFrom([PluginsRoot]).Create("nope"));
 

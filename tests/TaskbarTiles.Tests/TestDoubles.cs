@@ -105,3 +105,23 @@ public static class ScriptFiles
         return relativePath;
     }
 }
+
+public sealed class TestTileContext(string tileId = "t1", string settingsJson = "{}", string? configDirectory = null) : ITileContext
+{
+    readonly List<TileState> _updates = [];
+    readonly List<(string Message, string Details)> _errors = [];
+
+    public string TileId => tileId;
+    public System.Text.Json.JsonElement Settings { get; } = System.Text.Json.JsonDocument.Parse(settingsJson).RootElement.Clone();
+    public string ConfigDirectory { get; } = configDirectory ?? System.IO.Path.GetTempPath();
+    public CollectingLog Logged { get; } = new();
+    public ITileLog Log => Logged;
+    public event EventHandler? Resumed;
+
+    public IReadOnlyList<TileState> Updates { get { lock (_updates) return _updates.ToList(); } }
+    public IReadOnlyList<(string Message, string Details)> Errors { get { lock (_errors) return _errors.ToList(); } }
+
+    public void Update(TileState state) { lock (_updates) _updates.Add(state); }
+    public void ReportError(string message, string? details = null) { lock (_errors) _errors.Add((message, details ?? "")); }
+    public void RaiseResumed() => Resumed?.Invoke(this, EventArgs.Empty);
+}
