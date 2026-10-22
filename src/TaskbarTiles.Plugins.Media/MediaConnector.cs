@@ -18,7 +18,9 @@ public sealed class MediaConnector : ITileConnector
     string _app = "Spotify";
     string _launch = "spotify:";
     GlobalSystemMediaTransportControlsSessionManager? _manager;
-    GlobalSystemMediaTransportControlsSession? _session;
+    readonly object _pickLock = new();
+    volatile GlobalSystemMediaTransportControlsSession? _session;
+    volatile bool _disposed;
     string? _artKey;
     byte[]? _art;
 
@@ -30,10 +32,15 @@ public sealed class MediaConnector : ITileConnector
             ? launch.GetString()!
             : _app.ToLowerInvariant() + ":";
 
-        _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-        _manager.SessionsChanged += OnSessionsChanged;
-        ctx.Resumed += OnResumed;
-        PickSession();
+        var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+        lock (_pickLock)
+        {
+            if (_disposed) return;
+            _manager = manager;
+            manager.SessionsChanged += OnSessionsChanged;
+            ctx.Resumed += OnResumed;
+            PickSession();
+        }
         await PublishAsync();
     }
 
@@ -58,6 +65,7 @@ public sealed class MediaConnector : ITileConnector
         if (s is null) return null; // a click then launches the app
 
         var props = await s.TryGetMediaPropertiesAsync();
+        if (props is null) return null;
         var timeline = s.GetTimelineProperties();
         var rows = new List<FlyoutRow>();
         if (!string.IsNullOrEmpty(props.AlbumTitle)) rows.Add(new FlyoutRow("Album", props.AlbumTitle));
@@ -74,14 +82,21 @@ public sealed class MediaConnector : ITileConnector
 
     void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args)
     {
-        PickSession();
-        _ = PublishAsync();
+        if (_disposed) return;
+        try
+        {
+            lock (_pickLock) PickSession();
+            _ = PublishAsync();
+        }
+        catch (Exception ex) { _ctx?.Log.Warn($"Media sessions change failed: {ex.Message}"); }
     }
 
     void OnResumed(object? sender, EventArgs e) => _ = PublishAsync();
 
+    // Caller must hold _pickLock.
     void PickSession()
     {
+        if (_disposed) return;
         var match = _manager?.GetSessions()
             .FirstOrDefault(x => x.SourceAppUserModelId.Contains(_app, StringComparison.OrdinalIgnoreCase));
         if (match == _session) return;
@@ -100,40 +115,58 @@ public sealed class MediaConnector : ITileConnector
         }
     }
 
-    void OnMediaChanged(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => _ = PublishAsync();
-    void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession s, PlaybackInfoChangedEventArgs e) => _ = PublishAsync();
+    void OnMediaChanged(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => SafePublish();
+    void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession s, PlaybackInfoChangedEventArgs e) => SafePublish();
+
+    void SafePublish()
+    {
+        if (_disposed) return;
+        try { _ = PublishAsync(); }
+        catch (Exception ex) { _ctx?.Log.Warn($"Media update failed: {ex.Message}"); }
+    }
 
     async Task PublishAsync()
     {
-        if (_ctx is null) return;
+        var ctx = _ctx;
+        if (ctx is null || _disposed) return;
         await _gate.WaitAsync();
         try
         {
+            if (_disposed) return;
             var s = _session;
             if (s is null)
             {
-                _ctx.Update(new TileState
+                ctx.Update(new TileState
                 {
                     Title = _app,
                     Subtitle = "Not running",
                     Icon = new TileIcon("music"),
                     Tooltip = $"Click to open {_app}",
+                    Buttons =
+                    [
+                        new TileButton("prev", "previous", "Previous", false),
+                        new TileButton("toggle", "play", "Play/Pause", false),
+                        new TileButton("next", "next", "Next", false),
+                    ],
                 });
                 return;
             }
 
             var props = await s.TryGetMediaPropertiesAsync();
+            if (props is null) return;
             var playback = s.GetPlaybackInfo();
             var playing = playback?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
 
             var key = $"{props.Title}|{props.Artist}|{props.AlbumTitle}";
             if (key != _artKey)
             {
-                _artKey = key;
+                _art = null;
                 _art = props.Thumbnail is null ? null : await ReadAllAsync(props.Thumbnail);
+                _artKey = key;
             }
 
-            _ctx.Update(new TileState
+            if (_disposed) return;
+            ctx.Update(new TileState
             {
                 Title = string.IsNullOrEmpty(props.Title) ? _app : props.Title,
                 Subtitle = props.Artist,
@@ -150,7 +183,7 @@ public sealed class MediaConnector : ITileConnector
         }
         catch (Exception ex)
         {
-            _ctx.Log.Warn($"Media update failed: {ex.Message}");
+            ctx.Log.Warn($"Media update failed: {ex.Message}");
         }
         finally
         {
@@ -169,7 +202,7 @@ public sealed class MediaConnector : ITileConnector
 
     void Launch()
     {
-        try { Process.Start(new ProcessStartInfo(_launch) { UseShellExecute = true }); }
+        try { using var _ = Process.Start(new ProcessStartInfo(_launch) { UseShellExecute = true }); }
         catch (Exception ex) { _ctx?.Log.Warn($"Could not open {_launch}: {ex.Message}"); }
     }
 
@@ -177,12 +210,17 @@ public sealed class MediaConnector : ITileConnector
 
     public ValueTask DisposeAsync()
     {
-        if (_manager is not null) _manager.SessionsChanged -= OnSessionsChanged;
-        if (_ctx is not null) _ctx.Resumed -= OnResumed;
-        if (_session is not null)
+        _disposed = true;
+        lock (_pickLock)
         {
-            _session.MediaPropertiesChanged -= OnMediaChanged;
-            _session.PlaybackInfoChanged -= OnPlaybackChanged;
+            if (_manager is not null) _manager.SessionsChanged -= OnSessionsChanged;
+            if (_ctx is not null) _ctx.Resumed -= OnResumed;
+            var s = _session;
+            if (s is not null)
+            {
+                s.MediaPropertiesChanged -= OnMediaChanged;
+                s.PlaybackInfoChanged -= OnPlaybackChanged;
+            }
         }
         return ValueTask.CompletedTask;
     }
