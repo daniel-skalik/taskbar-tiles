@@ -17,6 +17,7 @@ public partial class App : Application
     ConfigStore? _config;
     TaskbarTracker? _tracker;
     HostController? _host;
+    TileCommands? _commands;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -44,11 +45,12 @@ public partial class App : Application
             var catalog = new PluginLoader(log).LoadFrom(AppPaths.PluginRoots);
             _config = new ConfigStore(AppPaths.ConfigFile, log);
             _config.Load();
+            _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, OpenWithShell, log);
 
             var ui = new WpfUiDispatcher(Dispatcher);
             _tracker = new TaskbarTracker(Dispatcher);
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
-                name => FileLog.For(AppPaths.LogsDir, name), CreateBar);
+                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir);
 
             _config.Changed += (_, _) => ui.Post(() => _host.ConfigChanged());
             _config.StartWatching();
@@ -63,10 +65,11 @@ public partial class App : Application
         }
     }
 
+    static void OpenWithShell(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
     ITileBarView CreateBar(string displayId)
     {
-        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"));
-        bar.OpenConfigRequested += (_, _) => Process.Start(new ProcessStartInfo(AppPaths.ConfigFile) { UseShellExecute = true });
+        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!);
         bar.ExitRequested += (_, _) => Shutdown();
         return bar;
     }

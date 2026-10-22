@@ -21,7 +21,8 @@ public static class FlyoutWindow
         w?.Close();
     }
 
-    public static void ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light)
+    public static void ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light,
+        TileCommands commands, ITileLog log)
     {
         CloseOpen();
 
@@ -39,12 +40,12 @@ public static class FlyoutWindow
             Opacity = 0, // hidden until positioned on the target monitor at the right DPI
         };
         Theme.ApplyTo(window.Resources, light);
-        window.Content = Build(state, runtime, window);
+        window.Content = Build(state, runtime, commands, log);
         window.Deactivated += (_, _) => { if (_open == window) CloseOpen(); };
         window.Loaded += (_, _) =>
         {
             try { Position(window, anchor); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Flyout position failed: {ex}"); }
+            catch (Exception ex) { log.Error("Flyout positioning failed", ex); }
             finally { window.Opacity = 1; }
         };
         _open = window;
@@ -52,7 +53,7 @@ public static class FlyoutWindow
         window.Activate();
     }
 
-    static UIElement Build(FlyoutState state, TileRuntime runtime, Window window)
+    static UIElement Build(FlyoutState state, TileRuntime runtime, TileCommands commands, ITileLog log)
     {
         var panel = new StackPanel();
 
@@ -107,10 +108,11 @@ public static class FlyoutWindow
                     Style = (Style)Application.Current.FindResource(a.Primary ? "FlyoutPrimaryButton" : "FlyoutButton"),
                 };
                 var id = a.Id;
+                // Host ids (Restart tile, Open log) become commands; the rest go to the connector.
                 button.Click += async (_, _) =>
                 {
-                    try { CloseOpen(); await runtime.InvokeActionAsync(id); }
-                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Flyout action failed: {ex}"); }
+                    try { CloseOpen(); await commands.InvokeAsync(runtime, id); }
+                    catch (Exception ex) { log.Error($"Flyout action '{id}' on tile '{runtime.TileId}' failed", ex); }
                 };
                 actions.Children.Add(button);
             }

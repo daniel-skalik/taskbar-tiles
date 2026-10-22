@@ -17,14 +17,16 @@ public sealed class TileBar : Window, ITileBarView
     readonly StackPanel _panel = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
     readonly List<TileView> _views = [];
     readonly ITileLog _log;
+    readonly TileCommands _commands;
     IReadOnlyList<TileRuntime> _requested = [];
     IntPtr _hwnd;
     TaskbarInfo? _info;
     bool? _light;
 
-    public TileBar(string displayId, ITileLog log)
+    public TileBar(string displayId, ITileLog log, TileCommands commands)
     {
         _log = log;
+        _commands = commands;
         DisplayId = displayId;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -39,17 +41,11 @@ public sealed class TileBar : Window, ITileBarView
         Content = _panel;
         Theme.ApplyTo(Resources, light: false);
 
-        var menu = new ContextMenu();
-        var open = new MenuItem { Header = "Open config file" };
-        open.Click += (_, _) => OpenConfigRequested?.Invoke(this, EventArgs.Empty);
-        var exit = new MenuItem { Header = "Exit Taskbar Tiles" };
-        exit.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
-        menu.Items.Add(open);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(exit);
-        ContextMenu = menu;
+        // Bar-wide menu for the gaps between tiles; each tile gets its own menu in SetTiles.
+        ContextMenu = BuildMenu(null);
         // The bar is WS_EX_NOACTIVATE, so it never becomes the foreground window and the menu
-        // never sees outside clicks. Bring the bar to the foreground while the menu is open.
+        // never sees outside clicks. Bring the bar to the foreground while a menu is open.
+        // ContextMenuOpening bubbles, so this also covers the tiles' menus.
         ContextMenuOpening += (_, _) => { if (_hwnd != IntPtr.Zero) SetForegroundWindow(_hwnd); };
 
         SourceInitialized += (_, _) =>
@@ -65,7 +61,6 @@ public sealed class TileBar : Window, ITileBarView
     }
 
     public string DisplayId { get; }
-    public event EventHandler? OpenConfigRequested;
     public event EventHandler? ExitRequested;
 
     /// <summary>Replaces the tiles unless the same runtimes are already shown in the same order.</summary>
@@ -82,7 +77,8 @@ public sealed class TileBar : Window, ITileBarView
             TileView view;
             try
             {
-                view = new TileView(rt, () => _light ?? false) { Margin = new Thickness(0, 0, GapDip, 0) };
+                view = new TileView(rt, () => _light ?? false, _commands, _log) { Margin = new Thickness(0, 0, GapDip, 0) };
+                view.ContextMenu = BuildMenu(rt);
             }
             catch (Exception ex)
             {
@@ -104,6 +100,28 @@ public sealed class TileBar : Window, ITileBarView
             Theme.ApplyTo(Resources, info.IsLightTheme);
         }
         Reflow();
+    }
+
+    ContextMenu BuildMenu(TileRuntime? tile)
+    {
+        var menu = new ContextMenu();
+        foreach (var entry in TileMenu.Entries(onTile: tile is not null))
+        {
+            if (entry.IsSeparator)
+            {
+                menu.Items.Add(new Separator());
+                continue;
+            }
+            var item = new MenuItem { Header = entry.Header };
+            if (entry.Tile is { } command && tile is not null)
+                item.Click += async (_, _) => await _commands.ExecuteAsync(tile, command); // never throws
+            else if (entry.Bar == BarCommand.OpenConfig)
+                item.Click += (_, _) => _commands.OpenConfig();
+            else if (entry.Bar == BarCommand.Exit)
+                item.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
+            menu.Items.Add(item);
+        }
+        return menu;
     }
 
     void Reflow()

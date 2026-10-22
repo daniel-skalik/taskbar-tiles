@@ -12,15 +12,19 @@ namespace TaskbarTiles.Host.UI;
 public partial class TileView : UserControl
 {
     readonly Func<bool> _isLightTheme;
+    readonly TileCommands _commands;
+    readonly ITileLog _log;
     bool _urgent;
     bool _clickInFlight;
     SolidColorBrush? _pulse;
 
-    public TileView(TileRuntime runtime, Func<bool> isLightTheme)
+    public TileView(TileRuntime runtime, Func<bool> isLightTheme, TileCommands commands, ITileLog log)
     {
         InitializeComponent();
         Runtime = runtime;
         _isLightTheme = isLightTheme;
+        _commands = commands;
+        _log = log;
         Width = runtime.Width;
         MouseLeftButtonUp += OnClick;
         MouseEnter += (_, _) => UpdateBackground();
@@ -65,10 +69,11 @@ public partial class TileView : UserControl
                 Style = (Style)FindResource("IconButton"),
             };
             var id = b.Id;
+            // TileRuntime drops a click on an action id that is still running.
             button.Click += async (_, _) =>
             {
                 try { await Runtime.InvokeActionAsync(id); }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Tile button failed: {ex}"); }
+                catch (Exception ex) { _log.Error($"Tile '{Runtime.TileId}' button '{id}' failed", ex); }
             };
             ButtonPanel.Children.Add(button);
         }
@@ -144,16 +149,16 @@ public partial class TileView : UserControl
             switch (result.Outcome)
             {
                 case FlyoutOutcome.NoPopup:
-                    await Runtime.InvokeActionAsync("click");
+                    await Runtime.InvokeActionAsync(TileActions.Click);
                     break;
                 case FlyoutOutcome.Popup:
-                    FlyoutWindow.ShowAbove(this, result.Flyout!, Runtime, _isLightTheme());
+                    FlyoutWindow.ShowAbove(this, result.Flyout!, Runtime, _isLightTheme(), _commands, _log);
                     break;
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Tile click failed: {ex}");
+            _log.Error($"Tile '{Runtime.TileId}' click failed", ex);
         }
         finally
         {
