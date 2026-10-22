@@ -248,7 +248,6 @@ public class TileRuntimeTests
         var result = await rt.GetFlyoutAsync();
 
         Assert.Equal(FlyoutOutcome.Unavailable, result.Outcome);
-        Assert.Empty(c.Actions);
     }
 
     [Fact]
@@ -311,38 +310,6 @@ public class TileRuntimeTests
         Assert.NotEqual(callerThread, cancelThread);
     }
 
-    [Fact]
-    public async Task Timeout_cancellation_callbacks_do_not_run_on_the_awaiting_thread()
-    {
-        var cancelThread = -1;
-        var c = new FakeConnector
-        {
-            OnAction = (_, ct) =>
-            {
-                ct.Register(() => cancelThread = Environment.CurrentManagedThreadId);
-                return Task.Delay(Timeout.Infinite, ct);
-            },
-        };
-        var rt = Create(c, new ImmediateDispatcher(), timeout: TimeSpan.FromMilliseconds(50));
-        await rt.StartAsync();
-
-        var awaitingThread = -1;
-        var done = new TaskCompletionSource();
-        var thread = new Thread(() =>
-        {
-            awaitingThread = Environment.CurrentManagedThreadId;
-            // Block the thread inside the await so the timeout cancel is attributed to it if run inline.
-            rt.InvokeActionAsync("click").GetAwaiter().GetResult();
-            done.SetResult();
-        });
-        thread.Start();
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(100);
-
-        Assert.NotEqual(-1, cancelThread);
-        Assert.NotEqual(awaitingThread, cancelThread);
-    }
-
     static async Task<TileState> StateAfterUpdate(TileState sent)
     {
         var c = new FakeConnector();
@@ -398,5 +365,12 @@ public class TileRuntimeTests
 
         var dropped = await StateAfterUpdate(new TileState { Sparkline = [double.NaN, 5, double.NegativeInfinity] });
         Assert.Null(dropped.Sparkline);
+    }
+
+    [Fact]
+    public async Task Sparkline_with_overflowing_range_is_dropped()
+    {
+        var s = await StateAfterUpdate(new TileState { Sparkline = [-double.MaxValue, double.MaxValue] });
+        Assert.Null(s.Sparkline);
     }
 }

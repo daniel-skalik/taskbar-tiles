@@ -170,7 +170,7 @@ public sealed class TileRuntime : IAsyncDisposable
         if (state.Sparkline is { } raw)
         {
             var finite = raw.Where(double.IsFinite).ToList();
-            if (finite.Count >= 2) spark = finite;
+            if (finite.Count >= 2 && double.IsFinite(finite.Max() - finite.Min())) spark = finite;
         }
 
         return state with { Buttons = buttons, Icon = icon, Progress = progress, Sparkline = spark };
@@ -268,7 +268,8 @@ public sealed class TileRuntime : IAsyncDisposable
             // Cancellation callbacks and the connector's disposal are plugin code: keep them off the caller (UI) thread.
             await Task.Run(async () =>
             {
-                _lifetime.Cancel();
+                try { _lifetime.Cancel(); }
+                catch (Exception ex) { _log.Warn($"Tile '{TileId}' cancellation handler failed: {ex.Message}"); }
                 await _connector.DisposeAsync().ConfigureAwait(false);
             }).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }

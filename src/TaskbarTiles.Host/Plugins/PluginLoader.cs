@@ -19,7 +19,7 @@ public sealed class ConnectorCatalog(IReadOnlyDictionary<string, ConnectorDescri
 /// <summary>Loads plugins laid out as &lt;root&gt;\&lt;Name&gt;\&lt;Name&gt;.dll. Earlier roots win on duplicate ids.</summary>
 public sealed class PluginLoader(ITileLog log)
 {
-    const double DefaultWidth = 132;
+    public const double DefaultTileWidth = 132;
 
     public ConnectorCatalog LoadFrom(IEnumerable<string> roots)
     {
@@ -52,8 +52,8 @@ public sealed class PluginLoader(ITileLog log)
                     var width = attr.Width;
                     if (!double.IsFinite(width) || width <= 0)
                     {
-                        log.Warn($"Connector '{attr.Id}' in {main} declares invalid width {width}; using {DefaultWidth}.");
-                        width = DefaultWidth;
+                        log.Warn($"Connector '{attr.Id}' in {main} declares invalid width {width}; using {DefaultTileWidth}.");
+                        width = DefaultTileWidth;
                     }
                     map[attr.Id] = new ConnectorDescriptor(attr.Id, type, width, main);
                     log.Info($"Loaded connector '{attr.Id}' from {main}");
