@@ -174,15 +174,21 @@ public class ScriptConnectorTests
     [Fact]
     public async Task Action_without_output_refreshes_the_interval_hook()
     {
+        var firstRunDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var runner = new FakeRunner
         {
-            OnRun = (call, _) => Task.FromResult(FakeRunner.Ok(call.Env["TILE_HOOK"] == "action" ? "" : """{ "title": "status" }""")),
+            OnRun = (call, _) =>
+            {
+                var result = FakeRunner.Ok(call.Env["TILE_HOOK"] == "action" ? "" : """{ "title": "status" }""");
+                firstRunDone.TrySetResult();
+                return Task.FromResult(result);
+            },
         };
         var ctx = new TestTileContext(settingsJson: """{ "hooks": { "interval": { "every": "1h", "run": "i.ps1" }, "action:rerun": "r.ps1" } }""");
         await using var c = Create(runner);
         await c.StartAsync(ctx, CancellationToken.None);
-        await Eventually.Holds(() => ctx.Updates.Count == 1);
-        await Task.Delay(100); // let the first interval run finish, or the refresh would be skipped
+        await firstRunDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Eventually.Holds(() => ctx.Updates.Count == 1 && c.IsIntervalIdle); // or the trigger would be skipped
 
         await c.OnActionAsync("rerun", CancellationToken.None);
 
@@ -207,12 +213,21 @@ public class ScriptConnectorTests
     [Fact]
     public async Task Refresh_reruns_the_interval_hook()
     {
-        var runner = new FakeRunner { OnRun = (_, _) => Task.FromResult(FakeRunner.Ok("""{ "title": "x" }""")) };
+        var firstRunDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeRunner
+        {
+            OnRun = (_, _) =>
+            {
+                var result = FakeRunner.Ok("""{ "title": "x" }""");
+                firstRunDone.TrySetResult();
+                return Task.FromResult(result);
+            },
+        };
         var ctx = new TestTileContext(settingsJson: """{ "hooks": { "interval": { "every": "1h", "run": "i.ps1" } } }""");
         await using var c = Create(runner);
         await c.StartAsync(ctx, CancellationToken.None);
-        await Eventually.Holds(() => ctx.Updates.Count == 1);
-        await Task.Delay(100); // let the first run finish, or the refresh would be skipped
+        await firstRunDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Eventually.Holds(() => ctx.Updates.Count == 1 && c.IsIntervalIdle); // or the trigger would be skipped
 
         await c.OnActionAsync(TileActions.Refresh, CancellationToken.None);
 
@@ -276,7 +291,148 @@ public class ScriptConnectorTests
         Assert.Equal("Script error", flyout!.Title);
         Assert.Equal("flyout: exited with code 1", flyout.Subtitle);
         Assert.Equal("boom", Assert.Single(flyout.Rows).Text);
-        Assert.Equal("flyout: exited with code 1", Assert.Single(ctx.Errors).Message);
+        Assert.Empty(ctx.Errors); // not a tile error: the host would stop asking the connector for popups
+        Assert.Contains(ctx.Logged.Snapshot(), m => m.StartsWith("ERROR flyout: exited with code 1"));
+        Assert.Equal(new[] { ("host:restart", "Restart tile", true), ("host:show-log", "Open log", false) },
+            flyout.Actions.Select(a => (a.Id, a.Label, a.Primary)));
+    }
+
+    [Fact]
+    public async Task Flyout_that_failed_once_returns_the_real_popup_next_time()
+    {
+        var runs = 0;
+        var runner = new FakeRunner
+        {
+            OnRun = (_, _) => Task.FromResult(Interlocked.Increment(ref runs) == 1
+                ? new ScriptResult(1, "", "boom")
+                : FakeRunner.Ok("""{ "title": "Builds" }""")),
+        };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "flyout": "f.ps1" } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+
+        Assert.Equal("Script error", (await c.GetFlyoutAsync(CancellationToken.None))!.Title);
+        Assert.Equal("Builds", (await c.GetFlyoutAsync(CancellationToken.None))!.Title);
+
+        Assert.Empty(ctx.Errors);
+    }
+
+    [Fact]
+    public async Task Successful_click_without_output_clears_a_failed_click_error()
+    {
+        var runs = 0;
+        var runner = new FakeRunner
+        {
+            OnRun = (_, _) => Task.FromResult(Interlocked.Increment(ref runs) == 1 ? new ScriptResult(1, "", "boom") : FakeRunner.Ok("")),
+        };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "click": "c.ps1" } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        Assert.Single(ctx.Updates); // the idle state
+
+        await c.OnActionAsync(TileActions.Click, CancellationToken.None);
+        Assert.Single(ctx.Errors);
+        Assert.Single(ctx.Updates);
+
+        await c.OnActionAsync(TileActions.Click, CancellationToken.None);
+
+        Assert.Equal(2, ctx.Updates.Count);
+        Assert.Equal("t1", ctx.Updates[^1].Title);
+        await c.OnActionAsync(TileActions.Click, CancellationToken.None); // no error shown any more: nothing to clear
+        Assert.Equal(2, ctx.Updates.Count);
+    }
+
+    [Fact]
+    public async Task Clearing_an_error_resends_the_last_good_state()
+    {
+        var runs = 0;
+        var runner = new FakeRunner
+        {
+            OnRun = (_, _) => Task.FromResult(Interlocked.Increment(ref runs) switch
+            {
+                1 => FakeRunner.Ok("""{ "title": "good" }"""),
+                2 => new ScriptResult(1, "", "boom"),
+                _ => FakeRunner.Ok(""),
+            }),
+        };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "startup": "s.ps1", "click": "c.ps1" } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        await Eventually.Holds(() => ctx.Updates.Count == 1);
+
+        await c.OnActionAsync(TileActions.Click, CancellationToken.None);
+        await c.OnActionAsync(TileActions.Click, CancellationToken.None);
+
+        Assert.Equal(new[] { "good", "good" }, ctx.Updates.Select(u => u.Title));
+    }
+
+    [Fact]
+    public async Task Nothing_is_published_after_dispose_started()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<ScriptResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeRunner { OnRun = (_, _) => { started.TrySetResult(); return gate.Task; } };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "interval": { "every": "1h", "run": "a.ps1" } } }""");
+        var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var disposing = c.DisposeAsync().AsTask();
+        gate.SetResult(FakeRunner.Ok("""{ "title": "late" }"""));
+        await disposing;
+        await Task.Delay(200); // a late publish would land within moments; this can only miss a regression, never fail spuriously
+
+        Assert.Empty(ctx.Updates);
+        Assert.Empty(ctx.Errors);
+    }
+
+    [Fact]
+    public async Task No_error_is_reported_after_dispose_started()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<ScriptResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeRunner { OnRun = (_, _) => { started.TrySetResult(); return gate.Task; } };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "interval": { "every": "1h", "run": "a.ps1" } } }""");
+        var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var disposing = c.DisposeAsync().AsTask();
+        gate.SetResult(new ScriptResult(1, "", "killed"));
+        await disposing;
+        await Task.Delay(200); // a late publish would land within moments; this can only miss a regression, never fail spuriously
+
+        Assert.Empty(ctx.Errors);
+    }
+
+    [Fact]
+    public async Task Action_cancelled_by_the_host_cancels_the_script_without_an_error()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeRunner
+        {
+            OnRun = async (_, ct) =>
+            {
+                started.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, ct); }
+                catch (OperationCanceledException) { observed.TrySetResult(); throw; }
+                return FakeRunner.Ok("");
+            },
+        };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "action:go": "g.ps1" } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        using var host = new CancellationTokenSource();
+
+        var call = c.OnActionAsync("go", host.Token);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call);
+        await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Empty(ctx.Errors);
+        Assert.Contains(ctx.Logged.Snapshot(), m => m.Contains("action: cancelled by the host"));
     }
 
     [Fact]
@@ -291,6 +447,32 @@ public class ScriptConnectorTests
 
         await Eventually.Holds(() => runner.Calls.Count == 1);
         Assert.Equal("resume", runner.Hooks[0]);
+    }
+
+    [Fact]
+    public async Task Resume_hook_runs_before_the_interval_refresh()
+    {
+        var resumeGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeRunner
+        {
+            OnRun = async (call, _) =>
+            {
+                if (call.Env["TILE_HOOK"] == "resume") await resumeGate.Task;
+                return FakeRunner.Ok("");
+            },
+        };
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "resume": "r.ps1", "interval": { "every": "1h", "run": "i.ps1" } } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+        await Eventually.Holds(() => runner.Calls.Count == 1 && c.IsIntervalIdle);
+
+        ctx.RaiseResumed();
+        await Eventually.Holds(() => runner.Calls.Count == 2);
+        Assert.Equal(new[] { "interval", "resume" }, runner.Hooks); // the refresh waits for the resume hook
+        resumeGate.SetResult();
+
+        await Eventually.Holds(() => runner.Calls.Count == 3);
+        Assert.Equal(new[] { "interval", "resume", "interval" }, runner.Hooks);
     }
 
     [Fact]

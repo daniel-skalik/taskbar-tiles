@@ -5,7 +5,8 @@ namespace TaskbarTiles.Plugins.Script;
 /// <summary>
 /// Drives a tile from scripts wired to hooks in settings.hooks (see docs/script-connectors.md).
 /// A failing script never throws out of the connector: it is reported with ITileContext.ReportError,
-/// and the next successful run clears it.
+/// and the next successful run clears it (a run that prints nothing re-sends the last good state).
+/// A failed flyout run is not a tile error: it is logged and shown in the popup only.
 /// </summary>
 [TileConnector("script")]
 public sealed class ScriptConnector : ITileConnector
@@ -16,7 +17,10 @@ public sealed class ScriptConnector : ITileConnector
     readonly string _powerShell;
     readonly BackoffSchedule _backoff;
     readonly List<Task> _background = [];
+    readonly object _stateLock = new();
     CancellationTokenSource _cts = new();
+    TileState? _lastGood;
+    bool _errorShown;
     ITileContext? _ctx;
     ScriptSettings? _settings;
     CommandResolver? _resolver;
@@ -30,6 +34,9 @@ public sealed class ScriptConnector : ITileConnector
         _powerShell = powerShell;
         _backoff = backoff;
     }
+
+    /// <summary>True when no interval run is going (a trigger now would not be skipped). For tests.</summary>
+    internal bool IsIntervalIdle => _interval?.IsRunning != true;
 
     ITileContext Ctx => _ctx ?? throw new InvalidOperationException("StartAsync has not run.");
 
@@ -53,7 +60,7 @@ public sealed class ScriptConnector : ITileConnector
 
         // A tile driven only by click, popup or action hooks would otherwise sit at "…".
         if (startup is null && interval is null && watch is null)
-            ctx.Update(new TileState { Title = ctx.TileId, Icon = new TileIcon("info") });
+            Publish(IdleState());
 
         if (interval is not null)
             _interval = new IntervalLoop(interval.Every!.Value,
@@ -75,14 +82,14 @@ public sealed class ScriptConnector : ITileConnector
     public async Task OnActionAsync(string actionId, CancellationToken ct)
     {
         if (_settings is null) return; // invalid settings: nothing to run
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
         switch (actionId)
         {
             case TileActions.Refresh:
                 Refresh();
                 return;
             case TileActions.Click:
-                if (_settings.Hook("click") is { } click) await RunTileHookAsync("click", click, null, linked.Token);
+                if (_settings.Hook("click") is { } click)
+                    await Interactive("click", ct, t => RunTileHookAsync("click", click, null, t));
                 return;
         }
 
@@ -92,28 +99,45 @@ public sealed class ScriptConnector : ITileConnector
             return;
         }
         // An action that prints nothing usually changed what the status shows: refresh it.
-        if (await RunTileHookAsync("action", action, actionId, linked.Token) == HookRun.NoOutput)
+        if (await Interactive("action", ct, t => RunTileHookAsync("action", action, actionId, t)) == HookRun.NoOutput)
             _interval?.Trigger(_cts.Token);
     }
 
     public async Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct)
     {
         if (_settings?.Hook("flyout") is not { } flyout) return null;
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
         var timeout = flyout.Timeout ?? ScriptSettings.DefaultTimeout;
-        var result = await RunScriptAsync("flyout", flyout, null, timeout, linked.Token);
+        var result = await Interactive("flyout", ct, t => RunScriptAsync("flyout", flyout, null, timeout, t));
         var outcome = HookResults.ForFlyout("flyout", result, timeout);
         foreach (var warning in outcome.Warnings) Ctx.Log.Warn(warning);
         if (!outcome.Failed) return outcome.Value; // empty output: no popup, the click goes to the click hook
 
-        Report(outcome.ErrorMessage!, outcome.ErrorDetails);
+        // Not ReportError: the host would then answer every open with its own error popup and the
+        // connector could never recover. The popup carries the host's restart/log actions instead.
+        LogError(outcome.ErrorMessage!, outcome.ErrorDetails);
         var rows = outcome.ErrorDetails.Split('\n')
             .Select(line => line.Trim())
             .Where(line => line.Length > 0)
             .Take(12)
             .Select(line => new FlyoutRow(line))
             .ToList();
-        return new FlyoutState("Script error", outcome.ErrorMessage, rows, []);
+        return new FlyoutState("Script error", outcome.ErrorMessage, rows,
+            [new FlyoutAction("host:restart", "Restart tile", true), new FlyoutAction("host:show-log", "Open log")]);
+    }
+
+    /// <summary>Runs an interactive call; logs when the host (not the tile's own shutdown) abandons it.</summary>
+    async Task<T> Interactive<T>(string hook, CancellationToken ct, Func<CancellationToken, Task<T>> work)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _cts.Token);
+        try
+        {
+            return await work(linked.Token);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested && !_cts.IsCancellationRequested)
+        {
+            Ctx.Log.Warn($"{hook}: cancelled by the host");
+            throw;
+        }
     }
 
     void Refresh()
@@ -125,8 +149,14 @@ public sealed class ScriptConnector : ITileConnector
     void OnResumed(object? sender, EventArgs e)
     {
         if (_settings is null || _cts.IsCancellationRequested) return;
-        if (_settings.Hook("resume") is { } resume) _ = Guarded("resume", () => RunTileHookAsync("resume", resume, null, _cts.Token));
-        _interval?.Trigger(_cts.Token); // the data is likely stale after sleep
+        var token = _cts.Token;
+        var resume = _settings.Hook("resume");
+        // The data is likely stale after sleep: the resume hook runs first, then the interval refreshes.
+        _ = Guarded("resume", async () =>
+        {
+            if (resume is not null) await RunTileHookAsync("resume", resume, null, token);
+            _interval?.Trigger(token);
+        });
     }
 
     async Task WatchAsync(HookSpec spec, CancellationToken ct)
@@ -170,7 +200,7 @@ public sealed class ScriptConnector : ITileConnector
                 return false;
             }
             if (parsed.Value is null) return false; // blank line
-            Ctx.Update(parsed.Value);
+            Publish(parsed.Value);
             return true;
         }
         catch (Exception ex)
@@ -191,8 +221,12 @@ public sealed class ScriptConnector : ITileConnector
             Report(outcome.ErrorMessage!, outcome.ErrorDetails);
             return HookRun.Failed;
         }
-        if (outcome.Value is null) return HookRun.NoOutput;
-        Ctx.Update(outcome.Value);
+        if (outcome.Value is null)
+        {
+            ClearErrorLook();
+            return HookRun.NoOutput;
+        }
+        Publish(outcome.Value);
         return HookRun.Updated;
     }
 
@@ -216,10 +250,42 @@ public sealed class ScriptConnector : ITileConnector
         ["TILE_SETTINGS_JSON"] = Ctx.Settings.GetRawText(),
     };
 
+    TileState IdleState() => new() { Title = Ctx.TileId, Icon = new TileIcon("info") };
+
+    void LogError(string message, string details) =>
+        Ctx.Log.Error(details.Length == 0 ? message : $"{message}{Environment.NewLine}{details}");
+
     void Report(string message, string details)
     {
-        Ctx.Log.Error(details.Length == 0 ? message : $"{message}{Environment.NewLine}{details}");
-        Ctx.ReportError(message, details);
+        LogError(message, details);
+        lock (_stateLock)
+        {
+            if (_cts.IsCancellationRequested) return; // disposed: the host no longer listens
+            _errorShown = true;
+            Ctx.ReportError(message, details);
+        }
+    }
+
+    void Publish(TileState state)
+    {
+        lock (_stateLock)
+        {
+            if (_cts.IsCancellationRequested) return;
+            _lastGood = state;
+            _errorShown = false;
+            Ctx.Update(state);
+        }
+    }
+
+    /// <summary>A successful run that prints nothing leaves the error look in place; re-send the last good state.</summary>
+    void ClearErrorLook()
+    {
+        lock (_stateLock)
+        {
+            if (!_errorShown || _cts.IsCancellationRequested) return;
+            _errorShown = false;
+            Ctx.Update(_lastGood ?? IdleState());
+        }
     }
 
     /// <summary>Background work: cancellation ends it quietly, anything else is logged.</summary>
