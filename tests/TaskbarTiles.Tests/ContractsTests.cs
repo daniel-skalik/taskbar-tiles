@@ -25,4 +25,11 @@ public class ContractsTests
     {
         Assert.True(new TileButton("next", "next").Enabled);
     }
+
+    [Fact]
+    public void Host_action_ids_are_stable()
+    {
+        Assert.Equal("click", TileActions.Click);
+        Assert.Equal("refresh", TileActions.Refresh);
+    }
 }

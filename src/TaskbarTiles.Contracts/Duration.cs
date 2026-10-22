@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace TaskbarTiles.Host.Config;
+namespace TaskbarTiles.Contracts;
 
-/// <summary>Parses "500ms", "30s", "10m", "1h".</summary>
+/// <summary>Parses "500ms", "30s", "10m", "1h". Shared by config.json and plugin settings.</summary>
 public static partial class Duration
 {
     // [0-9] rather than \d: \d also matches non-ASCII digits, which double.Parse rejects.

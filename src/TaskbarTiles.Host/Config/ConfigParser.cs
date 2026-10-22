@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TaskbarTiles.Contracts;
 
 namespace TaskbarTiles.Host.Config;
 

@@ -1,4 +1,4 @@
-using TaskbarTiles.Host.Config;
+using TaskbarTiles.Contracts;
 
 namespace TaskbarTiles.Tests;
 
