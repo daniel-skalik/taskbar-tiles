@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using TaskbarTiles.Contracts;
 
@@ -9,12 +10,26 @@ public sealed class FileLog : ITileLog
     readonly string _path;
     readonly object _gate = new();
 
+    static readonly ConcurrentDictionary<string, FileLog> Cache = new(StringComparer.OrdinalIgnoreCase);
+
     FileLog(string path) => _path = path;
 
+    /// <summary>One instance per file, so concurrent writers share a lock. Names are sanitized to a plain file name.</summary>
     public static FileLog For(string logsDir, string name)
     {
-        Directory.CreateDirectory(logsDir);
-        return new FileLog(Path.Combine(logsDir, name + ".log"));
+        var path = Path.GetFullPath(Path.Combine(logsDir, Sanitize(name) + ".log"));
+        return Cache.GetOrAdd(path, p =>
+        {
+            Directory.CreateDirectory(logsDir);
+            return new FileLog(p);
+        });
+    }
+
+    internal static string Sanitize(string name)
+    {
+        var s = name.Replace("..", "_").Replace('/', '_').Replace('\\', '_');
+        foreach (var c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
+        return s.Length == 0 ? "_" : s;
     }
 
     public void Info(string message) => Write("INFO ", message);

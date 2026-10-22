@@ -100,11 +100,11 @@ public sealed class HostController(
 
             ITileConnector? connector = null;
             try { connector = catalog.Create(tileCfg.Connector); }
-            catch (Exception ex) { logFor(id).Error($"Connector '{tileCfg.Connector}' failed to construct", ex); }
+            catch (Exception ex) { logFor($"tile-{id}").Error($"Connector '{tileCfg.Connector}' failed to construct", ex); }
             connector ??= new UnknownConnector(tileCfg.Connector);
 
             var width = catalog.Connectors.TryGetValue(tileCfg.Connector, out var d) ? d.Width : DefaultWidth;
-            var runtime = new TileRuntime(id, tileCfg.Connector, width, connector, tileCfg.Settings, ui, logFor(id));
+            var runtime = new TileRuntime(id, tileCfg.Connector, width, connector, tileCfg.Settings, ui, logFor($"tile-{id}"));
             _runtimes[id] = (runtime, tileCfg);
             _ = runtime.StartAsync();
         }
