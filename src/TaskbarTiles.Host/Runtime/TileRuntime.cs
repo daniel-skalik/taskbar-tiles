@@ -71,6 +71,8 @@ public sealed class TileRuntime : IAsyncDisposable
         public ITileConnector Connector { get; } = connector;
         public TileContext Context { get; } = context;
         public CancellationTokenSource Cts { get; } = cts;
+        /// <summary>Captured up front: Cts.Token throws once the source is disposed.</summary>
+        public CancellationToken Token { get; } = cts.Token;
     }
 
     /// <summary>The next state to show. Success resets the backoff; a fatal Error schedules a restart.</summary>
@@ -91,7 +93,8 @@ public sealed class TileRuntime : IAsyncDisposable
     int _postQueued;
     int _disposed;
     int _notRespondingGeneration;
-    int _failures;        // consecutive fatal errors; UI thread only
+    int _failures;        // consecutive restarts scheduled without a success; UI thread only
+    int _restartScheduledFor; // generation an automatic restart is already pending for (0 = none); UI thread only
     TileState _beforeNotResponding = Initial;
 
     public TileRuntime(string tileId, string connectorId, double width, Func<ITileConnector> createConnector,
@@ -134,17 +137,18 @@ public sealed class TileRuntime : IAsyncDisposable
     public Task RestartAsync()
     {
         if (IsDisposed) return Task.CompletedTask;
-        _ui.Post(() => _failures = 0);
-        return RestartCoreAsync();
+        _ui.Post(() => _failures = 0); // relies on the dispatcher being FIFO: runs before the new generation's first update
+        return RestartCoreAsync(expectedGeneration: null);
     }
 
-    async Task RestartCoreAsync()
+    /// <summary>Automatic restarts pass the generation they were scheduled for and bail out if it has moved on.</summary>
+    async Task RestartCoreAsync(int? expectedGeneration)
     {
         Instance? old;
         int generation;
         lock (_instanceLock)
         {
-            if (IsDisposed) return;
+            if (IsDisposed || (expectedGeneration is { } expected && expected != _generation)) return;
             old = _current;
             _current = null;
             generation = ++_generation;
@@ -186,7 +190,7 @@ public sealed class TileRuntime : IAsyncDisposable
 
         try
         {
-            await Task.Run(() => instance.Connector.StartAsync(instance.Context, instance.Cts.Token)).ConfigureAwait(false);
+            await Task.Run(() => instance.Connector.StartAsync(instance.Context, instance.Token)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { }
         catch (Exception ex)
@@ -276,7 +280,13 @@ public sealed class TileRuntime : IAsyncDisposable
     void Post(Pending pending)
     {
         if (IsDisposed || pending.Generation != Volatile.Read(ref _generation)) return;
-        Volatile.Write(ref _pending, pending);
+        // Never let a late writer of an older generation replace a newer entry.
+        while (true)
+        {
+            var current = Volatile.Read(ref _pending);
+            if (current is not null && current.Generation > pending.Generation) return;
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _pending, pending, current), current)) break;
+        }
         if (Interlocked.Exchange(ref _postQueued, 1) != 0) return;
         _ui.Post(() =>
         {
@@ -299,18 +309,21 @@ public sealed class TileRuntime : IAsyncDisposable
     // UI thread.
     void ScheduleRestart(int generation)
     {
+        // More fatals from the instance that already has a restart pending must not advance the backoff.
+        if (_restartScheduledFor == generation) return;
+        _restartScheduledFor = generation;
         var delay = _options.Backoff.Delay(_failures++);
         _log.Info($"Tile '{TileId}' ({ConnectorId}) restarts in {delay.TotalSeconds:0.##} s");
         _ = Task.Delay(delay, _lifetime.Token).ContinueWith(t =>
         {
             if (t.IsCanceled || IsDisposed || generation != Volatile.Read(ref _generation)) return;
-            _ = RestartCoreAsync();
+            _ = RestartCoreAsync(generation);
         }, TaskScheduler.Default);
     }
 
     async Task<T> RunWithTimeout<T>(Instance instance, Func<CancellationToken, Task<T>> call)
     {
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(instance.Cts.Token);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(instance.Token);
         var cancelOffThread = false;
         try
         {
@@ -405,14 +418,14 @@ public sealed class TileRuntime : IAsyncDisposable
             {
                 try { instance.Cts.Cancel(); }
                 catch (Exception ex) { _log.Warn($"Tile '{TileId}' cancellation handler failed: {ex.Message}"); }
-                await instance.Connector.DisposeAsync().ConfigureAwait(false);
+                try { await instance.Connector.DisposeAsync().ConfigureAwait(false); }
+                finally { instance.Cts.Dispose(); } // after the cancel; in-flight calls hold Token, not the source
             }).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _log.Warn($"Tile '{TileId}' did not dispose cleanly: {ex.Message}");
         }
-        // instance.Cts is deliberately not disposed: calls may still be in flight and read its token.
     }
 
     public async ValueTask DisposeAsync()

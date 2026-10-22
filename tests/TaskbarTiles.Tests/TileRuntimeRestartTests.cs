@@ -207,7 +207,7 @@ public class TileRuntimeRestartTests
         {
             if (Interlocked.Increment(ref calls) == 1) throw new InvalidOperationException("ctor boom");
             return new FakeConnector { OnStart = (ctx, _) => { ctx.Update(new TileState { Title = "ok" }); return Task.CompletedTask; } };
-        }, backoff: new BackoffSchedule([TimeSpan.FromMilliseconds(100)]));
+        }, backoff: new BackoffSchedule([TimeSpan.FromSeconds(1)]));
 
         await rt.StartAsync();
 
@@ -215,6 +215,42 @@ public class TileRuntimeRestartTests
         Assert.True(rt.LastError!.Fatal);
         Assert.Equal("ctor boom", rt.LastError.Message);
         await Eventually.Holds(() => rt.State.Title == "ok");
+    }
+
+    [Fact]
+    public async Task Extra_fatal_errors_from_the_same_generation_do_not_advance_the_backoff()
+    {
+        var f = new Factory();
+        f.Setup = (c, before) =>
+        {
+            if (before == 0) c.OnAction = (_, _) => throw new InvalidOperationException("action boom");
+            c.OnStart = before < 2
+                ? (_, _) => throw new InvalidOperationException("start boom")
+                : (ctx, _) => { ctx.Update(new TileState { Title = "ok" }); return Task.CompletedTask; };
+        };
+        var rt = Create(f.Create, backoff: new BackoffSchedule(
+            [TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(40), TimeSpan.FromHours(1)]));
+        await rt.StartAsync();   // instance 0 fails: restart scheduled after step 0
+
+        await rt.InvokeActionAsync("x"); // second fatal from the same instance, restart already pending
+
+        await Eventually.Holds(() => rt.State.Title == "ok"); // instance 1 fails -> step 1, not step 2
+        Assert.Equal(3, f.Count);
+        await rt.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Manual_restart_while_an_automatic_one_is_pending_creates_one_new_connector()
+    {
+        var f = new Factory { Setup = (c, before) => c.OnStart = before == 0 ? (_, _) => throw new InvalidOperationException("boom") : (_, _) => Task.CompletedTask };
+        var rt = Create(f.Create, backoff: new BackoffSchedule([TimeSpan.FromMilliseconds(100)]));
+        await rt.StartAsync();
+
+        await rt.RestartAsync();
+        await Task.Delay(400);
+
+        Assert.Equal(2, f.Count);
+        await rt.DisposeAsync();
     }
 
     [Fact]
