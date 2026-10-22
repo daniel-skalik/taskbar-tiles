@@ -29,7 +29,7 @@ public static class ScriptOutput
 
     static ParseResult<T> Parse<T>(string? text, Func<JsonElement, List<string>, T> read) where T : class
     {
-        var trimmed = text?.Trim().TrimStart('﻿').Trim();
+        var trimmed = text?.Trim().TrimStart('\uFEFF').Trim();
         if (string.IsNullOrEmpty(trimmed)) return ParseResult<T>.Empty;
         try
         {

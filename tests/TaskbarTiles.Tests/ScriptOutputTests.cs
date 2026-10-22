@@ -148,7 +148,7 @@ public class ScriptOutputTests
 
     [Fact]
     public void Byte_order_mark_is_ignored() =>
-        Assert.Equal("x", ScriptOutput.ParseTile("﻿{ \"title\": \"x\" }").Value!.Title);
+        Assert.Equal("x", ScriptOutput.ParseTile("\uFEFF{ \"title\": \"x\" }").Value!.Title);
 
     [Fact]
     public void Lone_surrogate_escape_is_an_error_not_an_exception()
