@@ -24,7 +24,8 @@ public sealed class IntervalLoop(
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
         {
             Interlocked.Increment(ref _skipped);
-            onSkipped?.Invoke();
+            try { onSkipped?.Invoke(); }
+            catch { /* a failing notification must not break the trigger; there is no logger here */ }
             return false;
         }
         _ = RunOnceAsync(ct);
@@ -54,7 +55,8 @@ public sealed class IntervalLoop(
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            onError(ex);
+            try { onError(ex); }
+            catch { /* nothing left to report to */ }
         }
         finally
         {

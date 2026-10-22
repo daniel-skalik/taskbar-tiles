@@ -104,4 +104,78 @@ public class ProcessScriptRunnerTests : IDisposable
             Assert.False(r.TimedOut);
         }
     }
+
+    [Fact]
+    public async Task A_newline_free_flood_is_bounded_and_marked_truncated()
+    {
+        var command = PowerShellScript("flood.ps1", """
+            $s = 'x' * 1048576
+            for ($i = 0; $i -lt 5; $i++) { [Console]::Out.Write($s) }
+            """);
+        var watch = Stopwatch.StartNew();
+
+        var r = await _runner.RunAsync(command, NoEnv, TimeSpan.FromSeconds(60), CancellationToken.None);
+
+        Assert.False(r.TimedOut);
+        Assert.InRange(r.StdOut.Length, 1, 1024 * 1024 + 1024);
+        Assert.Contains("(output truncated)", r.StdErr);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(45), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public async Task RunLines_caps_an_over_long_line_and_continues()
+    {
+        var command = PowerShellScript("long.ps1", """
+            $s = 'y' * 1048576
+            for ($i = 0; $i -lt 3; $i++) { [Console]::Out.Write($s) }
+            [Console]::Out.WriteLine()
+            [Console]::Out.WriteLine('after')
+            """);
+        var lines = new List<string>();
+
+        var r = await _runner.RunLinesAsync(command, NoEnv, line => { lock (lines) lines.Add(line); }, CancellationToken.None);
+
+        Assert.Equal(2, lines.Count);
+        Assert.InRange(lines[0].Length, 1, 1024 * 1024 + 1024);
+        Assert.Equal("after", lines[1]);
+        Assert.Contains("(output truncated)", r.StdErr);
+    }
+
+    [Fact]
+    public async Task RunLines_survives_a_throwing_callback_and_reports_it()
+    {
+        var command = PowerShellScript("many.ps1", """
+            1..200 | ForEach-Object { Write-Output "line $_" }
+            """);
+        var calls = 0;
+
+        var r = await _runner.RunLinesAsync(command, NoEnv, _ => { Interlocked.Increment(ref calls); throw new InvalidOperationException("handler broke"); },
+            CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(0, r.ExitCode);
+        Assert.Equal(200, calls);
+        Assert.Contains("handler broke", r.StartError);
+    }
+
+    [Fact]
+    public async Task RunLines_cancellation_wins_over_a_callback_error()
+    {
+        var command = PowerShellScript("one.ps1", """
+            Write-Output 'go'
+            Start-Sleep -Seconds 30
+            """);
+        using var cts = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _runner.RunLinesAsync(command, NoEnv, _ => { cts.CancelAfter(300); throw new InvalidOperationException("x"); }, cts.Token));
+    }
+
+    [Fact]
+    public async Task An_invalid_timeout_does_not_leave_a_process_behind()
+    {
+        var command = PowerShellScript("slow.ps1", "Start-Sleep -Seconds 30");
+
+        await Assert.ThrowsAnyAsync<ArgumentException>(() =>
+            _runner.RunAsync(command, NoEnv, TimeSpan.FromMilliseconds(-5), CancellationToken.None));
+    }
 }

@@ -9,21 +9,25 @@ public sealed class ProcessScriptRunner : IScriptRunner
 {
     const int MaxStdOut = 1024 * 1024;
     const int MaxStdErr = 16 * 1024;
+    const int MaxLine = 1024 * 1024;
+    const string TruncatedMarker = "(output truncated)";
     static readonly TimeSpan DrainLimit = TimeSpan.FromSeconds(2);
 
     public async Task<ScriptResult> RunAsync(ScriptCommand command, IReadOnlyDictionary<string, string> environment, TimeSpan timeout, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        // Validate first: an invalid timeout must not throw after the process has started.
+        if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(timeout));
         using var process = Start(command, environment, out var startError);
         if (process is null) return StartFailed(startError!);
         var stdout = new BoundedText(MaxStdOut);
         var stderr = new BoundedText(MaxStdErr);
-        var pumps = Task.WhenAll(Pump(process.StandardOutput, stdout.AppendLine), Pump(process.StandardError, stderr.AppendLine));
+        var pumps = Task.WhenAll(Pump(process.StandardOutput, stdout.AppendLine, stdout.MarkTruncated), Pump(process.StandardError, stderr.AppendLine, stderr.MarkTruncated));
 
-        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        limit.CancelAfter(timeout);
         try
         {
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(timeout);
             await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -31,11 +35,12 @@ public sealed class ProcessScriptRunner : IScriptRunner
             Kill(process);
             await Drain(pumps).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
-            return new ScriptResult(-1, stdout.ToString(), stderr.ToString(), TimedOut: true);
+            return new ScriptResult(-1, stdout.ToString(), Combine(stderr, stdout), TimedOut: true);
         }
 
+        // On a normal exit, background children the script deliberately left running are not killed (by design).
         await Drain(pumps).ConfigureAwait(false);
-        return new ScriptResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+        return new ScriptResult(process.ExitCode, stdout.ToString(), Combine(stderr, stdout));
     }
 
     public async Task<ScriptResult> RunLinesAsync(ScriptCommand command, IReadOnlyDictionary<string, string> environment, Action<string> onLine, CancellationToken ct)
@@ -44,7 +49,14 @@ public sealed class ProcessScriptRunner : IScriptRunner
         using var process = Start(command, environment, out var startError);
         if (process is null) return StartFailed(startError!);
         var stderr = new BoundedText(MaxStdErr);
-        var pumps = Task.WhenAll(Pump(process.StandardOutput, onLine), Pump(process.StandardError, stderr.AppendLine));
+        var lineCut = new BoundedText(0);
+        Exception? callbackError = null;
+        void SafeOnLine(string line)
+        {
+            try { onLine(line); }
+            catch (Exception ex) { Interlocked.CompareExchange(ref callbackError, ex, null); }
+        }
+        var pumps = Task.WhenAll(Pump(process.StandardOutput, SafeOnLine, lineCut.MarkTruncated), Pump(process.StandardError, stderr.AppendLine, stderr.MarkTruncated));
         try
         {
             await process.WaitForExitAsync(ct).ConfigureAwait(false);
@@ -56,8 +68,19 @@ public sealed class ProcessScriptRunner : IScriptRunner
             throw;
         }
 
+        // On a normal exit, background children the script deliberately left running are not killed (by design).
         await Drain(pumps).ConfigureAwait(false);
-        return new ScriptResult(process.ExitCode, "", stderr.ToString());
+        ct.ThrowIfCancellationRequested();
+        var error = callbackError is null ? null : $"The line handler failed: {callbackError.Message}";
+        return new ScriptResult(process.ExitCode, "", Combine(stderr, lineCut), StartError: error);
+    }
+
+    /// <summary>The stderr text, with a marker when either captured stream was cut short.</summary>
+    static string Combine(BoundedText stderr, BoundedText other)
+    {
+        var text = stderr.ToString();
+        if (!stderr.Truncated && !other.Truncated) return text;
+        return text.Length > 0 ? text + "\n" + TruncatedMarker : TruncatedMarker;
     }
 
     static ScriptResult StartFailed(string error) => new(-1, "", "", StartError: error);
@@ -106,11 +129,43 @@ public sealed class ProcessScriptRunner : IScriptRunner
         }
     }
 
-    static async Task Pump(StreamReader reader, Action<string> onLine)
+    /// <summary>Reads in chunks and splits lines itself, so memory stays bounded however little newline the script prints.</summary>
+    static async Task Pump(StreamReader reader, Action<string> onLine, Action onTruncated)
     {
+        var buffer = new char[4096];
+        var line = new StringBuilder();
+        var cut = false;
+        var skipLf = false;
+        void Emit()
+        {
+            if (cut) onTruncated();
+            onLine(line.ToString());
+            line.Clear();
+            cut = false;
+        }
         try
         {
-            while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line) onLine(line);
+            int read;
+            while ((read = await reader.ReadAsync(buffer.AsMemory()).ConfigureAwait(false)) > 0)
+            {
+                for (var i = 0; i < read; i++)
+                {
+                    var c = buffer[i];
+                    if (skipLf)
+                    {
+                        skipLf = false;
+                        if (c == '\n') continue;
+                    }
+                    if (c is '\n' or '\r')
+                    {
+                        skipLf = c == '\r';
+                        Emit();
+                    }
+                    else if (line.Length < MaxLine) line.Append(c);
+                    else cut = true;
+                }
+            }
+            if (line.Length > 0 || cut) Emit();
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
         {
@@ -127,21 +182,37 @@ public sealed class ProcessScriptRunner : IScriptRunner
     static void Kill(Process process)
     {
         try { process.Kill(entireProcessTree: true); }
-        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException) { }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException or AggregateException) { }
     }
 
-    /// <summary>Thread-safe line buffer that keeps the last <c>limit</c> characters.</summary>
+    /// <summary>Thread-safe line buffer that keeps the first <c>limit</c> characters and remembers when it dropped the rest.</summary>
     sealed class BoundedText(int limit)
     {
         readonly StringBuilder _text = new();
+        bool _truncated;
+        bool _full;
+
+        public bool Truncated { get { lock (_text) return _truncated; } }
+
+        public void MarkTruncated()
+        {
+            lock (_text) _truncated = true;
+        }
 
         public void AppendLine(string line)
         {
             lock (_text)
             {
-                if (_text.Length > 0) _text.Append('\n');
+                if (_full) return;
+                if (_text.Length > 0) line = "\n" + line;
+                var room = limit - _text.Length;
+                if (line.Length > room)
+                {
+                    _text.Append(line, 0, room);
+                    _truncated = _full = true;
+                    return;
+                }
                 _text.Append(line);
-                if (_text.Length > limit) _text.Remove(0, _text.Length - limit);
             }
         }
 

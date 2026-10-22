@@ -76,4 +76,21 @@ public class IntervalLoopTests
         await Eventually.Holds(() => !loop.IsRunning);
         Assert.Equal(0, errors);
     }
+
+    [Fact]
+    public async Task Throwing_callbacks_neither_escape_nor_kill_the_loop()
+    {
+        var gate = new TaskCompletionSource();
+        var loop = new IntervalLoop(TimeSpan.FromHours(1), async _ => { await gate.Task; throw new InvalidOperationException("run"); },
+            _ => throw new InvalidOperationException("onError"),
+            onSkipped: () => throw new InvalidOperationException("onSkipped"));
+
+        Assert.True(loop.Trigger(CancellationToken.None));
+        Assert.False(loop.Trigger(CancellationToken.None));
+        Assert.Equal(1, loop.Skipped);
+
+        gate.SetResult();
+        await Eventually.Holds(() => !loop.IsRunning);
+        Assert.True(loop.Trigger(CancellationToken.None));
+    }
 }
