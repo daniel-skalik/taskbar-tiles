@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -22,6 +23,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
     readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
     HwndSource? _messageWindow;
     bool _refreshQueued;
+    bool _disposed;
     uint _explorerPid;
 
     public IReadOnlyList<TaskbarInfo> Current { get; private set; } = [];
@@ -65,7 +67,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
     {
         if (evt == EVENT_SYSTEM_FOREGROUND
             || evt == EVENT_OBJECT_REORDER
-            || (idObject == OBJID_WINDOW && _watched.Contains(hwnd)))
+            || (evt == EVENT_OBJECT_LOCATIONCHANGE && idObject == OBJID_WINDOW && _watched.Contains(hwnd)))
             QueueRefresh();
     }
 
@@ -76,6 +78,9 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
             RegisterAppBar();
             Rehook();
             QueueRefresh();
+            // Secondary taskbars can be created after the broadcast; refresh again shortly after.
+            RefreshAfter(TimeSpan.FromSeconds(1));
+            RefreshAfter(TimeSpan.FromSeconds(3));
         }
         else if (msg == WM_DISPLAYCHANGE)
         {
@@ -95,13 +100,17 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
     void RefreshAfter(TimeSpan delay)
     {
         var timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = delay };
-        timer.Tick += (_, _) => { timer.Stop(); QueueRefresh(); };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!_disposed) QueueRefresh();
+        };
         timer.Start();
     }
 
     void QueueRefresh()
     {
-        if (_refreshQueued) return;
+        if (_disposed || _refreshQueued) return;
         _refreshQueued = true;
         dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
@@ -112,6 +121,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
 
     void Refresh()
     {
+        if (_disposed) return;
         _watched.Clear();
         var light = IsLightTaskbar();
         var list = new List<TaskbarInfo>();
@@ -136,8 +146,8 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
             _watched.UnionWith(new[] { bar, start, icons, tray }.Where(h => h != IntPtr.Zero));
 
             var monitor = MonitorFromWindow(bar, MONITOR_DEFAULTTONEAREST);
-            var info = new MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFOEX>() };
-            GetMonitorInfo(monitor, ref info);
+            var info = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
+            if (!GetMonitorInfo(monitor, ref info)) continue;
             var scale = GetDpiForMonitor(monitor, 0, out var dpi, out _) == 0 ? dpi / 96.0 : 1.0;
 
             var geometry = new TaskbarGeometry(barRect, Rect(start), Rect(icons), Rect(tray));
@@ -157,7 +167,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
     /// <summary>Stable monitor id (device interface path); falls back to \\.\DISPLAYn.</summary>
     static string DeviceId(string gdiDevice)
     {
-        var dd = new DISPLAY_DEVICE { cb = System.Runtime.InteropServices.Marshal.SizeOf<DISPLAY_DEVICE>() };
+        var dd = new DISPLAY_DEVICE { cb = Marshal.SizeOf<DISPLAY_DEVICE>() };
         return EnumDisplayDevices(gdiDevice, 0, ref dd, EDD_GET_DEVICE_INTERFACE_NAME) && !string.IsNullOrEmpty(dd.DeviceID)
             ? dd.DeviceID
             : gdiDevice;
@@ -187,7 +197,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
         if (_messageWindow is null) return;
         var data = new APPBARDATA
         {
-            cbSize = System.Runtime.InteropServices.Marshal.SizeOf<APPBARDATA>(),
+            cbSize = Marshal.SizeOf<APPBARDATA>(),
             hWnd = _messageWindow.Handle,
             uCallbackMessage = AppBarCallbackMessage,
         };
@@ -197,13 +207,16 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         foreach (var h in _hooks) UnhookWinEvent(h);
         _hooks.Clear();
         if (_messageWindow is not null)
         {
-            var data = new APPBARDATA { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<APPBARDATA>(), hWnd = _messageWindow.Handle };
+            var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = _messageWindow.Handle };
             SHAppBarMessage(ABM_REMOVE, ref data);
             _messageWindow.Dispose();
+            _messageWindow = null;
         }
     }
 }
