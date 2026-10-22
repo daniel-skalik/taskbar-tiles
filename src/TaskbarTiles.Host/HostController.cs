@@ -31,6 +31,7 @@ public sealed class HostController(
 
     readonly Dictionary<string, (TileRuntime Runtime, TileConfig Config)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
+    bool _disposed;
 
     public IReadOnlyDictionary<string, TileRuntime> Runtimes => _runtimes.ToDictionary(kv => kv.Key, kv => kv.Value.Runtime);
 
@@ -46,13 +47,15 @@ public sealed class HostController(
 
     public void NotifyResumed()
     {
+        if (_disposed) return;
         foreach (var (runtime, _) in _runtimes.Values) runtime.RaiseResumed();
     }
 
     void Sync()
     {
+        if (_disposed) return;
         var cfg = config();
-        var displays = taskbars.Current;
+        var displays = taskbars.Current.GroupBy(d => d.DisplayId).Select(g => g.First()).ToList();
         var layouts = displays.ToDictionary(d => d.DisplayId,
             d => DisplayResolver.VisibleTileIds(DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary)));
 
@@ -60,16 +63,24 @@ public sealed class HostController(
 
         foreach (var gone in _bars.Keys.Except(layouts.Keys).ToList())
         {
-            _bars[gone].Close();
+            try { _bars[gone].Close(); }
+            catch (Exception ex) { logFor("host").Error($"Closing bar for display '{gone}' failed", ex); }
             _bars.Remove(gone);
         }
 
         foreach (var info in displays)
         {
-            if (!_bars.TryGetValue(info.DisplayId, out var bar))
-                _bars[info.DisplayId] = bar = createBar(info.DisplayId);
-            bar.SetTiles(layouts[info.DisplayId].Select(id => _runtimes[id].Runtime).ToList());
-            bar.Apply(info);
+            try
+            {
+                if (!_bars.TryGetValue(info.DisplayId, out var bar))
+                    _bars[info.DisplayId] = bar = createBar(info.DisplayId);
+                bar.SetTiles(layouts[info.DisplayId].Select(id => _runtimes[id].Runtime).ToList());
+                bar.Apply(info);
+            }
+            catch (Exception ex)
+            {
+                logFor("host").Error($"Updating bar for display '{info.DisplayId}' failed", ex);
+            }
         }
     }
 
@@ -102,13 +113,22 @@ public sealed class HostController(
     static bool SameConfig(TileConfig a, TileConfig b) =>
         a.Connector == b.Connector && a.Settings.GetRawText() == b.Settings.GetRawText();
 
+    /// <summary>
+    /// Bars (WPF windows) are closed synchronously before the first await, so call this on the UI thread.
+    /// Everything after the first await is off-thread safe (ConfigureAwait(false)).
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
-        foreach (var bar in _bars.Values) bar.Close();
+        _disposed = true;
+        foreach (var bar in _bars.Values)
+        {
+            try { bar.Close(); }
+            catch (Exception ex) { logFor("host").Error("Closing a bar failed", ex); }
+        }
         _bars.Clear();
         var disposals = _runtimes.Values.Select(e => e.Runtime.DisposeAsync().AsTask()).ToList();
         _runtimes.Clear();
-        try { await Task.WhenAll(disposals).WaitAsync(TimeSpan.FromSeconds(3)); }
+        try { await Task.WhenAll(disposals).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
         catch (TimeoutException) { }
     }
 }

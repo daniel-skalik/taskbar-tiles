@@ -205,7 +205,7 @@ public sealed class TileRuntime : IAsyncDisposable
         _lifetime.Cancel();
         try
         {
-            await _connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+            await _connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

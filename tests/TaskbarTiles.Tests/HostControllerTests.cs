@@ -16,6 +16,20 @@ public class HostControllerTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    sealed class SlowDisposeConnector : ITileConnector
+    {
+        public Task StartAsync(ITileContext ctx, CancellationToken ct) => Task.CompletedTask;
+        public Task OnActionAsync(string actionId, CancellationToken ct) => Task.CompletedTask;
+        public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => Task.FromResult<FlyoutState?>(null);
+        public async ValueTask DisposeAsync() => await Task.Delay(50).ConfigureAwait(false);
+    }
+
+    sealed class NeverPumpedContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) { }
+        public override void Send(SendOrPostCallback d, object? state) { }
+    }
+
     static HostConfig Parse(string json) => ConfigParser.Parse(json).Config!;
 
     const string TwoTiles = """
@@ -125,5 +139,73 @@ public class HostControllerTests
         Assert.Equal("bad", host.Runtimes["a"].ConnectorId);
         Assert.Equal(new[] { "a" }, bars["MAIN"].Tiles.Select(t => t.TileId));
         Assert.Contains(log.Messages, m => m.StartsWith("ERROR"));
+    }
+
+    [Fact]
+    public async Task DisposeAsync_does_not_deadlock_under_single_threaded_context()
+    {
+        var catalog = new ConnectorCatalog(new Dictionary<string, ConnectorDescriptor>
+        {
+            ["slow"] = new("slow", typeof(SlowDisposeConnector), 100, "slow.dll"),
+        });
+        var cfg = Parse("""{ "tiles": { "a": { "connector": "slow" } }, "displays": { "primary": { "slots": ["a"] } } }""");
+        var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
+        var host = new HostController(catalog, () => cfg, source, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id));
+        host.Start();
+
+        var previous = SynchronizationContext.Current;
+        Task disposal;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(new NeverPumpedContext());
+            disposal = host.DisposeAsync().AsTask();
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+
+        await disposal.WaitAsync(TimeSpan.FromSeconds(2)); // throws TimeoutException if it needs the blocked context
+    }
+
+    [Fact]
+    public void Duplicate_display_ids_yield_one_bar_without_throwing()
+    {
+        var (host, source, bars, _, _) = Create(Parse(TwoTiles));
+        source.Current = [FakeTaskbarSource.Display("MAIN", true), FakeTaskbarSource.Display("MAIN", true)];
+
+        host.Start();
+
+        Assert.Single(bars);
+    }
+
+    [Fact]
+    public void Failing_display_does_not_skip_the_others()
+    {
+        var current = Parse(TwoTiles);
+        var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("BAD", true), FakeTaskbarSource.Display("GOOD", false)] };
+        var bars = new Dictionary<string, FakeBar>();
+        var log = new CollectingLog();
+        var host = new HostController(ConnectorCatalog.Empty, () => current, source, new ImmediateDispatcher(),
+            _ => log, id => id == "BAD" ? throw new InvalidOperationException("no bar") : bars[id] = new FakeBar(id));
+
+        host.Start();
+
+        Assert.True(bars.ContainsKey("GOOD"));
+        Assert.Contains(log.Messages, m => m.StartsWith("ERROR"));
+    }
+
+    [Fact]
+    public async Task Sync_after_dispose_is_a_no_op()
+    {
+        var (host, source, bars, _, _) = Create(Parse(TwoTiles));
+        host.Start();
+        await host.DisposeAsync();
+
+        source.Current = [FakeTaskbarSource.Display("MAIN", true), FakeTaskbarSource.Display("SECOND", false)];
+        source.Raise();
+        host.ConfigChanged();
+        host.NotifyResumed();
+
+        Assert.False(bars.ContainsKey("SECOND"));
+        Assert.Empty(host.Runtimes);
     }
 }
