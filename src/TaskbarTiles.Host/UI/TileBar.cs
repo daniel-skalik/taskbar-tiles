@@ -48,6 +48,9 @@ public sealed class TileBar : Window, ITileBarView
         menu.Items.Add(new Separator());
         menu.Items.Add(exit);
         ContextMenu = menu;
+        // The bar is WS_EX_NOACTIVATE, so it never becomes the foreground window and the menu
+        // never sees outside clicks. Bring the bar to the foreground while the menu is open.
+        ContextMenuOpening += (_, _) => { if (_hwnd != IntPtr.Zero) SetForegroundWindow(_hwnd); };
 
         SourceInitialized += (_, _) =>
         {
