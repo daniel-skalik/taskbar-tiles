@@ -8,23 +8,39 @@ public static class SampleScripts
 {
     /// <summary>
     /// Copies every file in sourceDir into targetDir, but only when targetDir does not exist yet, so samples the
-    /// user deleted or edited are never brought back. Returns true when it copied. Never throws for IO problems.
+    /// user deleted or edited are never brought back. The copy goes to a temporary sibling folder that is then
+    /// moved into place, so a half-finished copy can never block a later install. Returns true when it installed.
+    /// Never throws.
     /// </summary>
     public static bool InstallIfAbsent(string sourceDir, string targetDir, ITileLog log)
     {
-        if (Directory.Exists(targetDir) || !Directory.Exists(sourceDir)) return false;
+        string? temp = null;
         try
         {
-            Directory.CreateDirectory(targetDir);
+            if (Directory.Exists(targetDir) || !Directory.Exists(sourceDir)) return false;
+            var full = Path.GetFullPath(targetDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            temp = full + ".installing-" + Guid.NewGuid().ToString("N");
+            Directory.CreateDirectory(temp);
             foreach (var file in Directory.GetFiles(sourceDir))
-                File.Copy(file, Path.Combine(targetDir, Path.GetFileName(file)));
+                File.Copy(file, Path.Combine(temp, Path.GetFileName(file)));
+            if (Directory.Exists(targetDir)) return false; // appeared meanwhile; keep what is there
+            Directory.Move(temp, full);
+            temp = null;
             log.Info($"Installed sample scripts into {targetDir}");
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
             log.Error($"Could not install sample scripts into {targetDir}", ex);
             return false;
+        }
+        finally
+        {
+            if (temp is not null)
+            {
+                try { Directory.Delete(temp, recursive: true); }
+                catch (Exception) { /* leftover temp folder is harmless; its name never matches the target */ }
+            }
         }
     }
 }

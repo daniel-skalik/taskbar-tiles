@@ -34,6 +34,43 @@ public class SampleScriptsTests
     }
 
     [Fact]
+    public void Existing_scripts_are_untouched_and_no_temp_folder_is_left()
+    {
+        using var source = new TempDir();
+        using var data = new TempDir();
+        File.WriteAllText(source.File("a.ps1"), "new");
+        var target = Path.Combine(data.Path, "scripts");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "mine.ps1"), "mine");
+
+        Assert.False(SampleScripts.InstallIfAbsent(source.Path, target, new CollectingLog()));
+
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(target, "mine.ps1")));
+        Assert.Single(Directory.GetFileSystemEntries(target));
+        Assert.Single(Directory.GetFileSystemEntries(data.Path));
+    }
+
+    [Fact]
+    public void A_failed_copy_leaves_no_scripts_folder_and_a_later_install_works()
+    {
+        using var source = new TempDir();
+        using var data = new TempDir();
+        File.WriteAllText(source.File("a.ps1"), "1");
+        File.WriteAllText(source.File("b.ps1"), "2");
+        var target = Path.Combine(data.Path, "scripts");
+        var log = new CollectingLog();
+
+        bool installed;
+        using (new FileStream(source.File("b.ps1"), FileMode.Open, FileAccess.Read, FileShare.None)) // unreadable: the copy fails halfway
+            installed = SampleScripts.InstallIfAbsent(source.Path, target, log);
+
+        Assert.False(installed);
+        Assert.Empty(Directory.GetFileSystemEntries(data.Path));
+        Assert.True(SampleScripts.InstallIfAbsent(source.Path, target, new CollectingLog()));
+        Assert.Equal("2", File.ReadAllText(Path.Combine(target, "b.ps1")));
+    }
+
+    [Fact]
     public void Missing_samples_are_not_an_error()
     {
         using var data = new TempDir();
