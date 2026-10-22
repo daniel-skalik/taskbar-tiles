@@ -25,11 +25,12 @@ public sealed class HostController(
     ITaskbarSource taskbars,
     IUiDispatcher ui,
     Func<string, ITileLog> logFor,
-    Func<string, ITileBarView> createBar) : IAsyncDisposable
+    Func<string, ITileBarView> createBar,
+    string? configDirectory = null) : IAsyncDisposable
 {
-
     readonly Dictionary<string, (TileRuntime Runtime, TileConfig Config)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
+    readonly TileRuntimeOptions _runtimeOptions = new() { ConfigDirectory = configDirectory ?? AppPaths.DataDir };
     bool _disposed;
 
     public IReadOnlyDictionary<string, TileRuntime> Runtimes => _runtimes.ToDictionary(kv => kv.Key, kv => kv.Value.Runtime);
@@ -97,13 +98,12 @@ public sealed class HostController(
         {
             if (_runtimes.ContainsKey(id) || !cfg.Tiles.TryGetValue(id, out var tileCfg)) continue;
 
-            ITileConnector? connector = null;
-            try { connector = catalog.Create(tileCfg.Connector); }
-            catch (Exception ex) { logFor($"tile-{id}").Error($"Connector '{tileCfg.Connector}' failed to construct", ex); }
-            connector ??= new UnknownConnector(tileCfg.Connector);
-
-            var width = catalog.Connectors.TryGetValue(tileCfg.Connector, out var d) ? d.Width : PluginLoader.DefaultTileWidth;
-            var runtime = new TileRuntime(id, tileCfg.Connector, width, connector, tileCfg.Settings, ui, logFor($"tile-{id}"));
+            var connectorId = tileCfg.Connector;
+            // The runtime calls this on the thread pool (plugin constructors are plugin code) and again for every restart.
+            // A throwing constructor shows the error look and is retried with backoff.
+            Func<ITileConnector> create = () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId);
+            var width = catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth;
+            var runtime = new TileRuntime(id, connectorId, width, create, tileCfg.Settings, ui, logFor($"tile-{id}"), _runtimeOptions);
             _runtimes[id] = (runtime, tileCfg);
             _ = runtime.StartAsync();
         }

@@ -30,6 +30,19 @@ public class HostControllerTests
         public override void Send(SendOrPostCallback d, object? state) { }
     }
 
+    sealed class CapturingConnector : ITileConnector
+    {
+        [ThreadStatic] public static bool InsideStart;
+        public static bool ConstructedInsideStart { get; private set; }
+        public static TaskCompletionSource<ITileContext> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public CapturingConnector() => ConstructedInsideStart = InsideStart;
+        public Task StartAsync(ITileContext ctx, CancellationToken ct) { Started.TrySetResult(ctx); return Task.CompletedTask; }
+        public Task OnActionAsync(string actionId, CancellationToken ct) => Task.CompletedTask;
+        public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => Task.FromResult<FlyoutState?>(null);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     static HostConfig Parse(string json) => ConfigParser.Parse(json).Config!;
 
     const string TwoTiles = """
@@ -121,7 +134,7 @@ public class HostControllerTests
     }
 
     [Fact]
-    public void Throwing_plugin_constructor_falls_back_to_placeholder()
+    public async Task Throwing_plugin_constructor_shows_an_error_tile()
     {
         var catalog = new ConnectorCatalog(new Dictionary<string, ConnectorDescriptor>
         {
@@ -138,7 +151,32 @@ public class HostControllerTests
 
         Assert.Equal("bad", host.Runtimes["a"].ConnectorId);
         Assert.Equal(new[] { "a" }, bars["MAIN"].Tiles.Select(t => t.TileId));
-        Assert.Contains(log.Messages, m => m.StartsWith("ERROR"));
+        await Eventually.Holds(() => host.Runtimes["a"].State.Title == "Error");
+        Assert.Equal("boom", host.Runtimes["a"].LastError!.Message); // not "Exception has been thrown by the target of an invocation."
+        Assert.Contains(log.Snapshot(), m => m.StartsWith("ERROR"));
+        await host.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Connectors_are_built_off_the_calling_thread_and_get_the_config_directory()
+    {
+        var catalog = new ConnectorCatalog(new Dictionary<string, ConnectorDescriptor>
+        {
+            ["cap"] = new("cap", typeof(CapturingConnector), 100, "cap.dll"),
+        });
+        var cfg = Parse("""{ "tiles": { "a": { "connector": "cap" } }, "displays": { "primary": { "slots": ["a"] } } }""");
+        var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
+        var host = new HostController(catalog, () => cfg, source, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), configDirectory: @"C:\cfg");
+
+        CapturingConnector.InsideStart = true;
+        try { host.Start(); }
+        finally { CapturingConnector.InsideStart = false; }
+
+        var ctx = await CapturingConnector.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(@"C:\cfg", ctx.ConfigDirectory);
+        Assert.False(CapturingConnector.ConstructedInsideStart);
+        await host.DisposeAsync();
     }
 
     [Fact]

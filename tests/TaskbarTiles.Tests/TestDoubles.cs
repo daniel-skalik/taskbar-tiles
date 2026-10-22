@@ -9,6 +9,21 @@ public sealed class CollectingLog : ITileLog
     public void Info(string message) { lock (Messages) Messages.Add("INFO " + message); }
     public void Warn(string message) { lock (Messages) Messages.Add("WARN " + message); }
     public void Error(string message, Exception? ex = null) { lock (Messages) Messages.Add("ERROR " + message + (ex is null ? "" : " " + ex.Message)); }
+    public string[] Snapshot() { lock (Messages) return Messages.ToArray(); }
+}
+
+public static class Eventually
+{
+    /// <summary>Polls until the condition holds; fails the test after the timeout.</summary>
+    public static async Task Holds(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) Assert.Fail($"Condition not met within {timeoutMs} ms.");
+            await Task.Delay(20);
+        }
+    }
 }
 
 public sealed class TempDir : IDisposable

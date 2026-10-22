@@ -1,12 +1,9 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using TaskbarTiles.Contracts;
 
 namespace TaskbarTiles.Host.Runtime;
 
-/// <summary>
-/// One tile's connector and its latest state. Connector calls run on the thread pool with a timeout;
-/// state changes are applied and announced on the UI thread.
-/// </summary>
 public enum FlyoutOutcome
 {
     /// <summary>The connector answered: it has no popup (the tile click should become a "click" action).</summary>
@@ -24,8 +21,35 @@ public readonly record struct FlyoutResult(FlyoutOutcome Outcome, FlyoutState? F
     public static FlyoutResult Of(FlyoutState popup) => new(FlyoutOutcome.Popup, popup);
 }
 
+/// <summary>
+/// What is wrong with a tile. Fatal errors (the connector threw) restart the connector with backoff;
+/// reported errors (ITileContext.ReportError) only change the look until the next successful update.
+/// </summary>
+public sealed record TileError(string Message, string Details, bool Fatal)
+{
+    public static TileError From(Exception ex) => new(ex.Message, ex.ToString(), Fatal: true);
+}
+
+public sealed record TileRuntimeOptions
+{
+    public TimeSpan CallTimeout { get; init; } = TimeSpan.FromSeconds(10);
+    public TimeSpan NotRespondingFor { get; init; } = TimeSpan.FromSeconds(3);
+    public BackoffSchedule Backoff { get; init; } = BackoffSchedule.Default;
+
+    /// <summary>Handed to connectors as ITileContext.ConfigDirectory.</summary>
+    public string ConfigDirectory { get; init; } = "";
+}
+
+/// <summary>
+/// One tile's connector and its latest state. Connector calls run on the thread pool with a timeout;
+/// state changes are applied and announced on the UI thread. A connector that throws is replaced by a
+/// fresh instance from the factory after a backoff delay.
+/// </summary>
 public sealed class TileRuntime : IAsyncDisposable
 {
+    public const string RestartActionId = "host:restart";
+    public const string ShowLogActionId = "host:show-log";
+
     public static TileState Initial { get; } = new() { Title = "…" };
 
     static readonly TileState NotResponding = new()
@@ -34,32 +58,53 @@ public sealed class TileRuntime : IAsyncDisposable
         Icon = new TileIcon("clock", TileColor.Warn),
     };
 
-    readonly ITileConnector _connector;
+    static readonly TileState Restarting = new()
+    {
+        Title = "Restarting…",
+        Icon = new TileIcon("sync"),
+    };
+
+    /// <summary>One connector instance and everything tied to its life.</summary>
+    sealed class Instance(int generation, ITileConnector connector, TileContext context, CancellationTokenSource cts)
+    {
+        public int Generation { get; } = generation;
+        public ITileConnector Connector { get; } = connector;
+        public TileContext Context { get; } = context;
+        public CancellationTokenSource Cts { get; } = cts;
+    }
+
+    /// <summary>The next state to show. Success resets the backoff; a fatal Error schedules a restart.</summary>
+    sealed record Pending(int Generation, TileState State, TileError? Error, bool Success);
+
+    readonly Func<ITileConnector> _createConnector;
+    readonly JsonElement _settings;
     readonly IUiDispatcher _ui;
     readonly ITileLog _log;
-    readonly TileContext _context;
-    readonly TimeSpan _callTimeout;
-    readonly TimeSpan _notRespondingFor;
+    readonly TileRuntimeOptions _options;
     readonly CancellationTokenSource _lifetime = new();
+    readonly object _instanceLock = new();
+    readonly ConcurrentDictionary<string, byte> _actionsInFlight = new(StringComparer.Ordinal);
 
-    TileState? _pending;
+    Instance? _current;   // null while (re)starting or after a failed construction
+    int _generation;      // written under _instanceLock; bumped on every start and restart
+    Pending? _pending;
     int _postQueued;
     int _disposed;
     int _notRespondingGeneration;
+    int _failures;        // consecutive fatal errors; UI thread only
     TileState _beforeNotResponding = Initial;
 
-    public TileRuntime(string tileId, string connectorId, double width, ITileConnector connector, JsonElement settings,
-        IUiDispatcher ui, ITileLog log, TimeSpan? callTimeout = null, TimeSpan? notRespondingFor = null)
+    public TileRuntime(string tileId, string connectorId, double width, Func<ITileConnector> createConnector,
+        JsonElement settings, IUiDispatcher ui, ITileLog log, TileRuntimeOptions? options = null)
     {
         TileId = tileId;
         ConnectorId = connectorId;
         Width = width;
-        _connector = connector;
+        _createConnector = createConnector;
+        _settings = settings;
         _ui = ui;
         _log = log;
-        _callTimeout = callTimeout ?? TimeSpan.FromSeconds(10);
-        _notRespondingFor = notRespondingFor ?? TimeSpan.FromSeconds(3);
-        _context = new TileContext(this, settings, log);
+        _options = options ?? new TileRuntimeOptions();
     }
 
     public string TileId { get; }
@@ -69,88 +114,139 @@ public sealed class TileRuntime : IAsyncDisposable
     /// <summary>Read on the UI thread.</summary>
     public TileState State { get; private set; } = Initial;
 
-    public Exception? LastError { get; private set; }
+    /// <summary>Read on the UI thread. Set while the tile shows the error look.</summary>
+    public TileError? LastError { get; private set; }
 
     /// <summary>Raised on the UI thread.</summary>
     public event EventHandler? StateChanged;
 
-    public async Task StartAsync()
+    bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    /// <summary>Creates the connector and starts it. Call once; RestartAsync replaces it later.</summary>
+    public Task StartAsync()
     {
+        int generation;
+        lock (_instanceLock) generation = ++_generation;
+        return LaunchAsync(generation);
+    }
+
+    /// <summary>"Restart tile": replaces the connector now and resets the backoff count.</summary>
+    public Task RestartAsync()
+    {
+        if (IsDisposed) return Task.CompletedTask;
+        _ui.Post(() => _failures = 0);
+        return RestartCoreAsync();
+    }
+
+    async Task RestartCoreAsync()
+    {
+        Instance? old;
+        int generation;
+        lock (_instanceLock)
+        {
+            if (IsDisposed) return;
+            old = _current;
+            _current = null;
+            generation = ++_generation;
+        }
+        _log.Info($"Restarting tile '{TileId}' ({ConnectorId})");
+        Post(new Pending(generation, Restarting, null, Success: false));
+        if (old is not null) await DisposeInstanceAsync(old).ConfigureAwait(false);
+        await LaunchAsync(generation).ConfigureAwait(false);
+    }
+
+    async Task LaunchAsync(int generation)
+    {
+        Instance instance;
         try
         {
-            await Task.Run(() => _connector.StartAsync(_context, _lifetime.Token));
+            // The connector's constructor is plugin code: keep it off the caller (UI) thread.
+            var connector = await Task.Run(_createConnector).ConfigureAwait(false);
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            var context = new TileContext(this, generation, _settings, _log, _options.ConfigDirectory);
+            instance = new Instance(generation, connector, context, cts);
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            Fail(ex);
+            Fail(ex, generation);
+            return;
+        }
+
+        bool stale;
+        lock (_instanceLock)
+        {
+            stale = IsDisposed || generation != _generation;
+            if (!stale) _current = instance;
+        }
+        if (stale)
+        {
+            await DisposeInstanceAsync(instance).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() => instance.Connector.StartAsync(instance.Context, instance.Cts.Token)).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Fail(ex, generation);
         }
     }
 
     public async Task InvokeActionAsync(string actionId)
     {
-        if (IsDisposed) return;
+        if (IsDisposed || Volatile.Read(ref _current) is not { } instance) return;
+        // Repeated clicks on the same button must not pile up connector calls.
+        if (!_actionsInFlight.TryAdd(actionId, 0)) return;
         try
         {
-            await RunWithTimeout(async ct => { await _connector.OnActionAsync(actionId, ct); return true; });
+            await RunWithTimeout(instance, async ct => { await instance.Connector.OnActionAsync(actionId, ct); return true; });
         }
         catch (TimeoutException) { ShowNotResponding(); }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        catch (Exception ex) { Fail(ex); }
+        catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { }
+        catch (Exception ex) { Fail(ex, instance.Generation); }
+        finally { _actionsInFlight.TryRemove(actionId, out _); }
     }
 
     public async Task<FlyoutResult> GetFlyoutAsync()
     {
         if (IsDisposed) return FlyoutResult.Unavailable;
         if (LastError is { } error) return FlyoutResult.Of(ErrorFlyout(error));
+        if (Volatile.Read(ref _current) is not { } instance) return FlyoutResult.Unavailable;
         try
         {
-            var flyout = await RunWithTimeout(ct => _connector.GetFlyoutAsync(ct));
+            var flyout = await RunWithTimeout(instance, ct => instance.Connector.GetFlyoutAsync(ct));
             return flyout is null ? FlyoutResult.NoPopup : FlyoutResult.Of(flyout);
         }
         catch (TimeoutException) { ShowNotResponding(); return FlyoutResult.Unavailable; }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return FlyoutResult.Unavailable; }
+        catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { return FlyoutResult.Unavailable; }
         catch (Exception ex)
         {
             if (IsDisposed) return FlyoutResult.Unavailable;
-            Fail(ex);
-            return FlyoutResult.Of(ErrorFlyout(ex));
+            Fail(ex, instance.Generation);
+            return FlyoutResult.Of(ErrorFlyout(TileError.From(ex)));
         }
     }
 
     /// <summary>Plugins never run on the UI thread, so handlers are raised on the thread pool.</summary>
     public void RaiseResumed()
     {
-        if (IsDisposed) return;
-        _ = Task.Run(() =>
-        {
-            try
-            {
-                _context.RaiseResumed();
-            }
-            catch (Exception ex)
-            {
-                _log.Warn($"Tile '{TileId}' ({ConnectorId}) failed in a Resumed handler: {ex.Message}");
-            }
-        });
+        if (IsDisposed || Volatile.Read(ref _current) is not { } instance) return;
+        _ = Task.Run(() => instance.Context.RaiseResumed(ex =>
+            _log.Warn($"Tile '{TileId}' ({ConnectorId}) failed in a Resumed handler: {ex.Message}")));
     }
 
-    bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+    /// <summary>Called by TileContext.Update from any thread.</summary>
+    internal void Enqueue(int generation, TileState state) =>
+        Post(new Pending(generation, Normalize(state), null, Success: true));
 
-    /// <summary>Called by TileContext from any thread. Only the newest pending state is applied.</summary>
-    internal void Enqueue(TileState state)
+    /// <summary>Called by TileContext.ReportError from any thread.</summary>
+    internal void Report(int generation, string? message, string? details)
     {
-        if (IsDisposed) return;
-        Volatile.Write(ref _pending, Normalize(state));
-        if (Interlocked.Exchange(ref _postQueued, 1) != 0) return;
-        _ui.Post(() =>
-        {
-            Interlocked.Exchange(ref _postQueued, 0);
-            var latest = Interlocked.Exchange(ref _pending, null);
-            if (latest is null || IsDisposed) return;
-            LastError = null;
-            SetState(latest);
-        });
+        var text = string.IsNullOrWhiteSpace(message) ? "The connector reported an error." : message.Trim();
+        Post(new Pending(generation, ErrorState(text), new TileError(text, details ?? "", Fatal: false), Success: false));
     }
 
     /// <summary>Plugin output is untrusted: make a malformed state renderable instead of letting it blank the bar.</summary>
@@ -176,13 +272,49 @@ public sealed class TileRuntime : IAsyncDisposable
         return state with { Buttons = buttons, Icon = icon, Progress = progress, Sparkline = spark };
     }
 
-    async Task<T> RunWithTimeout<T>(Func<CancellationToken, Task<T>> call)
+    /// <summary>Latest wins: only the newest pending state of the current generation is applied.</summary>
+    void Post(Pending pending)
     {
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        if (IsDisposed || pending.Generation != Volatile.Read(ref _generation)) return;
+        Volatile.Write(ref _pending, pending);
+        if (Interlocked.Exchange(ref _postQueued, 1) != 0) return;
+        _ui.Post(() =>
+        {
+            Interlocked.Exchange(ref _postQueued, 0);
+            var latest = Interlocked.Exchange(ref _pending, null);
+            if (latest is null || IsDisposed || latest.Generation != Volatile.Read(ref _generation)) return;
+            Apply(latest);
+        });
+    }
+
+    // UI thread.
+    void Apply(Pending pending)
+    {
+        LastError = pending.Error;
+        if (pending.Success) _failures = 0;
+        if (pending.Error is { Fatal: true }) ScheduleRestart(pending.Generation);
+        SetState(pending.State);
+    }
+
+    // UI thread.
+    void ScheduleRestart(int generation)
+    {
+        var delay = _options.Backoff.Delay(_failures++);
+        _log.Info($"Tile '{TileId}' ({ConnectorId}) restarts in {delay.TotalSeconds:0.##} s");
+        _ = Task.Delay(delay, _lifetime.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled || IsDisposed || generation != Volatile.Read(ref _generation)) return;
+            _ = RestartCoreAsync();
+        }, TaskScheduler.Default);
+    }
+
+    async Task<T> RunWithTimeout<T>(Instance instance, Func<CancellationToken, Task<T>> call)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(instance.Cts.Token);
         var cancelOffThread = false;
         try
         {
-            return await Task.Run(() => call(cts.Token)).WaitAsync(_callTimeout);
+            return await Task.Run(() => call(cts.Token)).WaitAsync(_options.CallTimeout);
         }
         catch (TimeoutException)
         {
@@ -203,28 +335,17 @@ public sealed class TileRuntime : IAsyncDisposable
         }
     }
 
-    void Fail(Exception ex)
+    void Fail(Exception ex, int generation)
     {
         if (IsDisposed) return;
         _log.Error($"Tile '{TileId}' ({ConnectorId}) failed", ex);
-        _ui.Post(() =>
-        {
-            if (IsDisposed) return;
-            LastError = ex;
-            SetState(new TileState
-            {
-                Title = "Error",
-                Subtitle = ex.Message,
-                Icon = new TileIcon("warning", TileColor.Warn),
-                Tooltip = ex.Message,
-            });
-        });
+        Post(new Pending(generation, ErrorState(ex.Message), TileError.From(ex), Success: false));
     }
 
     void ShowNotResponding()
     {
         if (IsDisposed) return;
-        _log.Warn($"Tile '{TileId}' ({ConnectorId}) did not answer within {_callTimeout.TotalSeconds:0} s");
+        _log.Warn($"Tile '{TileId}' ({ConnectorId}) did not answer within {_options.CallTimeout.TotalSeconds:0} s");
         var generation = Interlocked.Increment(ref _notRespondingGeneration);
         _ui.Post(() =>
         {
@@ -233,7 +354,7 @@ public sealed class TileRuntime : IAsyncDisposable
             if (!ReferenceEquals(State, NotResponding)) _beforeNotResponding = State;
             SetState(NotResponding);
         });
-        _ = Task.Delay(_notRespondingFor).ContinueWith(_ => _ui.Post(() =>
+        _ = Task.Delay(_options.NotRespondingFor).ContinueWith(_ => _ui.Post(() =>
         {
             if (IsDisposed) return;
             if (generation == Volatile.Read(ref _notRespondingGeneration) && ReferenceEquals(State, NotResponding))
@@ -254,15 +375,55 @@ public sealed class TileRuntime : IAsyncDisposable
         }
     }
 
-    static FlyoutState ErrorFlyout(Exception ex) => new(
-        "Tile error",
-        ex.GetType().Name,
-        ex.ToString().Split(Environment.NewLine).Take(8).Select(line => new FlyoutRow(line.Trim())).ToList(),
-        []);
+    static TileState ErrorState(string message) => new()
+    {
+        Title = "Error",
+        Subtitle = message,
+        Icon = new TileIcon("warning", TileColor.Warn),
+        Tooltip = message,
+    };
+
+    static FlyoutState ErrorFlyout(TileError error)
+    {
+        var text = string.IsNullOrWhiteSpace(error.Details) ? error.Message : error.Details;
+        var rows = text.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .Take(12)
+            .Select(line => new FlyoutRow(line))
+            .ToList();
+        return new FlyoutState("Tile error", error.Message, rows,
+            [new FlyoutAction(RestartActionId, "Restart tile", Primary: true), new FlyoutAction(ShowLogActionId, "Open log")]);
+    }
+
+    async Task DisposeInstanceAsync(Instance instance)
+    {
+        try
+        {
+            // Cancellation callbacks and disposal are plugin code: keep them off the caller (UI) thread.
+            await Task.Run(async () =>
+            {
+                try { instance.Cts.Cancel(); }
+                catch (Exception ex) { _log.Warn($"Tile '{TileId}' cancellation handler failed: {ex.Message}"); }
+                await instance.Connector.DisposeAsync().ConfigureAwait(false);
+            }).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Tile '{TileId}' did not dispose cleanly: {ex.Message}");
+        }
+        // instance.Cts is deliberately not disposed: calls may still be in flight and read its token.
+    }
 
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Instance? instance;
+        lock (_instanceLock)
+        {
+            instance = _current;
+            _current = null;
+        }
         try
         {
             // Cancellation callbacks and the connector's disposal are plugin code: keep them off the caller (UI) thread.
@@ -270,7 +431,7 @@ public sealed class TileRuntime : IAsyncDisposable
             {
                 try { _lifetime.Cancel(); }
                 catch (Exception ex) { _log.Warn($"Tile '{TileId}' cancellation handler failed: {ex.Message}"); }
-                await _connector.DisposeAsync().ConfigureAwait(false);
+                if (instance is not null) await instance.Connector.DisposeAsync().ConfigureAwait(false);
             }).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch (Exception ex)

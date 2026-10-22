@@ -8,8 +8,14 @@ public class TileRuntimeTests
 {
     static readonly JsonElement NoSettings = JsonDocument.Parse("{}").RootElement.Clone();
 
+    // A ten-minute backoff keeps the automatic restart out of these tests; TileRuntimeRestartTests covers it.
     static TileRuntime Create(FakeConnector c, IUiDispatcher ui, TimeSpan? timeout = null, TimeSpan? notResponding = null) =>
-        new("tile1", "fake", 132, c, NoSettings, ui, new CollectingLog(), timeout, notResponding);
+        new("tile1", "fake", 132, () => c, NoSettings, ui, new CollectingLog(), new TileRuntimeOptions
+        {
+            CallTimeout = timeout ?? TimeSpan.FromSeconds(10),
+            NotRespondingFor = notResponding ?? TimeSpan.FromSeconds(3),
+            Backoff = new BackoffSchedule([TimeSpan.FromMinutes(10)]),
+        });
 
     [Fact]
     public async Task Update_from_connector_becomes_state_and_raises_event()
@@ -145,7 +151,7 @@ public class TileRuntimeTests
     [Fact]
     public async Task Unknown_connector_explains_itself()
     {
-        var rt = new TileRuntime("t", "ghost", 132, new UnknownConnector("ghost"), NoSettings, new ImmediateDispatcher(), new CollectingLog());
+        var rt = new TileRuntime("t", "ghost", 132, () => new UnknownConnector("ghost"), NoSettings, new ImmediateDispatcher(), new CollectingLog());
 
         await rt.StartAsync();
 

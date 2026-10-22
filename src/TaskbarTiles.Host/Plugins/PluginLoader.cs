@@ -12,8 +12,12 @@ public sealed class ConnectorCatalog(IReadOnlyDictionary<string, ConnectorDescri
 
     public IReadOnlyDictionary<string, ConnectorDescriptor> Connectors => connectors;
 
+    /// <summary>Runs the plugin's constructor; its exception propagates unwrapped.</summary>
     public ITileConnector? Create(string id) =>
-        connectors.TryGetValue(id, out var d) ? (ITileConnector)Activator.CreateInstance(d.Type)! : null;
+        connectors.TryGetValue(id, out var d)
+            ? (ITileConnector)Activator.CreateInstance(d.Type,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DoNotWrapExceptions, binder: null, args: null, culture: null)!
+            : null;
 }
 
 /// <summary>Loads plugins laid out as &lt;root&gt;\&lt;Name&gt;\&lt;Name&gt;.dll. Earlier roots win on duplicate ids.</summary>
