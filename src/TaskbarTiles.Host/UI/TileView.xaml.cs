@@ -1,0 +1,127 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Runtime;
+
+namespace TaskbarTiles.Host.UI;
+
+/// <summary>Renders one tile's TileState and turns clicks into flyouts or actions.</summary>
+public partial class TileView : UserControl
+{
+    readonly Func<bool> _isLightTheme;
+    bool _urgent;
+
+    public TileView(TileRuntime runtime, Func<bool> isLightTheme)
+    {
+        InitializeComponent();
+        Runtime = runtime;
+        _isLightTheme = isLightTheme;
+        Width = runtime.Width;
+        Runtime.StateChanged += OnStateChanged;
+        MouseLeftButtonUp += OnClick;
+        MouseEnter += (_, _) => UpdateBackground();
+        MouseLeave += (_, _) => UpdateBackground();
+        KeyDown += (_, e) => { if (e.Key == Key.Enter) OnClick(this, null); };
+        Render(runtime.State);
+    }
+
+    public TileRuntime Runtime { get; }
+
+    public void Detach() => Runtime.StateChanged -= OnStateChanged;
+
+    void OnStateChanged(object? sender, EventArgs e) => Render(Runtime.State);
+
+    void Render(TileState s)
+    {
+        TitleText.Text = s.Title ?? "";
+        SubtitleText.Text = s.Subtitle ?? "";
+        SubtitleText.Visibility = string.IsNullOrEmpty(s.Subtitle) ? Visibility.Collapsed : Visibility.Visible;
+        ToolTip = string.IsNullOrEmpty(s.Tooltip) ? null : s.Tooltip;
+
+        var picture = Theme.Decode(s.Image);
+        Picture.Source = picture;
+        IconGlyph.Text = picture is null && s.Icon is { } icon ? Theme.Glyph(icon.Glyph) : "";
+        IconBackground.Background = picture is null && s.Icon is { } i2 ? Theme.ColorFor(i2.Color) : Brushes.Transparent;
+        IconHost.Visibility = picture is null && s.Icon is null ? Visibility.Collapsed : Visibility.Visible;
+
+        ButtonPanel.Children.Clear();
+        foreach (var b in s.Buttons)
+        {
+            var button = new Button
+            {
+                Content = Theme.Glyph(b.Glyph),
+                ToolTip = b.Tooltip,
+                IsEnabled = b.Enabled,
+                Style = (Style)FindResource("IconButton"),
+            };
+            var id = b.Id;
+            button.Click += async (_, _) => await Runtime.InvokeActionAsync(id);
+            ButtonPanel.Children.Add(button);
+        }
+
+        RenderSparkline(s.Sparkline);
+
+        if (s.Progress is { } p)
+        {
+            var done = Math.Clamp(p, 0, 1);
+            ProgressDone.Width = new GridLength(done, GridUnitType.Star);
+            ProgressLeft.Width = new GridLength(1 - done, GridUnitType.Star);
+            ProgressTrack.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ProgressTrack.Visibility = Visibility.Collapsed;
+        }
+
+        _urgent = s.Urgent;
+        UpdateBackground();
+    }
+
+    void RenderSparkline(IReadOnlyList<double>? values)
+    {
+        if (values is not { Count: > 1 })
+        {
+            SparkHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        double min = values.Min(), max = values.Max(), range = max - min;
+        double w = SparkHost.Width, h = SparkHost.Height;
+        var points = new PointCollection(values.Count);
+        for (var i = 0; i < values.Count; i++)
+        {
+            var y = range <= 0 ? h / 2 : h - 2 - (values[i] - min) / range * (h - 4);
+            points.Add(new Point(i * w / (values.Count - 1), y));
+        }
+        Spark.Points = points;
+        SparkHost.Visibility = Visibility.Visible;
+    }
+
+    void UpdateBackground()
+    {
+        if (_urgent)
+        {
+            var bad = ((SolidColorBrush)Theme.ColorFor(TileColor.Bad)).Color;
+            var pulse = new SolidColorBrush(Color.FromArgb(0x10, bad.R, bad.G, bad.B));
+            Root.Background = pulse;
+            Root.BorderBrush = Theme.ColorFor(TileColor.Bad);
+            if (SystemParameters.ClientAreaAnimation)
+                pulse.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(Color.FromArgb(0x30, bad.R, bad.G, bad.B),
+                    TimeSpan.FromSeconds(0.8)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            return;
+        }
+        Root.SetResourceReference(Border.BackgroundProperty, IsMouseOver ? "TileHover" : "TileFill");
+        Root.SetResourceReference(Border.BorderBrushProperty, "TileOutline");
+    }
+
+    async void OnClick(object sender, MouseButtonEventArgs? e)
+    {
+        if (e?.Handled == true) return;
+        var flyout = await Runtime.GetFlyoutAsync();
+        if (flyout is null) await Runtime.InvokeActionAsync("click");
+        else FlyoutWindow.ShowAbove(this, flyout, Runtime, _isLightTheme());
+    }
+}
