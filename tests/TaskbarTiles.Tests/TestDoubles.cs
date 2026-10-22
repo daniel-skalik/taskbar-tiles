@@ -54,3 +54,26 @@ public sealed class FakeConnector : ITileConnector
     public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => OnFlyout(ct);
     public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
 }
+
+public sealed class FakeTaskbarSource : TaskbarTiles.Host.Taskbar.ITaskbarSource
+{
+    public IReadOnlyList<TaskbarTiles.Host.Taskbar.TaskbarInfo> Current { get; set; } = [];
+    public event EventHandler? Changed;
+    public void Start() { }
+    public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
+    public void Dispose() { }
+
+    public static TaskbarTiles.Host.Taskbar.TaskbarInfo Display(string id, bool primary) => new(
+        id, primary, new(0, 0, 1000, 48), new(new(8, 0, 500, 48), true), Hidden: false, IsLightTheme: false, DpiScale: 1);
+}
+
+public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
+{
+    public string DisplayId { get; } = displayId;
+    public IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> Tiles { get; private set; } = [];
+    public TaskbarTiles.Host.Taskbar.TaskbarInfo? Info { get; private set; }
+    public bool Closed { get; private set; }
+    public void SetTiles(IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> runtimes) => Tiles = runtimes;
+    public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info) => Info = info;
+    public void Close() => Closed = true;
+}

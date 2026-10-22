@@ -9,7 +9,7 @@ using static TaskbarTiles.Host.Taskbar.NativeMethods;
 namespace TaskbarTiles.Host.UI;
 
 /// <summary>One per display: a borderless topmost strip sized to its visible tiles, placed in the free zone.</summary>
-public sealed class TileBar : Window
+public sealed class TileBar : Window, ITileBarView
 {
     const double GapDip = 6;
 
