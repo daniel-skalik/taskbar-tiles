@@ -280,4 +280,66 @@ public class TileRuntimeTests
         Assert.Equal(0, flyoutCalls);
         Assert.Equal(FlyoutOutcome.Unavailable, result.Outcome);
     }
+
+    [Fact]
+    public async Task Dispose_and_cancellation_callbacks_do_not_run_on_the_calling_thread()
+    {
+        var disposeThread = -1;
+        var cancelThread = -1;
+        var c = new FakeConnector
+        {
+            OnDispose = () => disposeThread = Environment.CurrentManagedThreadId,
+            OnStart = (_, ct) => { ct.Register(() => cancelThread = Environment.CurrentManagedThreadId); return Task.CompletedTask; },
+        };
+        var rt = Create(c, new ImmediateDispatcher());
+        await rt.StartAsync();
+
+        var callerThread = -1;
+        var done = new TaskCompletionSource();
+        var thread = new Thread(() =>
+        {
+            callerThread = Environment.CurrentManagedThreadId;
+            rt.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            done.SetResult();
+        });
+        thread.Start();
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.NotEqual(-1, disposeThread);
+        Assert.NotEqual(callerThread, disposeThread);
+        Assert.NotEqual(-1, cancelThread);
+        Assert.NotEqual(callerThread, cancelThread);
+    }
+
+    [Fact]
+    public async Task Timeout_cancellation_callbacks_do_not_run_on_the_awaiting_thread()
+    {
+        var cancelThread = -1;
+        var c = new FakeConnector
+        {
+            OnAction = (_, ct) =>
+            {
+                ct.Register(() => cancelThread = Environment.CurrentManagedThreadId);
+                return Task.Delay(Timeout.Infinite, ct);
+            },
+        };
+        var rt = Create(c, new ImmediateDispatcher(), timeout: TimeSpan.FromMilliseconds(50));
+        await rt.StartAsync();
+
+        var awaitingThread = -1;
+        var done = new TaskCompletionSource();
+        var thread = new Thread(() =>
+        {
+            awaitingThread = Environment.CurrentManagedThreadId;
+            // Block the thread inside the await so the timeout cancel is attributed to it if run inline.
+            rt.InvokeActionAsync("click").GetAwaiter().GetResult();
+            done.SetResult();
+        });
+        thread.Start();
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+
+        Assert.NotEqual(-1, cancelThread);
+        Assert.NotEqual(awaitingThread, cancelThread);
+    }
 }

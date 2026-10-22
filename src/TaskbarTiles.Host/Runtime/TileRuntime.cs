@@ -155,15 +155,28 @@ public sealed class TileRuntime : IAsyncDisposable
 
     async Task<T> RunWithTimeout<T>(Func<CancellationToken, Task<T>> call)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var cancelOffThread = false;
         try
         {
             return await Task.Run(() => call(cts.Token)).WaitAsync(_callTimeout);
         }
         catch (TimeoutException)
         {
-            cts.Cancel();
+            // Cancel callbacks are plugin code and run inline, so never on the awaiting (UI) thread.
+            // The task also owns disposing the source, after the cancel has run.
+            cancelOffThread = true;
+            _ = Task.Run(() =>
+            {
+                try { cts.Cancel(); }
+                catch (Exception ex) { _log.Warn($"Tile '{TileId}' cancellation handler failed: {ex.Message}"); }
+                finally { cts.Dispose(); }
+            });
             throw;
+        }
+        finally
+        {
+            if (!cancelOffThread) cts.Dispose();
         }
     }
 
@@ -227,10 +240,14 @@ public sealed class TileRuntime : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _lifetime.Cancel();
         try
         {
-            await _connector.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            // Cancellation callbacks and the connector's disposal are plugin code: keep them off the caller (UI) thread.
+            await Task.Run(async () =>
+            {
+                _lifetime.Cancel();
+                await _connector.DisposeAsync().ConfigureAwait(false);
+            }).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

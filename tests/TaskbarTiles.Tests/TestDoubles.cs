@@ -48,11 +48,12 @@ public sealed class FakeConnector : ITileConnector
     public Func<CancellationToken, Task<FlyoutState?>> OnFlyout { get; set; } = _ => Task.FromResult<FlyoutState?>(null);
     public List<string> Actions { get; } = [];
     public bool Disposed { get; private set; }
+    public Action OnDispose { get; set; } = () => { };
 
     public Task StartAsync(ITileContext ctx, CancellationToken ct) { Context = ctx; return OnStart(ctx, ct); }
     public Task OnActionAsync(string actionId, CancellationToken ct) { Actions.Add(actionId); return OnAction(actionId, ct); }
     public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => OnFlyout(ct);
-    public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+    public ValueTask DisposeAsync() { OnDispose(); Disposed = true; return ValueTask.CompletedTask; }
 }
 
 public sealed class FakeTaskbarSource : TaskbarTiles.Host.Taskbar.ITaskbarSource
