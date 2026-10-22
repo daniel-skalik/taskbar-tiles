@@ -5,9 +5,9 @@
 $settings = if ($env:TILE_SETTINGS_JSON) { $env:TILE_SETTINGS_JSON | ConvertFrom-Json } else { $null }
 $target = if ($settings -and $settings.host) { [string]$settings.host } else { '1.1.1.1' }
 
-function Measure-Ping([string]$name) {
+function Measure-Ping([string]$name, [int]$timeoutMs = 2000) {
     try {
-        $reply = (New-Object System.Net.NetworkInformation.Ping).Send($name, 2000)
+        $reply = (New-Object System.Net.NetworkInformation.Ping).Send($name, $timeoutMs)
         if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) { return [int]$reply.RoundtripTime }
     } catch { }
     return $null
@@ -16,7 +16,7 @@ function Measure-Ping([string]$name) {
 if ($env:TILE_HOOK -eq 'flyout') {
     $rows = @()
     foreach ($i in 1..4) {
-        $ms = Measure-Ping $target
+        $ms = Measure-Ping $target 700 # 4 pings must stay well under the host's 10 s popup limit
         if ($null -eq $ms) {
             $rows += @{ text = "Ping $i"; value = 'timeout'; icon = @{ glyph = 'cancel'; color = 'bad' } }
         } else {
