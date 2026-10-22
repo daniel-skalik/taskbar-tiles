@@ -10,7 +10,10 @@ public static class ExecutableLocator
         {
             try
             {
-                var candidate = Path.Combine(entry.Trim('"'), fileName);
+                var folder = entry.Trim('"').Trim();
+                // An empty or relative entry would be probed against the working directory.
+                if (folder.Length == 0 || !Path.IsPathFullyQualified(folder)) continue;
+                var candidate = Path.Combine(folder, fileName);
                 if (File.Exists(candidate)) return candidate;
             }
             catch (ArgumentException)

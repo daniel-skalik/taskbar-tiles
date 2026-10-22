@@ -39,4 +39,24 @@ public class ExecutableLocatorTests
 
         Assert.Equal("powershell.exe", ExecutableLocator.PowerShell(dir.Path));
     }
+
+    [Fact]
+    public void Empty_quoted_and_relative_entries_never_probe_the_working_directory()
+    {
+        using var cwd = new TempDir();
+        File.WriteAllText(cwd.File("tool.exe"), "");
+        var saved = Environment.CurrentDirectory;
+        try
+        {
+            Environment.CurrentDirectory = cwd.Path;
+
+            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\"\""));
+            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\" \";."));
+            Assert.Null(ExecutableLocator.FindOnPath("tool.exe", "\"\";;relative\\dir"));
+        }
+        finally
+        {
+            Environment.CurrentDirectory = saved;
+        }
+    }
 }
