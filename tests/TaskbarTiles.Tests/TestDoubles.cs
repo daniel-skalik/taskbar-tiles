@@ -93,3 +93,15 @@ public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
     public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info) => Info = info;
     public void Close() => Closed = true;
 }
+
+public static class ScriptFiles
+{
+    /// <summary>Writes a UTF-8 (no BOM) script under dir and returns its path relative to dir.</summary>
+    public static string Write(TempDir dir, string relativePath, string body)
+    {
+        var full = System.IO.Path.Combine(dir.Path, relativePath);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, body, new System.Text.UTF8Encoding(false));
+        return relativePath;
+    }
+}
