@@ -1,0 +1,24 @@
+<Project>
+  <!-- Copies each @(PluginProject)'s build output to plugins\<AssemblyName>\ next to this project's output. -->
+  <Target Name="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
+    <MSBuild Projects="@(PluginProject)" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_PluginTargetPath" />
+    </MSBuild>
+    <ItemGroup>
+      <_PluginFile Include="%(_PluginTargetPath.RootDir)%(_PluginTargetPath.Directory)**\*.*"
+                   PluginName="%(_PluginTargetPath.Filename)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build" DependsOnTargets="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
+    <Copy SourceFiles="@(_PluginFile)"
+          DestinationFiles="@(_PluginFile->'$(OutDir)plugins\%(PluginName)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyPluginsToPublish" AfterTargets="Publish" DependsOnTargets="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
+    <Copy SourceFiles="@(_PluginFile)"
+          DestinationFiles="@(_PluginFile->'$(PublishDir)plugins\%(PluginName)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

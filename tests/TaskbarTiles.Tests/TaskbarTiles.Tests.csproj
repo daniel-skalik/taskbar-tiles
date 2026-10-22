@@ -16,4 +16,10 @@
     <ProjectReference Include="..\..\src\TaskbarTiles.Contracts\TaskbarTiles.Contracts.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Host\TaskbarTiles.Host.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Build order only; the plugin is copied to plugins\ by CopyPlugins.targets, not referenced. -->
+    <ProjectReference Include="..\TaskbarTiles.Tests.SamplePlugin\TaskbarTiles.Tests.SamplePlugin.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Tests.SamplePlugin\TaskbarTiles.Tests.SamplePlugin.csproj" />
+  </ItemGroup>
+  <Import Project="..\..\build\CopyPlugins.targets" />
 </Project>
