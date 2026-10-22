@@ -139,9 +139,16 @@ public partial class TileView : UserControl
         _clickInFlight = true;
         try
         {
-            var flyout = await Runtime.GetFlyoutAsync();
-            if (flyout is null) await Runtime.InvokeActionAsync("click");
-            else FlyoutWindow.ShowAbove(this, flyout, Runtime, _isLightTheme());
+            var result = await Runtime.GetFlyoutAsync();
+            switch (result.Outcome)
+            {
+                case FlyoutOutcome.NoPopup:
+                    await Runtime.InvokeActionAsync("click");
+                    break;
+                case FlyoutOutcome.Popup:
+                    FlyoutWindow.ShowAbove(this, result.Flyout!, Runtime, _isLightTheme());
+                    break;
+            }
         }
         catch (Exception ex)
         {

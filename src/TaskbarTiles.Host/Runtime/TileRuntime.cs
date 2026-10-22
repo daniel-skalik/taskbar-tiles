@@ -7,6 +7,23 @@ namespace TaskbarTiles.Host.Runtime;
 /// One tile's connector and its latest state. Connector calls run on the thread pool with a timeout;
 /// state changes are applied and announced on the UI thread.
 /// </summary>
+public enum FlyoutOutcome
+{
+    /// <summary>The connector answered: it has no popup (the tile click should become a "click" action).</summary>
+    NoPopup,
+    /// <summary>A popup (or an error description) is available in <see cref="FlyoutResult.Flyout"/>.</summary>
+    Popup,
+    /// <summary>The call timed out, was cancelled or the runtime is disposed; do nothing.</summary>
+    Unavailable,
+}
+
+public readonly record struct FlyoutResult(FlyoutOutcome Outcome, FlyoutState? Flyout = null)
+{
+    public static FlyoutResult NoPopup { get; } = new(FlyoutOutcome.NoPopup);
+    public static FlyoutResult Unavailable { get; } = new(FlyoutOutcome.Unavailable);
+    public static FlyoutResult Of(FlyoutState popup) => new(FlyoutOutcome.Popup, popup);
+}
+
 public sealed class TileRuntime : IAsyncDisposable
 {
     public static TileState Initial { get; } = new() { Title = "…" };
@@ -72,6 +89,7 @@ public sealed class TileRuntime : IAsyncDisposable
 
     public async Task InvokeActionAsync(string actionId)
     {
+        if (IsDisposed) return;
         try
         {
             await RunWithTimeout(async ct => { await _connector.OnActionAsync(actionId, ct); return true; });
@@ -81,16 +99,23 @@ public sealed class TileRuntime : IAsyncDisposable
         catch (Exception ex) { Fail(ex); }
     }
 
-    public async Task<FlyoutState?> GetFlyoutAsync()
+    public async Task<FlyoutResult> GetFlyoutAsync()
     {
-        if (LastError is { } error) return ErrorFlyout(error);
+        if (IsDisposed) return FlyoutResult.Unavailable;
+        if (LastError is { } error) return FlyoutResult.Of(ErrorFlyout(error));
         try
         {
-            return await RunWithTimeout(ct => _connector.GetFlyoutAsync(ct));
+            var flyout = await RunWithTimeout(ct => _connector.GetFlyoutAsync(ct));
+            return flyout is null ? FlyoutResult.NoPopup : FlyoutResult.Of(flyout);
         }
-        catch (TimeoutException) { ShowNotResponding(); return null; }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return null; }
-        catch (Exception ex) { if (IsDisposed) return null; Fail(ex); return ErrorFlyout(ex); }
+        catch (TimeoutException) { ShowNotResponding(); return FlyoutResult.Unavailable; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return FlyoutResult.Unavailable; }
+        catch (Exception ex)
+        {
+            if (IsDisposed) return FlyoutResult.Unavailable;
+            Fail(ex);
+            return FlyoutResult.Of(ErrorFlyout(ex));
+        }
     }
 
     /// <summary>Plugins never run on the UI thread, so handlers are raised on the thread pool.</summary>

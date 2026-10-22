@@ -108,9 +108,11 @@ public class TileRuntimeTests
         var rt = Create(c, new ImmediateDispatcher());
         await rt.StartAsync();
 
-        var flyout = await rt.GetFlyoutAsync();
+        var result = await rt.GetFlyoutAsync();
 
-        Assert.Equal("Tile error", flyout!.Title);
+        Assert.Equal(FlyoutOutcome.Popup, result.Outcome);
+        var flyout = result.Flyout!;
+        Assert.Equal("Tile error", flyout.Title);
         Assert.Contains(flyout.Rows, r => r.Text.Contains("boom"));
     }
 
@@ -225,5 +227,57 @@ public class TileRuntimeTests
 
         await Task.Delay(400);
         Assert.Equal("fresh", rt.State.Title);
+    }
+
+    [Fact]
+    public async Task Flyout_null_from_connector_means_no_popup()
+    {
+        var rt = Create(new FakeConnector(), new ImmediateDispatcher());
+        await rt.StartAsync();
+
+        Assert.Equal(FlyoutOutcome.NoPopup, (await rt.GetFlyoutAsync()).Outcome);
+    }
+
+    [Fact]
+    public async Task Flyout_timeout_is_unavailable_not_no_popup()
+    {
+        var c = new FakeConnector { OnFlyout = async ct => { await Task.Delay(Timeout.Infinite, ct); return null; } };
+        var rt = Create(c, new ImmediateDispatcher(), timeout: TimeSpan.FromMilliseconds(50));
+        await rt.StartAsync();
+
+        var result = await rt.GetFlyoutAsync();
+
+        Assert.Equal(FlyoutOutcome.Unavailable, result.Outcome);
+        Assert.Empty(c.Actions);
+    }
+
+    [Fact]
+    public async Task Flyout_cancelled_by_dispose_is_unavailable()
+    {
+        var c = new FakeConnector { OnFlyout = async ct => { await Task.Delay(Timeout.Infinite, ct); return null; } };
+        var rt = Create(c, new ImmediateDispatcher());
+        await rt.StartAsync();
+
+        var pending = rt.GetFlyoutAsync();
+        await rt.DisposeAsync();
+
+        Assert.Equal(FlyoutOutcome.Unavailable, (await pending).Outcome);
+    }
+
+    [Fact]
+    public async Task Calls_after_dispose_do_not_reach_the_connector()
+    {
+        var flyoutCalls = 0;
+        var c = new FakeConnector { OnFlyout = _ => { flyoutCalls++; return Task.FromResult<FlyoutState?>(null); } };
+        var rt = Create(c, new ImmediateDispatcher());
+        await rt.StartAsync();
+        await rt.DisposeAsync();
+
+        await rt.InvokeActionAsync("click");
+        var result = await rt.GetFlyoutAsync();
+
+        Assert.Empty(c.Actions);
+        Assert.Equal(0, flyoutCalls);
+        Assert.Equal(FlyoutOutcome.Unavailable, result.Outcome);
     }
 }
