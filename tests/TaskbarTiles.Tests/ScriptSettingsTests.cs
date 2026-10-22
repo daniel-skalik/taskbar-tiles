@@ -64,6 +64,43 @@ public class ScriptSettingsTests
         Assert.Contains(s.Errors, e => e.Contains(expected));
     }
 
+    [Theory]
+    [InlineData("1ms")]
+    [InlineData("999ms")]
+    [InlineData("25h")]
+    [InlineData("5000000h")]
+    public void Interval_every_outside_1s_to_24h_is_an_error(string every)
+    {
+        var s = Parse($$"""{ "hooks": { "interval": { "every": "{{every}}", "run": "a.ps1" } } }""");
+
+        Assert.Contains(s.Errors, e => e.Contains("every"));
+        Assert.Null(s.Hook("interval"));
+    }
+
+    [Theory]
+    [InlineData("1s")]
+    [InlineData("24h")]
+    public void Interval_every_at_the_bounds_is_accepted(string every) =>
+        Assert.Empty(Parse($$"""{ "hooks": { "interval": { "every": "{{every}}", "run": "a.ps1" } } }""").Errors);
+
+    [Theory]
+    [InlineData("25h")]
+    [InlineData("100000h")]
+    [InlineData("0s")]
+    public void Timeout_outside_0_to_24h_is_an_error(string timeout)
+    {
+        var s = Parse($$"""{ "hooks": { "click": { "run": "a.ps1", "timeout": "{{timeout}}" } } }""");
+
+        Assert.Contains(s.Errors, e => e.Contains("timeout"));
+        Assert.Null(s.Hook("click"));
+    }
+
+    [Theory]
+    [InlineData("1ms")]
+    [InlineData("24h")]
+    public void Timeout_at_the_bounds_is_accepted(string timeout) =>
+        Assert.Empty(Parse($$"""{ "hooks": { "click": { "run": "a.ps1", "timeout": "{{timeout}}" } } }""").Errors);
+
     [Fact]
     public void Valid_hooks_are_kept_next_to_errors()
     {

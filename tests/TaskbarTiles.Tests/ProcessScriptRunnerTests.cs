@@ -1,3 +1,4 @@
+using System.IO;
 using System.Diagnostics;
 using TaskbarTiles.Plugins.Script;
 
@@ -177,5 +178,18 @@ public class ProcessScriptRunnerTests : IDisposable
 
         await Assert.ThrowsAnyAsync<ArgumentException>(() =>
             _runner.RunAsync(command, NoEnv, TimeSpan.FromMilliseconds(-5), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_timeout_that_cannot_be_scheduled_is_rejected_before_starting()
+    {
+        var marker = Path.Combine(Path.GetTempPath(), "tt-marker-" + Guid.NewGuid().ToString("N"));
+        var command = PowerShellScript("slow2.ps1", $"Set-Content -Path '{marker}' -Value x");
+
+        await Assert.ThrowsAnyAsync<ArgumentException>(() =>
+            _runner.RunAsync(command, NoEnv, TimeSpan.FromDays(60), CancellationToken.None));
+
+        await Task.Delay(3000); // a process started anyway would have written the marker by now
+        Assert.False(File.Exists(marker));
     }
 }

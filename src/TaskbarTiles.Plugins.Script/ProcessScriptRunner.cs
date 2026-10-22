@@ -10,6 +10,7 @@ public sealed class ProcessScriptRunner : IScriptRunner
     const int MaxStdOut = 1024 * 1024;
     const int MaxStdErr = 16 * 1024;
     const int MaxLine = 1024 * 1024;
+    const double MaxTimeoutMs = uint.MaxValue - 1; // what CancellationTokenSource.CancelAfter can schedule
     const string TruncatedMarker = "(output truncated)";
     static readonly TimeSpan DrainLimit = TimeSpan.FromSeconds(2);
 
@@ -17,7 +18,8 @@ public sealed class ProcessScriptRunner : IScriptRunner
     {
         ct.ThrowIfCancellationRequested();
         // Validate first: an invalid timeout must not throw after the process has started.
-        if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(timeout));
+        if (timeout != Timeout.InfiniteTimeSpan && (timeout < TimeSpan.Zero || timeout.TotalMilliseconds > MaxTimeoutMs))
+            throw new ArgumentOutOfRangeException(nameof(timeout));
         using var process = Start(command, environment, out var startError);
         if (process is null) return StartFailed(startError!);
         var stdout = new BoundedText(MaxStdOut);

@@ -12,6 +12,10 @@ public sealed class ScriptSettings
     /// <summary>Longest a hook script may run unless its "timeout" says otherwise. Click, action and popup hooks are also bounded by the host's 10 s.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>Bounds for "every" and "timeout": long enough to be sane, short enough for Task.Delay and CancelAfter.</summary>
+    public static readonly TimeSpan MinEvery = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(24);
+
     const string ActionPrefix = "action:";
     static readonly HashSet<string> PlainHooks = new(StringComparer.Ordinal) { "interval", "watch", "click", "flyout", "startup", "resume" };
 
@@ -89,9 +93,9 @@ public sealed class ScriptSettings
         TimeSpan? every = null;
         if (name == "interval")
         {
-            if (!el.TryGetProperty("every", out var e) || !TryPositiveDuration(e, out var period))
+            if (!el.TryGetProperty("every", out var e) || !TryDuration(e, MinEvery, out var period))
             {
-                errors.Add("Hook \"interval\" needs \"every\" as a duration, e.g. \"30s\".");
+                errors.Add("Hook \"interval\" needs \"every\" as a duration from 1s to 24h, e.g. \"30s\".");
                 return null;
             }
             every = period;
@@ -100,9 +104,9 @@ public sealed class ScriptSettings
         TimeSpan? timeout = null;
         if (el.TryGetProperty("timeout", out var t))
         {
-            if (!TryPositiveDuration(t, out var limit))
+            if (!TryDuration(t, TimeSpan.Zero, out var limit))
             {
-                errors.Add($"Hook \"{name}\" has an invalid \"timeout\"; use e.g. \"20s\".");
+                errors.Add($"Hook \"{name}\" has an invalid \"timeout\"; use a duration above 0 up to 24h, e.g. \"20s\".");
                 return null;
             }
             timeout = limit;
@@ -111,10 +115,12 @@ public sealed class ScriptSettings
         return new HookSpec(run.GetString()!.Trim(), every, timeout);
     }
 
-    static bool TryPositiveDuration(JsonElement el, out TimeSpan value)
+    /// <summary>A duration string above (or, for a positive minimum, at least) min and at most 24 h.</summary>
+    static bool TryDuration(JsonElement el, TimeSpan min, out TimeSpan value)
     {
         value = default;
-        return el.ValueKind == JsonValueKind.String && Duration.TryParse(el.GetString(), out value) && value > TimeSpan.Zero;
+        if (el.ValueKind != JsonValueKind.String || !Duration.TryParse(el.GetString(), out value)) return false;
+        return (min > TimeSpan.Zero ? value >= min : value > min) && value <= MaxDuration;
     }
 
     static HookSpec? MissingRun(string name, List<string> errors)
