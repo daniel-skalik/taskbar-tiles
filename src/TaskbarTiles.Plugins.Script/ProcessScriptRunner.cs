@@ -23,7 +23,7 @@ public sealed class ProcessScriptRunner : IScriptRunner
         using var process = Start(command, environment, out var startError);
         if (process is null) return StartFailed(startError!);
         var stdout = new BoundedText(MaxStdOut);
-        var stderr = new BoundedText(MaxStdErr);
+        var stderr = new BoundedText(MaxStdErr, keepTail: true); // the end of stderr is what explains a failure
         var pumps = Task.WhenAll(Pump(process.StandardOutput, stdout.AppendLine, stdout.MarkTruncated), Pump(process.StandardError, stderr.AppendLine, stderr.MarkTruncated));
 
         try
@@ -50,7 +50,7 @@ public sealed class ProcessScriptRunner : IScriptRunner
         ct.ThrowIfCancellationRequested();
         using var process = Start(command, environment, out var startError);
         if (process is null) return StartFailed(startError!);
-        var stderr = new BoundedText(MaxStdErr);
+        var stderr = new BoundedText(MaxStdErr, keepTail: true); // the end of stderr is what explains a failure
         var lineCut = new BoundedText(0);
         Exception? callbackError = null;
         void SafeOnLine(string line)
@@ -187,8 +187,8 @@ public sealed class ProcessScriptRunner : IScriptRunner
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException or AggregateException) { }
     }
 
-    /// <summary>Thread-safe line buffer that keeps the first <c>limit</c> characters and remembers when it dropped the rest.</summary>
-    sealed class BoundedText(int limit)
+    /// <summary>Thread-safe line buffer that keeps the first (or, with keepTail, the last) <c>limit</c> characters and remembers when it dropped the rest.</summary>
+    sealed class BoundedText(int limit, bool keepTail = false)
     {
         readonly StringBuilder _text = new();
         bool _truncated;
@@ -207,6 +207,16 @@ public sealed class ProcessScriptRunner : IScriptRunner
             {
                 if (_full) return;
                 if (_text.Length > 0) line = "\n" + line;
+                if (keepTail)
+                {
+                    _text.Append(line);
+                    if (_text.Length > limit)
+                    {
+                        _text.Remove(0, _text.Length - limit);
+                        _truncated = true;
+                    }
+                    return;
+                }
                 var room = limit - _text.Length;
                 if (line.Length > room)
                 {

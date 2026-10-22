@@ -124,6 +124,27 @@ public class ProcessScriptRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task Stderr_keeps_its_tail_when_over_the_cap()
+    {
+        var command = PowerShellScript("noisy.ps1", """
+            for ($i = 1; $i -le 2000; $i++) { [Console]::Error.WriteLine("error line $i padding padding padding padding") }
+            [Console]::Error.WriteLine('THE-LAST-LINE')
+            exit 3
+            """);
+
+        var run = await _runner.RunAsync(command, NoEnv, TimeSpan.FromSeconds(30), CancellationToken.None);
+        var lines = await _runner.RunLinesAsync(command, NoEnv, _ => { }, CancellationToken.None);
+
+        foreach (var r in new[] { run, lines })
+        {
+            Assert.Contains("THE-LAST-LINE", r.StdErr);
+            Assert.DoesNotContain("error line 1 ", r.StdErr);
+            Assert.EndsWith("(output truncated)", r.StdErr);
+            Assert.InRange(r.StdErr.Length, 1, 16 * 1024 + 100);
+        }
+    }
+
+    [Fact]
     public async Task RunLines_caps_an_over_long_line_and_continues()
     {
         var command = PowerShellScript("long.ps1", """
