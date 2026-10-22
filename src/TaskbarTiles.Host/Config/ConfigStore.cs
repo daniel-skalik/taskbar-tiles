@@ -21,6 +21,7 @@ public sealed class ConfigStore(string path, ITileLog log) : IDisposable
 
     static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(300);
 
+    readonly object _reloadGate = new();
     FileSystemWatcher? _watcher;
     Timer? _debounce;
 
@@ -35,14 +36,27 @@ public sealed class ConfigStore(string path, ITileLog log) : IDisposable
 
     public void Load()
     {
-        if (!File.Exists(path))
+        string text;
+        try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, DefaultJson);
-            log.Info($"Created default config at {path}");
+            if (!File.Exists(path))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, DefaultJson);
+                log.Info($"Created default config at {path}");
+            }
+
+            text = ReadWithRetry();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Current = HostConfig.Empty;
+            LastError = new ConfigError("Could not read config.json: " + ex.Message);
+            log.Error(LastError.Message, ex);
+            return;
         }
 
-        var result = ConfigParser.Parse(ReadWithRetry());
+        var result = ConfigParser.Parse(text);
         if (result.Success)
         {
             Current = result.Config!;
@@ -69,25 +83,40 @@ public sealed class ConfigStore(string path, ITileLog log) : IDisposable
         _watcher.EnableRaisingEvents = true;
     }
 
+    // Runs on a thread-pool timer. Nothing may escape: an unhandled exception would kill the host.
     void Reload()
     {
-        string text;
-        try { text = ReadWithRetry(); }
-        catch (IOException ex) { log.Warn($"Could not read config.json: {ex.Message}"); return; }
+        lock (_reloadGate)
+        {
+            try
+            {
+                string text;
+                try { text = ReadWithRetry(); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    log.Warn($"Could not read config.json: {ex.Message}");
+                    return;
+                }
 
-        var result = ConfigParser.Parse(text);
-        if (result.Success)
-        {
-            Current = result.Config!;
-            LastError = null;
-            log.Info("Reloaded config.json");
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
-        else
-        {
-            LastError = result.Error;
-            log.Warn($"config.json edit rejected: {result.Error}");
-            ReloadFailed?.Invoke(this, result.Error!);
+                var result = ConfigParser.Parse(text);
+                if (result.Success)
+                {
+                    Current = result.Config!;
+                    LastError = null;
+                    log.Info("Reloaded config.json");
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    LastError = result.Error;
+                    log.Warn($"config.json edit rejected: {result.Error}");
+                    ReloadFailed?.Invoke(this, result.Error!);
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error("Config reload failed", ex);
+            }
         }
     }
 

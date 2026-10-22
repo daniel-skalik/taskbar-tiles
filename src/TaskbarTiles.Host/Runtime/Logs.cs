@@ -27,7 +27,7 @@ public sealed class FileLog : ITileLog
         lock (_gate)
         {
             try { File.AppendAllText(_path, line); }
-            catch (IOException) { /* logging must never take the host down */ }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* logging must never take the host down */ }
         }
     }
 }

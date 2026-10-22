@@ -35,6 +35,23 @@ public class ConfigStoreTests
     }
 
     [Fact]
+    public void Load_when_file_is_locked_gives_empty_config_and_error()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("config.json"), """{ "tiles": { "x": { "connector": "y" } } }""");
+        using var store = new ConfigStore(dir.File("config.json"), new CollectingLog());
+
+        using (new FileStream(dir.File("config.json"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            store.Load();
+
+            Assert.Empty(store.Current.Tiles);
+            Assert.NotNull(store.LastError);
+            Assert.Contains("Could not read", store.LastError!.Message);
+        }
+    }
+
+    [Fact]
     public async Task Watch_reloads_valid_edits()
     {
         using var dir = new TempDir();
@@ -54,7 +71,8 @@ public class ConfigStoreTests
     public async Task Watch_keeps_last_good_config_on_invalid_edit()
     {
         using var dir = new TempDir();
-        using var store = new ConfigStore(dir.File("config.json"), new CollectingLog());
+        var log = new CollectingLog();
+        using var store = new ConfigStore(dir.File("config.json"), log);
         store.Load();
         store.StartWatching();
         var failed = new TaskCompletionSource<ConfigError>();
@@ -65,5 +83,6 @@ public class ConfigStoreTests
         var error = await failed.Task.WaitAsync(Wait);
         Assert.NotNull(error.Line);
         Assert.True(store.Current.Tiles.ContainsKey("spotify"));
+        Assert.Contains(log.Messages, m => m.StartsWith("WARN ") && m.Contains("rejected"));
     }
 }
