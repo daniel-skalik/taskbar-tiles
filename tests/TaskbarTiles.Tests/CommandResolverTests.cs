@@ -34,6 +34,13 @@ public class CommandResolverTests
     public void Absolute_path_is_kept() =>
         Assert.EndsWith(@"-File ""D:\tools\x.ps1""", Resolver.Resolve(@"D:\tools\x.ps1").Arguments);
 
+    [Theory]
+    [InlineData(@"\scripts\x.ps1", @"C:\cfg\scripts\x.ps1")]
+    [InlineData(@"/scripts/x.ps1", @"C:\cfg\scripts\x.ps1")]
+    [InlineData(@"D:x.ps1", @"C:\cfg\x.ps1")]
+    public void Rooted_but_not_fully_qualified_paths_resolve_against_the_config_folder(string run, string expected) =>
+        Assert.EndsWith($@"-File ""{expected}""", Resolver.Resolve(run).Arguments);
+
     [Fact]
     public void Python_runs_unbuffered()
     {

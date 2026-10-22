@@ -19,7 +19,7 @@ public sealed class CommandResolver(string configDirectory, string powerShell, s
         string path;
         try
         {
-            path = Path.IsPathRooted(first) ? first : Path.GetFullPath(Path.Combine(configDirectory, first));
+            path = Path.IsPathFullyQualified(first) ? first : Path.GetFullPath(Path.Combine(configDirectory, RelativePart(first)));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
@@ -34,6 +34,13 @@ public sealed class CommandResolver(string configDirectory, string powerShell, s
             _ when File.Exists(path) => new(Shell, $"/d /s /c \"{Quote(path)}{tail}\"", configDirectory),
             _ => new(Shell, $"/d /s /c \"{line}\"", configDirectory),
         };
+    }
+
+    /// <summary>Drops a drive ("C:x") and leading separators so a rooted but not fully qualified path stays under the config folder.</summary>
+    static string RelativePart(string path)
+    {
+        if (path.Length >= 2 && path[1] == ':') path = path[2..];
+        return path.TrimStart('\\', '/');
     }
 
     internal static (string Script, string Remainder) SplitFirst(string run)
