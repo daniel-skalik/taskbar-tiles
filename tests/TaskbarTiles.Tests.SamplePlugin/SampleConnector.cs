@@ -16,5 +16,14 @@ public sealed class SampleConnector : ITileConnector
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
+[TileConnector("badwidth", Width = -5)]
+public sealed class BadWidthConnector : ITileConnector
+{
+    public Task StartAsync(ITileContext ctx, CancellationToken ct) => Task.CompletedTask;
+    public Task OnActionAsync(string actionId, CancellationToken ct) => Task.CompletedTask;
+    public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => Task.FromResult<FlyoutState?>(null);
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
 // Not a connector: no attribute. The loader must ignore it.
 public sealed class NotAConnector { }

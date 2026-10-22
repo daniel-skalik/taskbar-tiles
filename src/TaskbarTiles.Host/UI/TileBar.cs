@@ -71,7 +71,16 @@ public sealed class TileBar : Window, ITileBarView
         _panel.Children.Clear();
         foreach (var rt in runtimes)
         {
-            var view = new TileView(rt, () => _light ?? false) { Margin = new Thickness(0, 0, GapDip, 0) };
+            TileView view;
+            try
+            {
+                view = new TileView(rt, () => _light ?? false) { Margin = new Thickness(0, 0, GapDip, 0) };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Tile '{rt.TileId}' failed to render: {ex}");
+                continue;
+            }
             _views.Add(view);
             _panel.Children.Add(view);
         }

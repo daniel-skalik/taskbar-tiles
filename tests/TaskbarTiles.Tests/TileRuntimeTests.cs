@@ -342,4 +342,61 @@ public class TileRuntimeTests
         Assert.NotEqual(-1, cancelThread);
         Assert.NotEqual(awaitingThread, cancelThread);
     }
+
+    static async Task<TileState> StateAfterUpdate(TileState sent)
+    {
+        var c = new FakeConnector();
+        var rt = Create(c, new ImmediateDispatcher());
+        await rt.StartAsync();
+        c.Context!.Update(sent);
+        return rt.State;
+    }
+
+    [Fact]
+    public async Task Null_buttons_become_empty()
+    {
+        var s = await StateAfterUpdate(new TileState { Title = "x", Buttons = null! });
+        Assert.Empty(s.Buttons);
+        Assert.Equal("x", s.Title);
+    }
+
+    [Fact]
+    public async Task Empty_or_null_glyphs_fall_back_to_info()
+    {
+        var s = await StateAfterUpdate(new TileState
+        {
+            Icon = new TileIcon(null!, TileColor.Ok),
+            Buttons = [new TileButton("a", ""), new TileButton("b", null!), new TileButton("c", "play")],
+        });
+        Assert.Equal("info", s.Icon!.Glyph);
+        Assert.Equal(TileColor.Ok, s.Icon.Color);
+        Assert.Equal(new[] { "info", "info", "play" }, s.Buttons.Select(b => b.Glyph));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public async Task Non_finite_progress_becomes_null(double value)
+    {
+        var s = await StateAfterUpdate(new TileState { Progress = value });
+        Assert.Null(s.Progress);
+    }
+
+    [Fact]
+    public async Task Finite_progress_is_kept()
+    {
+        var s = await StateAfterUpdate(new TileState { Progress = 0.4 });
+        Assert.Equal(0.4, s.Progress);
+    }
+
+    [Fact]
+    public async Task Sparkline_drops_non_finite_values_and_needs_two_left()
+    {
+        var kept = await StateAfterUpdate(new TileState { Sparkline = [1, double.NaN, 2, double.PositiveInfinity, 3] });
+        Assert.Equal(new[] { 1.0, 2.0, 3.0 }, kept.Sparkline);
+
+        var dropped = await StateAfterUpdate(new TileState { Sparkline = [double.NaN, 5, double.NegativeInfinity] });
+        Assert.Null(dropped.Sparkline);
+    }
 }

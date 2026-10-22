@@ -141,7 +141,7 @@ public sealed class TileRuntime : IAsyncDisposable
     internal void Enqueue(TileState state)
     {
         if (IsDisposed) return;
-        Volatile.Write(ref _pending, state);
+        Volatile.Write(ref _pending, Normalize(state));
         if (Interlocked.Exchange(ref _postQueued, 1) != 0) return;
         _ui.Post(() =>
         {
@@ -151,6 +151,29 @@ public sealed class TileRuntime : IAsyncDisposable
             LastError = null;
             SetState(latest);
         });
+    }
+
+    /// <summary>Plugin output is untrusted: make a malformed state renderable instead of letting it blank the bar.</summary>
+    internal static TileState Normalize(TileState? state)
+    {
+        if (state is null) return Initial;
+
+        static string Glyph(string? g) => string.IsNullOrEmpty(g) ? "info" : g;
+
+        var buttons = (state.Buttons ?? [])
+            .Where(b => b is not null)
+            .Select(b => string.IsNullOrEmpty(b.Glyph) ? b with { Glyph = Glyph(b.Glyph) } : b)
+            .ToList();
+        var icon = state.Icon is { } i && string.IsNullOrEmpty(i.Glyph) ? i with { Glyph = Glyph(i.Glyph) } : state.Icon;
+        double? progress = state.Progress is { } p && double.IsFinite(p) ? p : null;
+        List<double>? spark = null;
+        if (state.Sparkline is { } raw)
+        {
+            var finite = raw.Where(double.IsFinite).ToList();
+            if (finite.Count >= 2) spark = finite;
+        }
+
+        return state with { Buttons = buttons, Icon = icon, Progress = progress, Sparkline = spark };
     }
 
     async Task<T> RunWithTimeout<T>(Func<CancellationToken, Task<T>> call)

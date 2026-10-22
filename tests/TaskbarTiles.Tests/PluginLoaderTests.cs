@@ -18,9 +18,20 @@ public class PluginLoaderTests
     {
         var catalog = new PluginLoader(new CollectingLog()).LoadFrom([PluginsRoot]);
 
-        var d = Assert.Single(catalog.Connectors).Value;
+        var d = catalog.Connectors["sample"];
         Assert.Equal("sample", d.Id);
         Assert.Equal(150, d.Width);
+    }
+
+    [Fact]
+    public void Invalid_width_falls_back_to_default_with_warning()
+    {
+        var log = new CollectingLog();
+
+        var catalog = new PluginLoader(log).LoadFrom([PluginsRoot]);
+
+        Assert.Equal(132, catalog.Connectors["badwidth"].Width);
+        Assert.Contains(log.Messages, m => m.StartsWith("WARN") && m.Contains("badwidth"));
     }
 
     [Fact]
