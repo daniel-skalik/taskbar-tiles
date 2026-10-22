@@ -70,7 +70,6 @@ public sealed class MediaConnector : ITileConnector
         var rows = new List<FlyoutRow>();
         if (!string.IsNullOrEmpty(props.AlbumTitle)) rows.Add(new FlyoutRow("Album", props.AlbumTitle));
         if (timeline.EndTime > TimeSpan.Zero) rows.Add(new FlyoutRow("Position", $"{Format(timeline.Position)} / {Format(timeline.EndTime)}"));
-        rows.Add(new FlyoutRow("Source", s.SourceAppUserModelId));
 
         return new FlyoutState(
             string.IsNullOrEmpty(props.Title) ? _app : props.Title,
