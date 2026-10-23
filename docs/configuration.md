@@ -12,7 +12,7 @@ From your own terminal, in the repository:
 powershell -ExecutionPolicy Bypass -File tools\install.ps1
 ```
 
-It stops the installed copy, publishes a Release build into `%LOCALAPPDATA%\TaskbarTiles\app`, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, scripts, plugins and logs are never touched. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
+It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, scripts, plugins and logs are never touched. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
 
 ## Tiles and displays
 
@@ -36,7 +36,7 @@ It stops the installed copy, publishes a Release build into `%LOCALAPPDATA%\Task
   - a pinned tile: `{ "tile": "spotify", "pin": true }` (see below)
   - a stack: `{ "stack": ["uptime", "ping"], "rotate": "5s" }`
 - Display keys, in the order they are tried:
-  1. the monitor's device id (edit mode writes these, e.g. `\\?\DISPLAY#DEL41A8#5&2b1c…`)
+  1. the monitor's device id (edit mode writes these, e.g. `"\\\\?\\DISPLAY#DEL41A8#5&2b1c…"`, with the backslashes doubled as JSON requires)
   2. `primary`, for the primary display
   3. `*`, for every other display
 
@@ -55,7 +55,7 @@ A stack takes one tile's place and shows its members one at a time, with a dot p
 
 Tiles fill the free part of the taskbar next to the Start button (centered icons) or before the tray (left-aligned icons). When they do not fit:
 
-1. Tiles become compact, from the right end: only the icon (or the first letter of the title), 40 px wide, with the title, subtitle and tooltip in the tooltip. Pinned tiles stay full size.
+1. Tiles become compact, from the right end: only the icon (or the first letter of the title), 40 DIP wide, with the title, subtitle and tooltip in the tooltip. Pinned tiles stay full size.
 2. If that is not enough, tiles move into a `»` tile at the end, from the right end; pinned tiles go last. Click `»` to see them at full size. They still work there: buttons, popups (shown above the `»` tile) and the right-click menu.
 
 This is recomputed whenever the free space changes (apps opened or closed, alignment, display or DPI changes).
