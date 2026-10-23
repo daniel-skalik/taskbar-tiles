@@ -43,21 +43,21 @@ $exe = Join-Path $AppDir 'TaskbarTiles.exe'
 $stage = "$AppDir.new"
 $old = "$AppDir.old"
 
-if (-not (Test-Path $project)) { throw "Cannot find $project. Run this script from the repository's tools folder." }
+if (-not (Test-Path -LiteralPath $project)) { throw "Cannot find $project. Run this script from the repository's tools folder." }
 
 # 1. Publish into a staging folder and verify it. A failure here leaves the running app and the install untouched.
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 Write-Host "Publishing Release into $stage ..."
 & dotnet publish $project -c Release -o $stage --nologo
 if ($LASTEXITCODE -ne 0) {
-    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     throw "dotnet publish failed with exit code $LASTEXITCODE. The installed app was not changed."
 }
 foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
         (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.dll'),
         (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.dll'))) {
-    if (-not (Test-Path $required)) {
-        Remove-Item $stage -Recurse -Force
+    if (-not (Test-Path -LiteralPath $required)) {
+        Remove-Item -LiteralPath $stage -Recurse -Force
         throw "Publish output is missing $required. The installed app was not changed."
     }
 }
@@ -70,7 +70,7 @@ $others = @($running | Where-Object { $installed -notcontains $_ })
 foreach ($p in $installed) {
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
     if (-not $p.WaitForExit(10000)) {
-        Remove-Item $stage -Recurse -Force
+        Remove-Item -LiteralPath $stage -Recurse -Force
         throw "TaskbarTiles (process $($p.Id)) did not exit within 10 seconds. The installed app was not changed."
     }
     Write-Host "Stopped TaskbarTiles (process $($p.Id))."
@@ -80,22 +80,28 @@ foreach ($p in $others) {
 }
 if ($installed.Count -eq 0) { Write-Host 'TaskbarTiles was not running from the install folder.' }
 
-# 3. Swap the folders; put the old one back if the swap fails.
+# 3. Swap the folders; put the old one back (and restart it) if the swap fails.
 Write-Host "Replacing $AppDir ..."
-if (Test-Path $old) { Remove-Item $old -Recurse -Force }
 $moved = $false
 try {
-    if (Test-Path $AppDir) {
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
+    if (Test-Path -LiteralPath $AppDir) {
         Move-Item -LiteralPath $AppDir -Destination $old
         $moved = $true
     }
     Move-Item -LiteralPath $stage -Destination $AppDir
 } catch {
-    if ($moved -and -not (Test-Path $AppDir)) { Move-Item -LiteralPath $old -Destination $AppDir }
-    throw "Could not replace the install folder: $($_.Exception.Message) The previous install was restored."
+    $reason = $_.Exception.Message
+    if ($moved -and -not (Test-Path -LiteralPath $AppDir)) { Move-Item -LiteralPath $old -Destination $AppDir }
+    $restarted = ''
+    if ($installed.Count -gt 0 -and -not $NoStart -and (Test-Path -LiteralPath $exe)) {
+        Start-Process -FilePath $exe -WorkingDirectory $AppDir
+        $restarted = ' The previous TaskbarTiles was started again.'
+    }
+    throw "Could not replace the install folder: $reason The previous install was restored.$restarted"
 }
-if (Test-Path $old) {
-    try { Remove-Item $old -Recurse -Force } catch { Write-Warning "Could not remove the old copy $old : $($_.Exception.Message)" }
+if (Test-Path -LiteralPath $old) {
+    try { Remove-Item -LiteralPath $old -Recurse -Force } catch { Write-Warning "Could not remove the old copy $old : $($_.Exception.Message)" }
 }
 Write-Host "Installed $exe"
 
