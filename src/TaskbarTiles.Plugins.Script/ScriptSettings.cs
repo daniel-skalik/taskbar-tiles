@@ -20,6 +20,10 @@ public sealed class ScriptSettings
     const string HostPrefix = "host:";
     static readonly HashSet<string> PlainHooks = new(StringComparer.Ordinal) { "interval", "watch", "click", "flyout", "startup", "resume" };
 
+    /// <summary>The settings a hook object may have, in the order error messages list them.</summary>
+    static readonly string[] IntervalKeys = ["run", "every", "timeout"];
+    static readonly string[] HookKeys = ["run", "timeout"];
+
     ScriptSettings(IReadOnlyDictionary<string, HookSpec> hooks, IReadOnlyList<string> errors)
     {
         Hooks = hooks;
@@ -90,6 +94,15 @@ public sealed class ScriptSettings
         if (el.ValueKind != JsonValueKind.Object)
         {
             errors.Add($"Hook \"{name}\" must be an object with \"run\".");
+            return null;
+        }
+
+        // A typo such as "timout" would otherwise be ignored silently and the default used.
+        var allowed = name == "interval" ? IntervalKeys : HookKeys;
+        var unknown = el.EnumerateObject().Select(p => p.Name).FirstOrDefault(n => !allowed.Contains(n, StringComparer.Ordinal));
+        if (unknown is not null)
+        {
+            errors.Add($"Hook \"{name}\" has an unknown setting \"{unknown}\"; use {string.Join(", ", allowed)}.");
             return null;
         }
 

@@ -59,6 +59,9 @@ public class ScriptSettingsTests
     [InlineData("""{ "hooks": { "action:host:x": { "run": "a.ps1" } } }""", "reserved")]
     [InlineData("""{ "hooks": { "action:host:": { "run": "a.ps1" } } }""", "reserved")]
     [InlineData("""{ "hooks": { "click": { "run": "a.ps1", "timeout": "x" } } }""", "timeout")]
+    [InlineData("""{ "hooks": { "click": { "run": "a.ps1", "timout": "5s" } } }""", "unknown setting \"timout\"; use run, timeout.")]
+    [InlineData("""{ "hooks": { "interval": { "every": "5s", "run": "a.ps1", "evrey": "1s" } } }""", "unknown setting \"evrey\"; use run, every, timeout.")]
+    [InlineData("""{ "hooks": { "watch": { "run": "a.ps1", "every": "5s" } } }""", "Hook \"watch\" has an unknown setting \"every\"")]
     public void Invalid_settings_explain_themselves(string json, string expected)
     {
         var s = Parse(json);
