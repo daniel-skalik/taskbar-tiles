@@ -56,6 +56,86 @@ public class SlotViewTests
         Assert.Null(view.Rotation);
         view.Detach();
     });
+
+    static async Task<(TileRuntime Runtime, FakeConnector Connector)> StartedRuntime(string id)
+    {
+        var connector = new FakeConnector();
+        var runtime = new TileRuntime(id, "fake", 132, () => connector, NoSettings, new ImmediateDispatcher(), new CollectingLog());
+        await runtime.StartAsync();
+        return (runtime, connector);
+    }
+
+    static SlotView StackOf(params TileRuntime[] members) =>
+        new(new BarSlot(0, members, false, TimeSpan.FromHours(1)), () => false, Commands(), new CollectingLog());
+
+    [Fact]
+    public void An_urgent_member_takes_over_the_stack() => Sta.Run(() =>
+    {
+        var (a, _) = StartedRuntime("a").GetAwaiter().GetResult();
+        var (b, bc) = StartedRuntime("b").GetAwaiter().GetResult();
+        var view = StackOf(a, b);
+        Assert.Equal(0, view.CurrentMember);
+
+        bc.Context!.Update(new TileState { Title = "!", Urgent = true });
+
+        Assert.Equal(1, view.CurrentMember);
+        Assert.Same(b, view.Current.Runtime);
+        view.Detach();
+    });
+
+    [Fact]
+    public void After_Detach_state_changes_do_not_move_the_stack() => Sta.Run(() =>
+    {
+        var (a, _) = StartedRuntime("a").GetAwaiter().GetResult();
+        var (b, bc) = StartedRuntime("b").GetAwaiter().GetResult();
+        var view = StackOf(a, b);
+        view.Detach();
+
+        bc.Context!.Update(new TileState { Title = "!", Urgent = true });
+
+        Assert.Equal(0, view.CurrentMember);
+        Assert.Same(a, view.Current.Runtime);
+    });
+
+    [Fact]
+    public void Only_the_shown_member_is_visible() => Sta.Run(() =>
+    {
+        var view = StackOf(Runtime("a"), Runtime("b"), Runtime("c"));
+
+        var visibility = view.Children.OfType<TileView>().Select(t => t.Visibility).ToArray();
+
+        Assert.Equal([Visibility.Visible, Visibility.Collapsed, Visibility.Collapsed], visibility);
+        view.Detach();
+    });
+
+    [Fact]
+    public void Member_popups_anchor_to_the_slot_unless_an_anchor_is_set() => Sta.Run(() =>
+    {
+        var view = StackOf(Runtime("a"), Runtime("b"));
+        Assert.All(view.Children.OfType<TileView>(), t => Assert.Same(view, t.FlyoutAnchor));
+
+        var other = new System.Windows.Controls.Grid();
+        view.FlyoutAnchor = other;
+
+        Assert.All(view.Children.OfType<TileView>(), t => Assert.Same(other, t.FlyoutAnchor));
+        view.Detach();
+    });
+
+    [Fact]
+    public void A_constructor_that_throws_leaves_no_subscription_behind() => Sta.Run(() =>
+    {
+        var good = Runtime("a");
+        var bad = Runtime("b", width: -1); // a negative Width makes the second TileView throw
+
+        Assert.ThrowsAny<Exception>(() => StackOf(good, bad));
+
+        Assert.False(HasSubscribers(good));
+        Assert.False(HasSubscribers(bad));
+    });
+
+    static bool HasSubscribers(TileRuntime runtime) =>
+        typeof(TileRuntime).GetField(nameof(TileRuntime.StateChanged), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(runtime) is Delegate;
 }
 
 /// <summary>Runs WPF code on a fresh STA thread and rethrows what it threw.</summary>
