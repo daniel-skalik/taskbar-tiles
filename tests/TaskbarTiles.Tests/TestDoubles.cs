@@ -92,7 +92,14 @@ public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
     public TaskbarTiles.Host.Taskbar.TaskbarInfo? Info { get; private set; }
     public bool Closed { get; private set; }
     public bool Editing { get; private set; }
-    public void SetEditing(bool editing) => Editing = editing;
+    public int EditingCalls { get; private set; }
+    public bool ThrowOnEditing { get; set; }
+    public void SetEditing(bool editing)
+    {
+        EditingCalls++;
+        if (ThrowOnEditing) throw new InvalidOperationException("bar failed");
+        Editing = editing;
+    }
     public void SetSlots(IReadOnlyList<TaskbarTiles.Host.Layout.BarSlot> slots) => Slots = slots;
     public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info) => Info = info;
     public void Close() => Closed = true;

@@ -40,6 +40,7 @@ public sealed class TileBar : Window, ITileBarView
     TaskbarInfo? _info;
     bool? _light;
     bool _editing;
+    IntPtr _previousForeground; // the window that was in front when edit mode activated this bar
     SlotView? _dragSource;
     SlotView? _dropTarget;
     Point _dragStart;
@@ -75,7 +76,7 @@ public sealed class TileBar : Window, ITileBarView
         // Bar-wide menu for the gaps between tiles; each slot gets its own menu in CreateView.
         ContextMenu = new ContextMenu();
         FillBarMenu(ContextMenu);
-        // The bar is WS_EX_NOACTIVATE, so it never becomes the foreground window and the menu
+        // Outside edit mode the bar is WS_EX_NOACTIVATE, so it never becomes the foreground window and the menu
         // never sees outside clicks. Bring the bar to the foreground while a menu is open.
         // ContextMenuOpening bubbles, so this also covers the slots' menus.
         ContextMenuOpening += (_, _) => { if (_hwnd != IntPtr.Zero) SetForegroundWindow(_hwnd); };
@@ -158,8 +159,18 @@ public sealed class TileBar : Window, ITileBarView
         FlyoutWindow.CloseOpen();
         foreach (var view in _views) view.Editing = editing;
         SetActivatable(editing);
+        if (!editing) RestoreForeground();
         FillBarMenu(ContextMenu);
         Reflow();
+    }
+
+    /// <summary>Gives activation back to the window that was in front before edit mode, if this bar still holds it.</summary>
+    void RestoreForeground()
+    {
+        var previous = _previousForeground;
+        _previousForeground = IntPtr.Zero;
+        if (_hwnd == IntPtr.Zero || GetForegroundWindow() != _hwnd) return;
+        if (previous != IntPtr.Zero && previous != _hwnd && IsWindow(previous)) SetForegroundWindow(previous);
     }
 
     Button BarButton(string content, double width, string tooltip) => new()
@@ -239,6 +250,8 @@ public sealed class TileBar : Window, ITileBarView
     {
         _editor.SetEditMode(true); // every bar, this one included
         if (!IsVisible) return;
+        var foreground = GetForegroundWindow();
+        if (foreground != _hwnd) _previousForeground = foreground;
         Activate();
         Focus();
     }
@@ -392,11 +405,14 @@ public sealed class TileBar : Window, ITileBarView
         foreach (var view in _views)
         {
             if (ReferenceEquals(view, _dragSource) || !ReferenceEquals(view.Parent, _panel) || view.ActualWidth <= 0) continue;
-            var x = e.GetPosition(view).X;
-            if (x >= 0 && x < view.ActualWidth) return (view, LayoutEdits.DropPositionAt(x / view.ActualWidth));
+            var p = e.GetPosition(view);
+            if (Inside(p, view.ActualWidth, view.ActualHeight)) return (view, LayoutEdits.DropPositionAt(p.X / view.ActualWidth));
         }
         return (null, DropPosition.Before);
     }
+
+    /// <summary>True when the point lies within a slot of the given size; releasing outside the bar cancels a drag.</summary>
+    internal static bool Inside(Point p, double width, double height) => p.X >= 0 && p.X < width && p.Y >= 0 && p.Y < height;
 
     void SetDropTarget(SlotView? target)
     {
@@ -439,6 +455,7 @@ public sealed class TileBar : Window, ITileBarView
         }
 
         var w = (int)Math.Ceiling(widthDip * scale);
+        if (_editing && w > zone.Width) w = zone.Width; // never cover the taskbar icons
         var x = _info.FreeZone.IconsCentered ? zone.Left : zone.Right - w;
         if (!IsVisible) Show();
         SetWindowPos(_hwnd, HWND_TOPMOST, x, zone.Top, w, zone.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -469,6 +486,7 @@ public sealed class TileBar : Window, ITileBarView
             shown.Add(_doneButton);
         }
 
+        if (_dragSource is not null && !shown.Contains(_dragSource)) EndDrag(); // the dragged slot went into overflow
         if (!overflowed.SequenceEqual(_overflowed)) CloseOverflow();
         _overflowed = overflowed;
 

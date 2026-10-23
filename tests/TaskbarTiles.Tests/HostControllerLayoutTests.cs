@@ -178,4 +178,29 @@ public class HostControllerLayoutTests
         f.Host.SetEditMode(false);
         Assert.All(f.Bars.Values, b => Assert.False(b.Editing));
     }
+
+    [Fact]
+    public void Setting_the_same_edit_mode_again_does_nothing()
+    {
+        var f = new Fixture(Config);
+
+        f.Host.SetEditMode(false);
+        Assert.Equal(0, f.Bars["MAIN"].EditingCalls);
+
+        f.Host.SetEditMode(true);
+        f.Host.SetEditMode(true);
+        Assert.Equal(1, f.Bars["MAIN"].EditingCalls);
+    }
+
+    [Fact]
+    public void A_bar_that_fails_to_switch_edit_mode_does_not_stop_the_others()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));
+        f.Bars["MAIN"].ThrowOnEditing = true;
+
+        f.Host.SetEditMode(true);
+
+        Assert.True(f.Host.Editing);
+        Assert.True(f.Bars["SECOND"].Editing);
+    }
 }
