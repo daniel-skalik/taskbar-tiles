@@ -106,6 +106,42 @@ public class ConfigStoreSaveTests
     }
 
     [Fact]
+    public void Save_reports_a_duplicate_key_and_writes_nothing()
+    {
+        using var dir = new TempDir();
+        var duplicated = Original.Replace("\"primary\": { \"slots\": [\"a\"] }", "\"primary\": { \"slots\": [\"a\"] }, \"primary\": { \"slots\": [] }");
+        File.WriteAllText(dir.File("config.json"), duplicated);
+        using var store = new ConfigStore(dir.File("config.json"), new CollectingLog());
+        store.Load();
+        Assert.Null(store.LastError); // the parser accepts duplicate keys, which is why Save has to cope
+
+        var error = store.Save(PlaceBoth);
+
+        Assert.NotNull(error);
+        Assert.Contains("duplicate key", error!.Message);
+        Assert.Contains("remove it, then try again", error.Message);
+        Assert.Equal(duplicated, File.ReadAllText(dir.File("config.json")));
+        Assert.False(File.Exists(store.BackupPath));
+        Assert.False(File.Exists(dir.File("config.json.tmp")));
+    }
+
+    [Fact]
+    public void A_failed_replace_leaves_no_tmp_file_and_the_config_untouched()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("config.json"), Original);
+        using var store = new ConfigStore(dir.File("config.json"), new CollectingLog());
+        store.Load();
+        Directory.CreateDirectory(store.BackupPath); // a folder where the backup file goes makes File.Replace fail
+
+        var error = store.Save(PlaceBoth);
+
+        Assert.NotNull(error);
+        Assert.False(File.Exists(dir.File("config.json.tmp")));
+        Assert.Equal(Original, File.ReadAllText(dir.File("config.json")));
+    }
+
+    [Fact]
     public void Save_builds_on_the_file_on_disk_so_a_hand_edit_not_yet_reloaded_is_kept()
     {
         using var dir = new TempDir();

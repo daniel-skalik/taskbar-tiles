@@ -122,8 +122,19 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
                     return new ConfigError("config.json has an error, so nothing was saved: " + before.Error!.Message,
                         before.Error.Line, before.Error.Column);
 
-                var root = ConfigJson.ParseRoot(text);
-                edit(root);
+                // JsonDocument (the parser) accepts duplicate keys; JsonNode throws ArgumentException on them,
+                // either at parse time or as soon as the edit touches the object.
+                JsonObject root;
+                try
+                {
+                    root = ConfigJson.ParseRoot(text);
+                    edit(root);
+                }
+                catch (ArgumentException ex)
+                {
+                    log.Warn($"config.json has a duplicate key: {ex.Message}");
+                    return new ConfigError($"config.json has a duplicate key ({ex.Message}); remove it, then try again.");
+                }
                 var newText = ConfigJson.Serialize(root);
                 var after = ConfigParser.Parse(newText);
                 if (!after.Success) return new ConfigError("The change was not saved: " + after.Error);
@@ -149,8 +160,16 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
     void WriteAtomically(string text)
     {
         var temp = path + ".tmp";
-        File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        File.Replace(temp, path, BackupPath, ignoreMetadataErrors: true);
+        try
+        {
+            File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Replace(temp, path, BackupPath, ignoreMetadataErrors: true);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch (Exception) { /* best effort; the next save overwrites it */ }
+            throw;
+        }
     }
 
     // Runs on a thread-pool timer. Nothing may escape: an unhandled exception would kill the host.
