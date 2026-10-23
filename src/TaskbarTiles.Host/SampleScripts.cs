@@ -24,7 +24,7 @@ public static class SampleScripts
             foreach (var file in Directory.GetFiles(sourceDir))
                 File.Copy(file, Path.Combine(temp, Path.GetFileName(file)));
             if (Directory.Exists(targetDir)) return false; // appeared meanwhile; keep what is there
-            Directory.Move(temp, full);
+            Retry(() => Directory.Move(temp, full));
             temp = null;
             log.Info($"Installed sample scripts into {targetDir}");
             return true;
@@ -38,9 +38,19 @@ public static class SampleScripts
         {
             if (temp is not null)
             {
-                try { Directory.Delete(temp, recursive: true); }
+                try { Retry(() => Directory.Delete(temp, recursive: true)); }
                 catch (Exception) { /* leftover temp folder is harmless; its name never matches the target */ }
             }
+        }
+    }
+
+    // Defender or the indexer can hold a freshly written file open for a moment, which fails the rename or delete.
+    static void Retry(Action action)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { action(); return; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 5) { Thread.Sleep(100); }
         }
     }
 }
