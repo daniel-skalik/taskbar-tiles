@@ -51,6 +51,32 @@
         </Setter>
     </Style>
 
+    <!-- The × on a tile in edit mode -->
+    <Style x:Key="RemoveButton" TargetType="Button">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Width" Value="14"/>
+        <Setter Property="Height" Value="14"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Ellipse x:Name="Bg" Fill="#55525E"/>
+                        <TextBlock Text="×" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Margin="0,-2,0,0"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Fill" Value="#E5534B"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Flyout action buttons -->
     <Style x:Key="FlyoutButton" TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource TileForeground}"/>

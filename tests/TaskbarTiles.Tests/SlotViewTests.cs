@@ -57,6 +57,44 @@ public class SlotViewTests
         view.Detach();
     });
 
+    [Fact]
+    public void Edit_mode_shows_the_remove_button_and_suspends_rotation() => Sta.Run(() =>
+    {
+        var view = new SlotView(new BarSlot(0, [Runtime("a"), Runtime("b")], false, TimeSpan.FromSeconds(5)), () => false, Commands(), new CollectingLog());
+        var removed = 0;
+        view.RemoveRequested += (_, _) => removed++;
+
+        Assert.Equal(Visibility.Collapsed, view.RemoveButton.Visibility);
+        view.Editing = true;
+
+        Assert.Equal(Visibility.Visible, view.RemoveButton.Visibility);
+        Assert.True(view.Rotation!.Suspended);
+        view.RemoveButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal(1, removed);
+
+        view.Editing = false;
+        Assert.False(view.Rotation.Suspended);
+        Assert.Equal(Visibility.Collapsed, view.RemoveButton.Visibility);
+        view.Detach();
+    });
+
+    [Fact]
+    public void Drop_highlight_only_applies_in_edit_mode() => Sta.Run(() =>
+    {
+        var view = new SlotView(new BarSlot(0, [Runtime("a")], false, null), () => false, Commands(), new CollectingLog());
+
+        view.DropHighlight = true;
+        Assert.False(view.DropHighlight);
+
+        view.Editing = true;
+        view.DropHighlight = true;
+        Assert.True(view.DropHighlight);
+
+        view.Editing = false;
+        Assert.False(view.DropHighlight);
+        view.Detach();
+    });
+
     static async Task<(TileRuntime Runtime, FakeConnector Connector)> StartedRuntime(string id)
     {
         var connector = new FakeConnector();

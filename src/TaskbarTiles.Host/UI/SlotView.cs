@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using TaskbarTiles.Contracts;
@@ -12,13 +13,22 @@ namespace TaskbarTiles.Host.UI;
 /// <summary>
 /// One slot on a bar: a single tile, or a stack that shows one member at a time with position dots. A stack rotates
 /// every "rotate", pauses while hovered, cycles on the mouse wheel, and lets an urgent member take over until it is clicked.
+/// In edit mode it gets a dashed outline, a shield that keeps clicks away from the tile (the bar turns them into drags)
+/// and a × button.
 /// </summary>
 public sealed class SlotView : Grid
 {
+    static readonly Brush Accent = Frozen(Color.FromRgb(0x4C, 0x7C, 0xE0));
+    static readonly Brush AccentFill = Frozen(Color.FromArgb(0x2E, 0x7A, 0xA2, 0xF7));
+
     readonly List<TileView> _members = [];
     readonly StackPanel? _dots;
     readonly DispatcherTimer? _timer;
+    readonly Rectangle _outline;
+    readonly Border _shield;
     bool _compact;
+    bool _editing;
+    bool _dropHighlight;
 
     public SlotView(BarSlot slot, Func<bool> isLightTheme, TileCommands commands, ITileLog log)
     {
@@ -63,22 +73,79 @@ public sealed class SlotView : Grid
                 MouseWheel += OnWheel;
                 // After the member's own click handling: the click that opens the urgent member's popup also releases the stack.
                 AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler((_, _) => Changed(Rotation.Acknowledge())), handledEventsToo: true);
-
-                if (slot.Members.Count > 1)
-                {
-                    _timer = new DispatcherTimer { Interval = slot.Rotate!.Value };
-                    _timer.Tick += (_, _) => Changed(Rotation.Tick());
-                    _timer.Start();
-                }
             }
+
+            _outline = new Rectangle
+            {
+                RadiusX = 6,
+                RadiusY = 6,
+                StrokeThickness = 1,
+                StrokeDashArray = [3, 2],
+                IsHitTestVisible = false,
+                Visibility = Visibility.Collapsed,
+            };
+            _shield = new Border { Background = Frozen(Color.FromArgb(1, 0, 0, 0)), Cursor = Cursors.SizeAll, Visibility = Visibility.Collapsed };
+            RemoveButton = new Button
+            {
+                Content = "×",
+                ToolTip = slot.IsStack ? "Remove the tile shown from this stack" : "Remove tile",
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 2, 2, 0),
+                Visibility = Visibility.Collapsed,
+                Style = TryFindResource("RemoveButton") as Style,
+            };
+            RemoveButton.Click += (_, _) => RemoveRequested?.Invoke(this, EventArgs.Empty);
+            Children.Add(_outline);
+            Children.Add(_shield);
+            Children.Add(RemoveButton);
 
             ApplyWidths();
             ShowCurrent();
+            ApplyEditLook();
+
+            // Last: nothing after it can throw and leave a running timer behind.
+            if (Rotation is not null && slot.Members.Count > 1)
+            {
+                _timer = new DispatcherTimer { Interval = slot.Rotate!.Value };
+                _timer.Tick += (_, _) => Changed(Rotation.Tick());
+                _timer.Start();
+            }
         }
         catch
         {
             Detach(); // a constructor that throws must not leave a subscription or a running timer behind
             throw;
+        }
+    }
+
+    /// <summary>The × was clicked: remove this slot, or for a stack the member shown.</summary>
+    public event EventHandler? RemoveRequested;
+
+    internal Button RemoveButton { get; }
+
+    public bool Editing
+    {
+        get => _editing;
+        set
+        {
+            if (_editing == value) return;
+            _editing = value;
+            if (Rotation is not null) Rotation.Suspended = value;
+            if (!value) _dropHighlight = false;
+            ApplyEditLook();
+        }
+    }
+
+    /// <summary>While dragging in edit mode: this slot is where the dragged one would be stacked.</summary>
+    public bool DropHighlight
+    {
+        get => _dropHighlight;
+        set
+        {
+            if (_dropHighlight == value) return;
+            _dropHighlight = value && _editing;
+            ApplyEditLook();
         }
     }
 
@@ -153,6 +220,34 @@ public sealed class SlotView : Grid
             m.Width = width;
             m.Compact = _compact;
         }
+    }
+
+    void ApplyEditLook()
+    {
+        var edit = _editing ? Visibility.Visible : Visibility.Collapsed;
+        _outline.Visibility = edit;
+        _shield.Visibility = edit;
+        RemoveButton.Visibility = edit;
+        if (_dropHighlight)
+        {
+            _outline.Stroke = Accent;
+            _outline.Fill = AccentFill;
+            _outline.StrokeDashArray = null;
+        }
+        else
+        {
+            _outline.SetResourceReference(Shape.StrokeProperty, "TileForeground");
+            _outline.Fill = null;
+            _outline.StrokeDashArray = [3, 2];
+        }
+        _outline.Opacity = _dropHighlight ? 1 : 0.6;
+    }
+
+    static Brush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 
     void ShowCurrent()

@@ -47,16 +47,16 @@ public class TileCommandsTests
             new[]
             {
                 "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "",
-                "Move left", "Move right", "Add to stack", "", "Remove tile", "",
+                "Move left", "Move right", "Add to stack", "", "Edit layout", "Remove tile", "",
                 "Show config file", "", "Exit Taskbar Tiles",
             },
-            TileMenu.Entries(MiddleTile).Select(e => e.Header));
+            TileMenu.Entries(MiddleTile, editing: false).Select(e => e.Header));
 
     [Fact]
     public void Stack_menu_offers_remove_from_stack_and_pause_or_resume()
     {
-        var running = TileMenu.Entries(MiddleTile with { IsStack = true });
-        var paused = TileMenu.Entries(MiddleTile with { IsStack = true, RotationPaused = true });
+        var running = TileMenu.Entries(MiddleTile with { IsStack = true }, editing: false);
+        var paused = TileMenu.Entries(MiddleTile with { IsStack = true, RotationPaused = true }, editing: false);
 
         Assert.Equal(new[] { "Remove from stack", "Pause rotation" }, running.Skip(7).Take(2).Select(e => e.Header));
         Assert.Equal(LayoutCommand.PauseRotation, running[8].Layout);
@@ -67,7 +67,7 @@ public class TileCommandsTests
     [Fact]
     public void Moves_and_add_to_stack_are_disabled_where_they_cannot_apply()
     {
-        var only = TileMenu.Entries(new SlotMenuState(IsFirst: true, IsLast: true, IsStack: false, RotationPaused: false, CanStack: false));
+        var only = TileMenu.Entries(new SlotMenuState(IsFirst: true, IsLast: true, IsStack: false, RotationPaused: false, CanStack: false), editing: false);
 
         Assert.False(only.Single(e => e.Layout == LayoutCommand.MoveLeft).Enabled);
         Assert.False(only.Single(e => e.Layout == LayoutCommand.MoveRight).Enabled);
@@ -78,12 +78,22 @@ public class TileCommandsTests
     [Fact]
     public void Bar_menu_has_only_bar_commands()
     {
-        var entries = TileMenu.Entries(null);
+        var entries = TileMenu.Entries(null, editing: false);
 
-        Assert.Equal(new[] { "Show config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
-        Assert.Equal(BarCommand.OpenConfig, entries[0].Bar);
+        Assert.Equal(new[] { "Edit layout", "", "Show config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
+        Assert.Equal(BarCommand.EditLayout, entries[0].Bar);
         Assert.True(entries[1].IsSeparator);
-        Assert.Equal(BarCommand.Exit, entries[2].Bar);
+        Assert.Equal(BarCommand.OpenConfig, entries[2].Bar);
+        Assert.Equal(BarCommand.Exit, entries[4].Bar);
+    }
+
+    [Fact]
+    public void While_editing_both_menus_offer_done_editing()
+    {
+        Assert.Equal(BarCommand.DoneEditing, TileMenu.Entries(null, editing: true)[0].Bar);
+        var tile = TileMenu.Entries(MiddleTile, editing: true);
+        Assert.Contains(tile, e => e.Header == "Done editing" && e.Bar == BarCommand.DoneEditing);
+        Assert.DoesNotContain(tile, e => e.Header == "Edit layout");
     }
 
     [Fact]

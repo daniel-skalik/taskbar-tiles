@@ -8,7 +8,7 @@ namespace TaskbarTiles.Host.UI;
 public enum TileCommand { Configure, Refresh, ShowLog, Restart }
 
 /// <summary>Commands on the whole app.</summary>
-public enum BarCommand { OpenConfig, Exit }
+public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
 
 /// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
 public enum LayoutCommand { MoveLeft, MoveRight, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
@@ -27,8 +27,9 @@ public sealed record SlotMenuState(bool IsFirst, bool IsLast, bool IsStack, bool
 public static class TileMenu
 {
     /// <summary>The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null.</summary>
-    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot)
+    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing)
     {
+        var editEntry = editing ? new MenuEntry("Done editing", Bar: BarCommand.DoneEditing) : new MenuEntry("Edit layout", Bar: BarCommand.EditLayout);
         var entries = new List<MenuEntry>();
         if (slot is not null)
         {
@@ -51,7 +52,13 @@ public static class TileMenu
                 entries.Add(new("Add to stack", Layout: LayoutCommand.AddToStack, Enabled: slot.CanStack));
             }
             entries.Add(MenuEntry.Separator);
+            entries.Add(editEntry);
             entries.Add(new("Remove tile", Layout: LayoutCommand.RemoveTile));
+            entries.Add(MenuEntry.Separator);
+        }
+        else
+        {
+            entries.Add(editEntry);
             entries.Add(MenuEntry.Separator);
         }
         entries.Add(new("Show config file", Bar: BarCommand.OpenConfig));

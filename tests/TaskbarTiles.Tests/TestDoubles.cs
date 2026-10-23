@@ -91,6 +91,8 @@ public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
     public IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> Tiles => Slots.SelectMany(s => s.Members).ToList();
     public TaskbarTiles.Host.Taskbar.TaskbarInfo? Info { get; private set; }
     public bool Closed { get; private set; }
+    public bool Editing { get; private set; }
+    public void SetEditing(bool editing) => Editing = editing;
     public void SetSlots(IReadOnlyList<TaskbarTiles.Host.Layout.BarSlot> slots) => Slots = slots;
     public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info) => Info = info;
     public void Close() => Closed = true;

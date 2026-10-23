@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using TaskbarTiles.Contracts;
@@ -12,16 +14,22 @@ namespace TaskbarTiles.Host.UI;
 
 /// <summary>
 /// One per display: a borderless topmost strip in the free zone. LayoutEngine decides per slot: full, compact, or
-/// inside the » overflow popup. Reflows on every free-zone or slot change.
+/// inside the » overflow popup. Reflows on every free-zone or slot change. In edit mode it shows dashed tiles that can
+/// be dragged, a × on each, and + and Done at the end; every change is saved to config.json right away.
 /// </summary>
 public sealed class TileBar : Window, ITileBarView
 {
     const double GapDip = 6;
     const double InsetDip = 4; // tiles sit 4 DIP inside the taskbar's top and bottom edges
+    const double AddWidth = 40;
+    const double DoneWidth = 56;
+    const double DragThreshold = 4;
 
     readonly StackPanel _panel = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, InsetDip, 0, InsetDip) };
     readonly List<SlotView> _views = [];
     readonly Button _overflowButton;
+    readonly Button _addButton;
+    readonly Button _doneButton;
     readonly ITileLog _log;
     readonly TileCommands _commands;
     readonly ILayoutEditor _editor;
@@ -31,6 +39,11 @@ public sealed class TileBar : Window, ITileBarView
     IntPtr _hwnd;
     TaskbarInfo? _info;
     bool? _light;
+    bool _editing;
+    SlotView? _dragSource;
+    SlotView? _dropTarget;
+    Point _dragStart;
+    bool _dragging;
 
     public TileBar(string displayId, ITileLog log, TileCommands commands, ILayoutEditor editor)
     {
@@ -51,14 +64,13 @@ public sealed class TileBar : Window, ITileBarView
         Content = _panel;
         Theme.ApplyTo(Resources, light: false);
 
-        _overflowButton = new Button
-        {
-            Content = "»",
-            Width = LayoutEngine.OverflowWidth,
-            ToolTip = "More tiles",
-            Style = TryFindResource("BarButton") as Style,
-        };
+        _overflowButton = BarButton("»", LayoutEngine.OverflowWidth, "More tiles");
         _overflowButton.Click += (_, _) => ToggleOverflow();
+        _addButton = BarButton("+", AddWidth, "Add a tile");
+        _addButton.FontSize = 18;
+        _addButton.Click += (_, _) => ShowGallery();
+        _doneButton = BarButton("Done", DoneWidth, "Leave edit mode (Esc)");
+        _doneButton.Click += (_, _) => _editor.SetEditMode(false);
 
         // Bar-wide menu for the gaps between tiles; each slot gets its own menu in CreateView.
         ContextMenu = new ContextMenu();
@@ -67,12 +79,17 @@ public sealed class TileBar : Window, ITileBarView
         // never sees outside clicks. Bring the bar to the foreground while a menu is open.
         // ContextMenuOpening bubbles, so this also covers the slots' menus.
         ContextMenuOpening += (_, _) => { if (_hwnd != IntPtr.Zero) SetForegroundWindow(_hwnd); };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (!_editing || e.Key != Key.Escape) return;
+            e.Handled = true;
+            _editor.SetEditMode(false);
+        };
 
         SourceInitialized += (_, _) =>
         {
             _hwnd = new WindowInteropHelper(this).Handle;
-            var ex = GetWindowLongPtr(_hwnd, GWL_EXSTYLE).ToInt64();
-            SetWindowLongPtr(_hwnd, GWL_EXSTYLE, new IntPtr(ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE));
+            SetActivatable(_editing);
             Reflow();
         };
 
@@ -90,6 +107,7 @@ public sealed class TileBar : Window, ITileBarView
     {
         if (_slots.SequenceEqual(slots)) return;
         _slots = slots.ToList();
+        EndDrag();
         CloseOverflow(); // the popup may hold views that move or go away
 
         var pool = _views.ToList();
@@ -129,18 +147,56 @@ public sealed class TileBar : Window, ITileBarView
         Reflow();
     }
 
+    /// <summary>
+    /// Edit mode. The bar can be activated meanwhile (so Esc reaches it); popups close and stacks stop rotating.
+    /// </summary>
+    public void SetEditing(bool editing)
+    {
+        if (_editing == editing) return;
+        _editing = editing;
+        EndDrag();
+        FlyoutWindow.CloseOpen();
+        foreach (var view in _views) view.Editing = editing;
+        SetActivatable(editing);
+        FillBarMenu(ContextMenu);
+        Reflow();
+    }
+
+    Button BarButton(string content, double width, string tooltip) => new()
+    {
+        Content = content,
+        Width = width,
+        ToolTip = tooltip,
+        Style = TryFindResource("BarButton") as Style,
+    };
+
+    void SetActivatable(bool activatable)
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        var ex = GetWindowLongPtr(_hwnd, GWL_EXSTYLE).ToInt64() | WS_EX_TOOLWINDOW;
+        ex = activatable ? ex & ~WS_EX_NOACTIVATE : ex | WS_EX_NOACTIVATE;
+        SetWindowLongPtr(_hwnd, GWL_EXSTYLE, new IntPtr(ex));
+    }
+
     SlotView CreateView(BarSlot slot)
     {
-        var view = new SlotView(slot, () => _light ?? false, _commands, _log) { ContextMenu = new ContextMenu() };
+        var view = new SlotView(slot, () => _light ?? false, _commands, _log) { ContextMenu = new ContextMenu(), Editing = _editing };
         // Built when it opens, for the member shown at that moment.
         view.ContextMenuOpening += (_, _) => FillSlotMenu(view.ContextMenu, view);
+        view.MouseLeftButtonDown += (_, e) => BeginDrag(view, e);
+        view.RemoveRequested += (_, _) =>
+        {
+            var current = view.Slot;
+            var member = view.CurrentMember;
+            Edit(l => LayoutEdits.Remove(l, current.Index, current.IsStack ? member : null));
+        };
         return view;
     }
 
     void FillBarMenu(ContextMenu menu)
     {
         menu.Items.Clear();
-        foreach (var entry in TileMenu.Entries(null)) menu.Items.Add(Item(entry, null, 0));
+        foreach (var entry in TileMenu.Entries(null, _editing)) menu.Items.Add(Item(entry, null, 0));
     }
 
     void FillSlotMenu(ContextMenu menu, SlotView view)
@@ -154,7 +210,7 @@ public sealed class TileBar : Window, ITileBarView
             CanStack: !view.Slot.IsStack && _views.Count > 1);
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
         menu.Items.Clear();
-        foreach (var entry in TileMenu.Entries(state)) menu.Items.Add(Item(entry, view, member));
+        foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
     }
 
     Control Item(MenuEntry entry, SlotView? view, int member)
@@ -168,11 +224,23 @@ public sealed class TileBar : Window, ITileBarView
         }
         else if (entry.Layout is { } layout && view is not null)
             item.Click += (_, _) => Run(layout, view, member);
+        else if (entry.Bar == BarCommand.EditLayout)
+            item.Click += (_, _) => EnterEditMode();
+        else if (entry.Bar == BarCommand.DoneEditing)
+            item.Click += (_, _) => _editor.SetEditMode(false);
         else if (entry.Bar == BarCommand.OpenConfig)
             item.Click += (_, _) => _commands.OpenConfig();
         else if (entry.Bar == BarCommand.Exit)
             item.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         return item;
+    }
+
+    void EnterEditMode()
+    {
+        _editor.SetEditMode(true); // every bar, this one included
+        if (!IsVisible) return;
+        Activate();
+        Focus();
     }
 
     void Run(LayoutCommand command, SlotView view, int member)
@@ -207,11 +275,13 @@ public sealed class TileBar : Window, ITileBarView
         }
     }
 
+    void Edit(Func<DisplayLayout, DisplayLayout> edit) => Save(() => _editor.EditLayout(DisplayId, edit));
+
     /// <summary>Saves a layout change; the new slots arrive through SetSlots. Shows a notice when nothing was saved.</summary>
-    void Edit(Func<DisplayLayout, DisplayLayout> edit)
+    void Save(Func<ConfigError?> save)
     {
         ConfigError? error;
-        try { error = _editor.EditLayout(DisplayId, edit); }
+        try { error = save(); }
         catch (Exception ex)
         {
             _log.Error("Layout edit failed", ex);
@@ -224,32 +294,158 @@ public sealed class TileBar : Window, ITileBarView
         catch (Exception ex) { _log.Error("Could not show the save notice", ex); }
     }
 
+    /// <summary>The + button: tiles this display does not show yet, a new tile per plugin, and the sample scripts.</summary>
+    void ShowGallery()
+    {
+        IReadOnlyList<GalleryItem> items;
+        try { items = _editor.GalleryFor(DisplayId); }
+        catch (Exception ex)
+        {
+            _log.Error("Could not list the tile gallery", ex);
+            return;
+        }
+
+        var panel = new StackPanel();
+        panel.Children.Add(FlyoutWindow.Text("Add a tile", 14, FontWeights.SemiBold, "TileForeground"));
+        var hint = FlyoutWindow.Text(items.Count == 0
+            ? "Nothing to add: every tile is on this display already."
+            : "It is added at the end of this display's tiles.", 12, FontWeights.Normal, "TileDim");
+        hint.Margin = new Thickness(0, 2, 0, 10);
+        panel.Children.Add(hint);
+
+        var grid = new UniformGrid { Columns = 2 };
+        foreach (var item in items)
+        {
+            var content = new StackPanel();
+            var title = FlyoutWindow.Text(item.Title, 12.5, FontWeights.SemiBold, "TileForeground");
+            title.TextTrimming = TextTrimming.CharacterEllipsis;
+            var subtitle = FlyoutWindow.Text(item.Subtitle, 11.5, FontWeights.Normal, "TileDim");
+            subtitle.TextTrimming = TextTrimming.CharacterEllipsis;
+            content.Children.Add(title);
+            content.Children.Add(subtitle);
+            var button = new Button
+            {
+                Content = content,
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Style = TryFindResource("FlyoutButton") as Style,
+            };
+            button.Click += (_, _) =>
+            {
+                FlyoutWindow.CloseOpen();
+                Save(() => _editor.AddFromGallery(DisplayId, item));
+            };
+            grid.Children.Add(button);
+        }
+        panel.Children.Add(grid);
+        FlyoutWindow.ShowPanel(_addButton, panel, _light ?? false, _log);
+    }
+
+    void BeginDrag(SlotView view, MouseButtonEventArgs e)
+    {
+        if (!_editing || !ReferenceEquals(view.Parent, _panel)) return;
+        _dragSource = view;
+        _dragStart = e.GetPosition(this);
+        _dragging = false;
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_dragSource is null) return;
+        var p = e.GetPosition(this);
+        if (!_dragging && (Math.Abs(p.X - _dragStart.X) > DragThreshold || Math.Abs(p.Y - _dragStart.Y) > DragThreshold))
+        {
+            _dragging = true;
+            _dragSource.Opacity = 0.35;
+        }
+        if (!_dragging) return;
+        var (target, position) = DropTargetAt(e);
+        SetDropTarget(position == DropPosition.Into ? target : null);
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        if (_dragSource is null) return;
+        var source = _dragSource;
+        var dragged = _dragging;
+        var (target, position) = DropTargetAt(e);
+        EndDrag();
+        if (!dragged || target is null) return;
+        var from = source.Slot.Index;
+        var to = target.Slot.Index;
+        Edit(l => LayoutEdits.Drop(l, from, to, position));
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        EndDrag();
+    }
+
+    /// <summary>The bar slot under the pointer (not the dragged one) and where on it: the middle 40 % means "into".</summary>
+    (SlotView? Target, DropPosition Position) DropTargetAt(MouseEventArgs e)
+    {
+        foreach (var view in _views)
+        {
+            if (ReferenceEquals(view, _dragSource) || !ReferenceEquals(view.Parent, _panel) || view.ActualWidth <= 0) continue;
+            var x = e.GetPosition(view).X;
+            if (x >= 0 && x < view.ActualWidth) return (view, LayoutEdits.DropPositionAt(x / view.ActualWidth));
+        }
+        return (null, DropPosition.Before);
+    }
+
+    void SetDropTarget(SlotView? target)
+    {
+        if (ReferenceEquals(target, _dropTarget)) return;
+        if (_dropTarget is not null) _dropTarget.DropHighlight = false;
+        _dropTarget = target;
+        if (target is not null) target.DropHighlight = true;
+    }
+
+    void EndDrag()
+    {
+        var source = _dragSource;
+        _dragSource = null; // first: releasing the capture raises LostMouseCapture, which calls back here
+        _dragging = false;
+        if (source is not null) source.Opacity = 1;
+        SetDropTarget(null);
+        if (IsMouseCaptured) ReleaseMouseCapture();
+    }
+
     void Reflow()
     {
         if (_hwnd == IntPtr.Zero || _info is null) return;
         var zone = _info.FreeZone.Zone;
         var scale = _info.DpiScale;
+        var hidden = _info.Hidden || zone.IsEmpty;
+        var chrome = _editing ? AddWidth + GapDip + DoneWidth : 0;
 
-        var layout = _info.Hidden || zone.IsEmpty
+        var layout = hidden
             ? null
-            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned)).ToList(), zone.Width / scale, GapDip);
-        Arrange(layout);
+            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned)).ToList(),
+                zone.Width / scale - (_editing ? chrome + GapDip : 0), GapDip);
+        Arrange(layout, showChrome: _editing && !hidden);
 
-        if (layout is null || layout.Width <= 0)
+        var widthDip = (layout?.Width ?? 0) + (_editing && !hidden ? chrome + (layout?.Width > 0 ? GapDip : 0) : 0);
+        if (widthDip <= 0)
         {
             CloseOverflow();
             if (IsVisible) Hide();
             return;
         }
 
-        var w = (int)Math.Ceiling(layout.Width * scale);
+        var w = (int)Math.Ceiling(widthDip * scale);
         var x = _info.FreeZone.IconsCentered ? zone.Left : zone.Right - w;
         if (!IsVisible) Show();
         SetWindowPos(_hwnd, HWND_TOPMOST, x, zone.Top, w, zone.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 
-    /// <summary>Puts full and compact slots on the bar, then the » tile when anything overflows.</summary>
-    void Arrange(LayoutResult? layout)
+    /// <summary>Puts full and compact slots on the bar, then the » tile when anything overflows, then + and Done in edit mode.</summary>
+    void Arrange(LayoutResult? layout, bool showChrome)
     {
         var shown = new List<FrameworkElement>();
         var overflowed = new List<SlotView>();
@@ -267,6 +463,11 @@ public sealed class TileBar : Window, ITileBarView
             shown.Add(_views[i]);
         }
         if (layout?.ShowOverflow == true) shown.Add(_overflowButton);
+        if (showChrome)
+        {
+            shown.Add(_addButton);
+            shown.Add(_doneButton);
+        }
 
         if (!overflowed.SequenceEqual(_overflowed)) CloseOverflow();
         _overflowed = overflowed;

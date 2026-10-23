@@ -13,12 +13,20 @@ public interface ITileBarView
     string DisplayId { get; }
     void SetSlots(IReadOnlyList<BarSlot> slots);
     void Apply(TaskbarInfo info);
+
+    /// <summary>Edit mode: dashed tiles, drag, ×, + and Done.</summary>
+    void SetEditing(bool editing);
     void Close();
 }
 
 /// <summary>Layout changes a bar asks for. HostController implements it. UI thread only.</summary>
 public interface ILayoutEditor
 {
+    /// <summary>Edit mode is on for every bar at once; each bar still edits only its own display's layout.</summary>
+    bool Editing { get; }
+
+    void SetEditMode(bool editing);
+
     /// <summary>
     /// Applies <paramref name="edit"/> to the layout the display shows and saves config.json under the display's
     /// edit key (<see cref="DisplayResolver.EditKey"/>). Returns null when saved or when nothing changed, otherwise why
@@ -55,6 +63,8 @@ public sealed class HostController(
 
     public IReadOnlyDictionary<string, TileRuntime> Runtimes => _runtimes.ToDictionary(kv => kv.Key, kv => kv.Value.Runtime);
 
+    public bool Editing { get; private set; }
+
     public void Start()
     {
         taskbars.Changed += (_, _) => Sync();
@@ -69,6 +79,20 @@ public sealed class HostController(
     {
         if (_disposed) return;
         foreach (var (runtime, _) in _runtimes.Values) runtime.RaiseResumed();
+    }
+
+    /// <summary>
+    /// Turns edit mode on or off on every bar, so a display without tiles (whose bar is otherwise hidden) can get some.
+    /// </summary>
+    public void SetEditMode(bool editing)
+    {
+        if (_disposed || Editing == editing) return;
+        Editing = editing;
+        foreach (var (id, bar) in _bars)
+        {
+            try { bar.SetEditing(editing); }
+            catch (Exception ex) { logFor("host").Error($"Switching edit mode on display '{id}' failed", ex); }
+        }
     }
 
     public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit)
@@ -149,7 +173,10 @@ public sealed class HostController(
             try
             {
                 if (!_bars.TryGetValue(info.DisplayId, out var bar))
+                {
                     _bars[info.DisplayId] = bar = createBar(info.DisplayId);
+                    if (Editing) bar.SetEditing(true);
+                }
                 bar.SetSlots(BarSlots(layouts[info.DisplayId]));
                 bar.Apply(info);
             }

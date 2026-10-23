@@ -159,4 +159,23 @@ public class HostControllerLayoutTests
         Assert.Equal(new[] { "a", "b" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
         Assert.True(f.Writer.Current.Tiles.ContainsKey("c")); // the definition stays
     }
+
+    [Fact]
+    public void Edit_mode_switches_every_bar_and_reaches_bars_created_while_on()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));
+
+        f.Host.SetEditMode(true);
+
+        Assert.True(f.Host.Editing);
+        Assert.True(f.Bars["MAIN"].Editing);
+        Assert.True(f.Bars["SECOND"].Editing);
+
+        f.Source.Current = [.. f.Source.Current, FakeTaskbarSource.Display("THIRD", false)];
+        f.Source.Raise();
+        Assert.True(f.Bars["THIRD"].Editing);
+
+        f.Host.SetEditMode(false);
+        Assert.All(f.Bars.Values, b => Assert.False(b.Editing));
+    }
 }
