@@ -48,7 +48,9 @@ if (-not (Test-Path -LiteralPath $project)) { throw "Cannot find $project. Run t
 # 1. Publish into a staging folder and verify it. A failure here leaves the running app and the install untouched.
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 Write-Host "Publishing Release into $stage ..."
-& dotnet publish $project -c Release -o $stage --nologo
+# --disable-build-servers: a build node left running by another process (for example an agent session, whose
+# writes the Claude desktop app redirects) would otherwise do the copy, and the files land somewhere else.
+& dotnet publish $project -c Release -o $stage --nologo --disable-build-servers
 if ($LASTEXITCODE -ne 0) {
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     throw "dotnet publish failed with exit code $LASTEXITCODE. The installed app was not changed."
@@ -57,7 +59,7 @@ foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
         (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.dll'),
         (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.dll'))) {
     if (-not (Test-Path -LiteralPath $required)) {
-        Remove-Item -LiteralPath $stage -Recurse -Force
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
         throw "Publish output is missing $required. The installed app was not changed."
     }
 }
@@ -70,7 +72,7 @@ $others = @($running | Where-Object { $installed -notcontains $_ })
 foreach ($p in $installed) {
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
     if (-not $p.WaitForExit(10000)) {
-        Remove-Item -LiteralPath $stage -Recurse -Force
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
         throw "TaskbarTiles (process $($p.Id)) did not exit within 10 seconds. The installed app was not changed."
     }
     Write-Host "Stopped TaskbarTiles (process $($p.Id))."
