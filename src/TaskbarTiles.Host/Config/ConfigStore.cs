@@ -167,7 +167,10 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
         }
         catch
         {
-            try { File.Delete(temp); } catch (Exception) { /* best effort; the next save overwrites it */ }
+            // File.Replace can fail after moving config.json to .bak but before moving .tmp into place;
+            // then .tmp is the only copy of the new config, so it is kept.
+            if (File.Exists(path))
+                try { File.Delete(temp); } catch (Exception) { /* best effort; the next save overwrites it */ }
             throw;
         }
     }
