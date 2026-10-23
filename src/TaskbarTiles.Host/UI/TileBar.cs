@@ -40,6 +40,7 @@ public sealed class TileBar : Window, ITileBarView
     TaskbarInfo? _info;
     bool? _light;
     bool _editing;
+    IntPtr _menuForeground; // the foreground window before a menu took it for the bar
     IntPtr _previousForeground; // the window that was in front when edit mode activated this bar
     SlotView? _dragSource;
     SlotView? _dropTarget;
@@ -79,7 +80,13 @@ public sealed class TileBar : Window, ITileBarView
         // Outside edit mode the bar is WS_EX_NOACTIVATE, so it never becomes the foreground window and the menu
         // never sees outside clicks. Bring the bar to the foreground while a menu is open.
         // ContextMenuOpening bubbles, so this also covers the slots' menus.
-        ContextMenuOpening += (_, _) => { if (_hwnd != IntPtr.Zero) SetForegroundWindow(_hwnd); };
+        ContextMenuOpening += (_, _) =>
+        {
+            if (_hwnd == IntPtr.Zero) return;
+            var foreground = GetForegroundWindow();
+            if (foreground != _hwnd) _menuForeground = foreground;
+            SetForegroundWindow(_hwnd);
+        };
         PreviewKeyDown += (_, e) =>
         {
             if (!_editing || e.Key != Key.Escape) return;
@@ -250,8 +257,7 @@ public sealed class TileBar : Window, ITileBarView
     {
         _editor.SetEditMode(true); // every bar, this one included
         if (!IsVisible) return;
-        var foreground = GetForegroundWindow();
-        if (foreground != _hwnd) _previousForeground = foreground;
+        _previousForeground = _menuForeground;
         Activate();
         Focus();
     }
@@ -455,7 +461,9 @@ public sealed class TileBar : Window, ITileBarView
         }
 
         var w = (int)Math.Ceiling(widthDip * scale);
-        if (_editing && w > zone.Width) w = zone.Width; // never cover the taskbar icons
+        var clamped = _editing && w > zone.Width;
+        if (clamped) w = zone.Width; // never cover the taskbar icons
+        _panel.HorizontalAlignment = clamped ? HorizontalAlignment.Right : HorizontalAlignment.Left; // keep + and Done visible
         var x = _info.FreeZone.IconsCentered ? zone.Left : zone.Right - w;
         if (!IsVisible) Show();
         SetWindowPos(_hwnd, HWND_TOPMOST, x, zone.Top, w, zone.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
