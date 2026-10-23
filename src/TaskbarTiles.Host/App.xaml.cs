@@ -51,7 +51,7 @@ public partial class App : Application
             var ui = new WpfUiDispatcher(Dispatcher);
             _tracker = new TaskbarTracker(Dispatcher);
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
-                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir);
+                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config);
 
             _config.Changed += (_, _) => ui.Post(() =>
             {

@@ -86,12 +86,34 @@ public sealed class FakeTaskbarSource : TaskbarTiles.Host.Taskbar.ITaskbarSource
 public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
 {
     public string DisplayId { get; } = displayId;
-    public IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> Tiles { get; private set; } = [];
+    public IReadOnlyList<TaskbarTiles.Host.Layout.BarSlot> Slots { get; private set; } = [];
+    /// <summary>Every member of every slot, in order.</summary>
+    public IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> Tiles => Slots.SelectMany(s => s.Members).ToList();
     public TaskbarTiles.Host.Taskbar.TaskbarInfo? Info { get; private set; }
     public bool Closed { get; private set; }
-    public void SetTiles(IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> runtimes) => Tiles = runtimes;
+    public void SetSlots(IReadOnlyList<TaskbarTiles.Host.Layout.BarSlot> slots) => Slots = slots;
     public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info) => Info = info;
     public void Close() => Closed = true;
+}
+
+/// <summary>An in-memory config.json: Save edits the JSON text the way ConfigStore does, without a file.</summary>
+public sealed class FakeConfigWriter(string json) : TaskbarTiles.Host.Config.IConfigWriter
+{
+    public string Json { get; private set; } = json;
+    public int Saves { get; private set; }
+    public TaskbarTiles.Host.Config.HostConfig Current => TaskbarTiles.Host.Config.ConfigParser.Parse(Json).Config!;
+
+    public TaskbarTiles.Host.Config.ConfigError? Save(Action<System.Text.Json.Nodes.JsonObject> edit)
+    {
+        var root = TaskbarTiles.Host.Config.ConfigJson.ParseRoot(Json);
+        edit(root);
+        var text = TaskbarTiles.Host.Config.ConfigJson.Serialize(root);
+        var parsed = TaskbarTiles.Host.Config.ConfigParser.Parse(text);
+        if (!parsed.Success) return parsed.Error;
+        Json = text;
+        Saves++;
+        return null;
+    }
 }
 
 public static class ScriptFiles

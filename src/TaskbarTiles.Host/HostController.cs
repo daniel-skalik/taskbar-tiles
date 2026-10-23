@@ -1,5 +1,6 @@
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
+using TaskbarTiles.Host.Layout;
 using TaskbarTiles.Host.Plugins;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.Taskbar;
@@ -10,14 +11,25 @@ namespace TaskbarTiles.Host;
 public interface ITileBarView
 {
     string DisplayId { get; }
-    void SetTiles(IReadOnlyList<TileRuntime> runtimes);
+    void SetSlots(IReadOnlyList<BarSlot> slots);
     void Apply(TaskbarInfo info);
     void Close();
 }
 
+/// <summary>Layout changes a bar asks for. HostController implements it. UI thread only.</summary>
+public interface ILayoutEditor
+{
+    /// <summary>
+    /// Applies <paramref name="edit"/> to the layout the display shows and saves config.json under the display's
+    /// edit key (<see cref="DisplayResolver.EditKey"/>). Returns null when saved or when nothing changed, otherwise why
+    /// nothing was saved.
+    /// </summary>
+    ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit);
+}
+
 /// <summary>
 /// Keeps runtimes and bars in sync with config and connected displays.
-/// One runtime per tile id placed on any display; one bar per display. Runs on the UI thread.
+/// One runtime per tile id placed on any display (stack members included); one bar per display. Runs on the UI thread.
 /// </summary>
 public sealed class HostController(
     ConnectorCatalog catalog,
@@ -26,7 +38,8 @@ public sealed class HostController(
     IUiDispatcher ui,
     Func<string, ITileLog> logFor,
     Func<string, ITileBarView> createBar,
-    string? configDirectory = null) : IAsyncDisposable
+    string? configDirectory = null,
+    IConfigWriter? writer = null) : ILayoutEditor, IAsyncDisposable
 {
     readonly Dictionary<string, (TileRuntime Runtime, TileConfig Config)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
@@ -51,15 +64,35 @@ public sealed class HostController(
         foreach (var (runtime, _) in _runtimes.Values) runtime.RaiseResumed();
     }
 
+    public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit)
+    {
+        if (_disposed) return new ConfigError("Taskbar Tiles is shutting down.");
+        if (writer is null) return new ConfigError("This host cannot save config.json.");
+        var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
+        if (display is null) return new ConfigError($"Display '{displayId}' is no longer connected.");
+
+        var cfg = config();
+        var layout = DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
+        var changed = edit(layout);
+        if (LayoutEdits.SameSlots(layout, changed)) return null;
+
+        var key = DisplayResolver.EditKey(cfg, displayId, display.IsPrimary);
+        var error = writer.Save(root => ConfigJson.SetDisplay(root, key, changed));
+        if (error is not null) return error;
+
+        logFor("host").Info($"Saved the layout of display '{displayId}' under \"{key}\"");
+        ui.Post(Sync); // not inline: the request usually comes from a handler of a view this rebuilds
+        return null;
+    }
+
     void Sync()
     {
         if (_disposed) return;
         var cfg = config();
         var displays = taskbars.Current.GroupBy(d => d.DisplayId).Select(g => g.First()).ToList();
-        var layouts = displays.ToDictionary(d => d.DisplayId,
-            d => DisplayResolver.VisibleTileIds(DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary)));
+        var layouts = displays.ToDictionary(d => d.DisplayId, d => DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary));
 
-        SyncRuntimes(cfg, layouts.Values.SelectMany(ids => ids).ToHashSet(StringComparer.Ordinal));
+        SyncRuntimes(cfg, layouts.Values.SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal));
 
         foreach (var gone in _bars.Keys.Except(layouts.Keys).ToList())
         {
@@ -74,7 +107,7 @@ public sealed class HostController(
             {
                 if (!_bars.TryGetValue(info.DisplayId, out var bar))
                     _bars[info.DisplayId] = bar = createBar(info.DisplayId);
-                bar.SetTiles(layouts[info.DisplayId].Select(id => _runtimes[id].Runtime).ToList());
+                bar.SetSlots(BarSlots(layouts[info.DisplayId]));
                 bar.Apply(info);
             }
             catch (Exception ex)
@@ -82,6 +115,25 @@ public sealed class HostController(
                 logFor("host").Error($"Updating bar for display '{info.DisplayId}' failed", ex);
             }
         }
+    }
+
+    /// <summary>Config slots as the bar shows them; an empty stack shows nothing but keeps its index.</summary>
+    IReadOnlyList<BarSlot> BarSlots(DisplayLayout layout)
+    {
+        var slots = new List<BarSlot>();
+        for (var i = 0; i < layout.Slots.Count; i++)
+        {
+            switch (layout.Slots[i])
+            {
+                case TileSlot t when _runtimes.TryGetValue(t.TileId, out var entry):
+                    slots.Add(new BarSlot(i, [entry.Runtime], t.Pin, null));
+                    break;
+                case StackSlot s when s.TileIds.Count > 0 && s.TileIds.All(_runtimes.ContainsKey):
+                    slots.Add(new BarSlot(i, s.TileIds.Select(id => _runtimes[id].Runtime).ToList(), false, s.Rotate));
+                    break;
+            }
+        }
+        return slots;
     }
 
     void SyncRuntimes(HostConfig cfg, HashSet<string> wanted)

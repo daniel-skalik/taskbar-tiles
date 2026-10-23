@@ -33,15 +33,4 @@ public static class DisplayResolver
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>Tiles shown in milestone 1: plain slots plus the first item of each stack.</summary>
-    public static IReadOnlyList<string> VisibleTileIds(DisplayLayout layout) =>
-        layout.Slots
-            .Select(s => s switch
-            {
-                TileSlot t => t.TileId,
-                StackSlot { TileIds.Count: > 0 } st => st.TileIds[0],
-                _ => null,
-            })
-            .OfType<string>()
-            .ToList();
 }

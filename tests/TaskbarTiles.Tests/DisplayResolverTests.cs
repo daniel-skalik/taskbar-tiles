@@ -31,13 +31,6 @@ public class DisplayResolverTests
         Assert.Empty(DisplayResolver.Resolve(Config(("primary", Primary)), "DEV9", isPrimary: false).Slots);
 
     [Fact]
-    public void Visible_tile_ids_take_first_item_of_each_stack()
-    {
-        var layout = new DisplayLayout([new TileSlot("a", false), new StackSlot(["b", "c"], TimeSpan.FromSeconds(5)), new StackSlot([], TimeSpan.FromSeconds(5))]);
-        Assert.Equal(new[] { "a", "b" }, DisplayResolver.VisibleTileIds(layout));
-    }
-
-    [Fact]
     public void Placed_tile_ids_include_every_stack_member_once()
     {
         var layout = new DisplayLayout([new TileSlot("a", false), new StackSlot(["b", "c", "a"], TimeSpan.FromSeconds(5)), new StackSlot([], TimeSpan.FromSeconds(5))]);

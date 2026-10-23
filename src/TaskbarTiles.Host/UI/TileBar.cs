@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Layout;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.Taskbar;
 using static TaskbarTiles.Host.Taskbar.NativeMethods;
@@ -63,8 +64,11 @@ public sealed class TileBar : Window, ITileBarView
     public string DisplayId { get; }
     public event EventHandler? ExitRequested;
 
+    /// <summary>Shows the first member of each slot (stacks render in full later in milestone 3).</summary>
+    public void SetSlots(IReadOnlyList<BarSlot> slots) => SetTiles(slots.Select(s => s.Members[0]).ToList());
+
     /// <summary>Replaces the tiles unless the same runtimes are already shown in the same order.</summary>
-    public void SetTiles(IReadOnlyList<TileRuntime> runtimes)
+    void SetTiles(IReadOnlyList<TileRuntime> runtimes)
     {
         if (_requested.SequenceEqual(runtimes)) return;
         _requested = runtimes.ToList();
