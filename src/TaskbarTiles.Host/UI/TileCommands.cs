@@ -10,28 +10,48 @@ public enum TileCommand { Configure, Refresh, ShowLog, Restart }
 /// <summary>Commands on the whole app.</summary>
 public enum BarCommand { OpenConfig, Exit }
 
-/// <summary>One context-menu line; an entry with neither command is a separator.</summary>
-public sealed record MenuEntry(string Header, TileCommand? Tile = null, BarCommand? Bar = null)
+/// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
+public enum LayoutCommand { MoveLeft, MoveRight, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
+
+/// <summary>One context-menu line; an entry with no command is a separator.</summary>
+public sealed record MenuEntry(string Header, TileCommand? Tile = null, BarCommand? Bar = null, LayoutCommand? Layout = null,
+    bool Enabled = true)
 {
     public static MenuEntry Separator { get; } = new("");
-    public bool IsSeparator => Tile is null && Bar is null;
+    public bool IsSeparator => Tile is null && Bar is null && Layout is null;
 }
+
+/// <summary>What the menu needs to know about the right-clicked slot.</summary>
+public sealed record SlotMenuState(bool IsFirst, bool IsLast, bool IsStack, bool RotationPaused, bool CanStack);
 
 public static class TileMenu
 {
-    /// <summary>
-    /// The right-click menu. Move left/right, Add to stack / Pause rotation, Edit layout and Remove tile
-    /// need config writing and come with edit mode in milestone 3.
-    /// </summary>
-    public static IReadOnlyList<MenuEntry> Entries(bool onTile)
+    /// <summary>The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null.</summary>
+    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot)
     {
         var entries = new List<MenuEntry>();
-        if (onTile)
+        if (slot is not null)
         {
             entries.Add(new("Configure connector…", TileCommand.Configure));
             entries.Add(new("Refresh now", TileCommand.Refresh));
             entries.Add(new("Show connector log", TileCommand.ShowLog));
             entries.Add(new("Restart tile", TileCommand.Restart));
+            entries.Add(MenuEntry.Separator);
+            entries.Add(new("Move left", Layout: LayoutCommand.MoveLeft, Enabled: !slot.IsFirst));
+            entries.Add(new("Move right", Layout: LayoutCommand.MoveRight, Enabled: !slot.IsLast));
+            if (slot.IsStack)
+            {
+                entries.Add(new("Remove from stack", Layout: LayoutCommand.RemoveFromStack));
+                entries.Add(slot.RotationPaused
+                    ? new("Resume rotation", Layout: LayoutCommand.ResumeRotation)
+                    : new("Pause rotation", Layout: LayoutCommand.PauseRotation));
+            }
+            else
+            {
+                entries.Add(new("Add to stack", Layout: LayoutCommand.AddToStack, Enabled: slot.CanStack));
+            }
+            entries.Add(MenuEntry.Separator);
+            entries.Add(new("Remove tile", Layout: LayoutCommand.RemoveTile));
             entries.Add(MenuEntry.Separator);
         }
         entries.Add(new("Show config file", Bar: BarCommand.OpenConfig));

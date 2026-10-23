@@ -94,7 +94,7 @@ public partial class App : Application
 
     ITileBarView CreateBar(string displayId)
     {
-        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!);
+        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!);
         bar.ExitRequested += (_, _) => Shutdown();
         return bar;
     }

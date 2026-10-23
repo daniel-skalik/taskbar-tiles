@@ -15,4 +15,10 @@ public static class ConfigNotice
             : "The last good config stays active.";
         return $"{what}. {consequence} Click to show config.json in Explorer.";
     }
+
+    public const string SaveFailedTitle = "Layout not saved";
+
+    /// <summary>Why an edit-mode or menu change was not written; config.json is left as it was.</summary>
+    public static string SaveFailedBody(ConfigError error) =>
+        $"{error.ToString().TrimEnd().TrimEnd('.')}. config.json is unchanged. Click to show config.json in Explorer.";
 }

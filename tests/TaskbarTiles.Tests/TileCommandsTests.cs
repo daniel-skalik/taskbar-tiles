@@ -39,16 +39,46 @@ public class TileCommandsTests
         public void Dispose() => Dir.Dispose();
     }
 
+    static readonly SlotMenuState MiddleTile = new(IsFirst: false, IsLast: false, IsStack: false, RotationPaused: false, CanStack: true);
+
     [Fact]
-    public void Tile_menu_lists_tile_commands_then_bar_commands() =>
+    public void Tile_menu_lists_tile_commands_layout_commands_then_bar_commands() =>
         Assert.Equal(
-            new[] { "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "", "Show config file", "", "Exit Taskbar Tiles" },
-            TileMenu.Entries(onTile: true).Select(e => e.Header));
+            new[]
+            {
+                "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "",
+                "Move left", "Move right", "Add to stack", "", "Remove tile", "",
+                "Show config file", "", "Exit Taskbar Tiles",
+            },
+            TileMenu.Entries(MiddleTile).Select(e => e.Header));
+
+    [Fact]
+    public void Stack_menu_offers_remove_from_stack_and_pause_or_resume()
+    {
+        var running = TileMenu.Entries(MiddleTile with { IsStack = true });
+        var paused = TileMenu.Entries(MiddleTile with { IsStack = true, RotationPaused = true });
+
+        Assert.Equal(new[] { "Remove from stack", "Pause rotation" }, running.Skip(7).Take(2).Select(e => e.Header));
+        Assert.Equal(LayoutCommand.PauseRotation, running[8].Layout);
+        Assert.Equal(LayoutCommand.ResumeRotation, paused[8].Layout);
+        Assert.DoesNotContain(running, e => e.Layout == LayoutCommand.AddToStack);
+    }
+
+    [Fact]
+    public void Moves_and_add_to_stack_are_disabled_where_they_cannot_apply()
+    {
+        var only = TileMenu.Entries(new SlotMenuState(IsFirst: true, IsLast: true, IsStack: false, RotationPaused: false, CanStack: false));
+
+        Assert.False(only.Single(e => e.Layout == LayoutCommand.MoveLeft).Enabled);
+        Assert.False(only.Single(e => e.Layout == LayoutCommand.MoveRight).Enabled);
+        Assert.False(only.Single(e => e.Layout == LayoutCommand.AddToStack).Enabled);
+        Assert.True(only.Single(e => e.Layout == LayoutCommand.RemoveTile).Enabled);
+    }
 
     [Fact]
     public void Bar_menu_has_only_bar_commands()
     {
-        var entries = TileMenu.Entries(onTile: false);
+        var entries = TileMenu.Entries(null);
 
         Assert.Equal(new[] { "Show config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
         Assert.Equal(BarCommand.OpenConfig, entries[0].Bar);
