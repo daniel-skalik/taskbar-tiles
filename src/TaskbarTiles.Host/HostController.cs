@@ -25,6 +25,12 @@ public interface ILayoutEditor
     /// nothing was saved.
     /// </summary>
     ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit);
+
+    /// <summary>What edit mode's "+" offers on this display.</summary>
+    IReadOnlyList<GalleryItem> GalleryFor(string displayId);
+
+    /// <summary>Places the gallery item at the end of the display's layout, adding its tile definition when it is new.</summary>
+    ConfigError? AddFromGallery(string displayId, GalleryItem item);
 }
 
 /// <summary>
@@ -39,7 +45,8 @@ public sealed class HostController(
     Func<string, ITileLog> logFor,
     Func<string, ITileBarView> createBar,
     string? configDirectory = null,
-    IConfigWriter? writer = null) : ILayoutEditor, IAsyncDisposable
+    IConfigWriter? writer = null,
+    IReadOnlyList<ScriptTemplate>? templates = null) : ILayoutEditor, IAsyncDisposable
 {
     readonly Dictionary<string, (TileRuntime Runtime, TileConfig Config)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
@@ -66,20 +73,56 @@ public sealed class HostController(
 
     public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit)
     {
-        if (_disposed) return new ConfigError("Taskbar Tiles is shutting down.");
-        if (writer is null) return new ConfigError("This host cannot save config.json.");
-        var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
-        if (display is null) return new ConfigError($"Display '{displayId}' is no longer connected.");
-
+        var (display, refused) = EditTarget(displayId);
+        if (display is null) return refused;
         var cfg = config();
         var layout = DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
         var changed = edit(layout);
         if (LayoutEdits.SameSlots(layout, changed)) return null;
 
         var key = DisplayResolver.EditKey(cfg, displayId, display.IsPrimary);
-        var error = writer.Save(root => ConfigJson.SetDisplay(root, key, changed));
-        if (error is not null) return error;
+        return Saved(displayId, key, writer!.Save(root => ConfigJson.SetDisplay(root, key, changed)));
+    }
 
+    public IReadOnlyList<GalleryItem> GalleryFor(string displayId)
+    {
+        var cfg = config();
+        var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
+        var layout = display is null ? DisplayLayout.Empty : DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
+        return TileGallery.Build(cfg, layout, catalog.Connectors.Keys, templates ?? ScriptTemplates.Samples);
+    }
+
+    public ConfigError? AddFromGallery(string displayId, GalleryItem item)
+    {
+        if (item.NewTile is not { } definition) return EditLayout(displayId, l => LayoutEdits.Append(l, item.TileId));
+
+        var (display, refused) = EditTarget(displayId);
+        if (display is null) return refused;
+        var cfg = config();
+        var layout = DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
+        var key = DisplayResolver.EditKey(cfg, displayId, display.IsPrimary);
+        return Saved(displayId, key, writer!.Save(root =>
+        {
+            // Pick the id from the file being saved, so a tile added by hand but not reloaded yet is never replaced.
+            var taken = root["tiles"] is System.Text.Json.Nodes.JsonObject tiles ? tiles.Select(t => t.Key) : [];
+            var id = TileGallery.UniqueId(item.TileId, taken);
+            ConfigJson.SetTile(root, id, definition);
+            ConfigJson.SetDisplay(root, key, LayoutEdits.Append(layout, id));
+        }));
+    }
+
+    /// <summary>The display to edit, or (null, why not).</summary>
+    (TaskbarInfo? Display, ConfigError? Refused) EditTarget(string displayId)
+    {
+        if (_disposed) return (null, new ConfigError("Taskbar Tiles is shutting down."));
+        if (writer is null) return (null, new ConfigError("This host cannot save config.json."));
+        var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
+        return display is null ? (null, new ConfigError($"Display '{displayId}' is no longer connected.")) : (display, null);
+    }
+
+    ConfigError? Saved(string displayId, string key, ConfigError? error)
+    {
+        if (error is not null) return error;
         logFor("host").Info($"Saved the layout of display '{displayId}' under \"{key}\"");
         ui.Post(Sync); // not inline: the request usually comes from a handler of a view this rebuilds
         return null;
