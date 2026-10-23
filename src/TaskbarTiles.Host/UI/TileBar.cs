@@ -259,8 +259,10 @@ public sealed class TileBar : Window, ITileBarView
             if (mode == SlotMode.Overflow)
             {
                 overflowed.Add(_views[i]);
+                _views[i].FlyoutAnchor = _overflowButton; // popups of overflowed tiles open above the » tile, which is on the bar
                 continue;
             }
+            _views[i].FlyoutAnchor = null;
             _views[i].Compact = mode == SlotMode.Compact;
             shown.Add(_views[i]);
         }
@@ -295,7 +297,6 @@ public sealed class TileBar : Window, ITileBarView
             var view = _overflowed[i];
             view.Compact = false;
             view.Height = tileHeight;
-            view.FlyoutAnchor = _overflowButton; // a tile's own popup replaces this one, above the » tile
             view.Margin = new Thickness(0, 0, 0, i < _overflowed.Count - 1 ? GapDip : 0);
             panel.Children.Add(view);
         }
@@ -307,7 +308,6 @@ public sealed class TileBar : Window, ITileBarView
             foreach (var view in moved)
             {
                 view.Height = double.NaN;
-                view.FlyoutAnchor = null;
             }
             if (_overflowPanel == panel) _overflowPanel = null;
         });

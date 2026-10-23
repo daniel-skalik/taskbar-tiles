@@ -61,9 +61,16 @@ public static class FlyoutWindow
             };
         window.Loaded += (_, _) =>
         {
-            try { Position(window, anchor); }
+            var positioned = false;
+            try { positioned = Position(window, anchor); }
             catch (Exception ex) { log.Error("Flyout positioning failed", ex); }
-            finally { window.Opacity = 1; }
+            if (positioned) window.Opacity = 1;
+            else
+            {
+                // Never show a popup that could not be placed (for example its anchor left the visual tree).
+                log.Warn("Flyout closed: its anchor is not on screen");
+                if (_open == window) CloseOpen(); else window.Close();
+            }
         };
         _open = window;
         window.Show();
@@ -166,10 +173,9 @@ public static class FlyoutWindow
     /// of the monitor holding the anchor. The window starts at Opacity 0; moving it onto the target monitor may
     /// change its DPI (WPF rescales synchronously), so we re-measure and re-apply until the DPI is stable (max 3 passes).
     /// </summary>
-    static void Position(Window window, FrameworkElement anchor)
+    static bool Position(Window window, FrameworkElement anchor)
     {
-        var anchorSource = PresentationSource.FromVisual(anchor) as HwndSource;
-        if (anchorSource?.CompositionTarget is null) return;
+        if (SourceOf(anchor) is not { } anchorSource) return false;
         var anchorScale = anchorSource.CompositionTarget.TransformToDevice.M11;
         var topLeft = anchor.PointToScreen(new Point(0, 0));
         var anchorWidthPx = anchor.ActualWidth * anchorScale;
@@ -197,5 +203,10 @@ public static class FlyoutWindow
             if (Math.Abs(after - dpi) < 0.001) break;
             dpi = after;
         }
+        return true;
     }
+
+    /// <summary>The window source of an anchor, or null when the anchor is in no window.</summary>
+    internal static HwndSource? SourceOf(Visual anchor) =>
+        PresentationSource.FromVisual(anchor) is HwndSource { CompositionTarget: not null } source ? source : null;
 }
