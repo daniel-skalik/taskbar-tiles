@@ -34,7 +34,7 @@ public static class TileMenu
             entries.Add(new("Restart tile", TileCommand.Restart));
             entries.Add(MenuEntry.Separator);
         }
-        entries.Add(new("Open config file", Bar: BarCommand.OpenConfig));
+        entries.Add(new("Show config file", Bar: BarCommand.OpenConfig));
         entries.Add(MenuEntry.Separator);
         entries.Add(new("Exit Taskbar Tiles", Bar: BarCommand.Exit));
         return entries;

@@ -42,7 +42,7 @@ public class TileCommandsTests
     [Fact]
     public void Tile_menu_lists_tile_commands_then_bar_commands() =>
         Assert.Equal(
-            new[] { "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "", "Open config file", "", "Exit Taskbar Tiles" },
+            new[] { "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "", "Show config file", "", "Exit Taskbar Tiles" },
             TileMenu.Entries(onTile: true).Select(e => e.Header));
 
     [Fact]
@@ -50,7 +50,7 @@ public class TileCommandsTests
     {
         var entries = TileMenu.Entries(onTile: false);
 
-        Assert.Equal(new[] { "Open config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
+        Assert.Equal(new[] { "Show config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
         Assert.Equal(BarCommand.OpenConfig, entries[0].Bar);
         Assert.True(entries[1].IsSeparator);
         Assert.Equal(BarCommand.Exit, entries[2].Bar);

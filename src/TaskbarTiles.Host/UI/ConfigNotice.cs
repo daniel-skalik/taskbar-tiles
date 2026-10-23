@@ -13,6 +13,6 @@ public static class ConfigNotice
         var consequence = atStartup
             ? "No tiles are shown until it is fixed."
             : "The last good config stays active.";
-        return $"{what}. {consequence} Click to open config.json.";
+        return $"{what}. {consequence} Click to show config.json in Explorer.";
     }
 }

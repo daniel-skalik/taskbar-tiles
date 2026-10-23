@@ -5,7 +5,7 @@ The built-in `script` connector drives a tile from scripts. You wire scripts to 
 ## Quick start
 
 1. Put a script in `%LOCALAPPDATA%\TaskbarTiles\scripts\`. On first run (only when that folder does not exist yet) Taskbar Tiles copies two samples there: `uptime.ps1` (clock and uptime) and `ping.ps1` (ping a host, with a button and a popup). They are never copied again, so edit or delete them freely.
-2. Add a tile and place it on a display in `%LOCALAPPDATA%\TaskbarTiles\config.json` (right-click a tile → Configure connector… opens it):
+2. Add a tile and place it on a display in `%LOCALAPPDATA%\TaskbarTiles\config.json` (right-click a tile → Configure connector… shows it in Explorer):
 
 ```jsonc
 {
@@ -125,7 +125,7 @@ Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (
 - If a `flyout` (popup) script fails, the popup itself shows "Script error" with the details and the **Restart tile** and **Open log** buttons. The tile is not put in the error look, and the script runs again the next time you open the popup.
 - Unknown fields, values of the wrong type and non-finite numbers are ignored; each one is written to the tile's log as a warning, which helps catch typos such as `tittle`.
 - Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`) put the tile in the error look and nothing runs until `config.json` is fixed.
-- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** opens it.
+- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** shows it selected in Explorer.
 - Right-click → **Refresh now** re-runs `interval` (or `startup`). **Restart tile** starts the connector again from scratch.
 
 ## Output size

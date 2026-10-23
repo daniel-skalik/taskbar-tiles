@@ -12,7 +12,7 @@ public class ConfigNoticeTests
 
         Assert.Contains("line 3, column 5", body);
         Assert.Contains("The last good config stays active.", body);
-        Assert.EndsWith("Click to open config.json.", body);
+        Assert.EndsWith("Click to show config.json in Explorer.", body);
     }
 
     [Fact]

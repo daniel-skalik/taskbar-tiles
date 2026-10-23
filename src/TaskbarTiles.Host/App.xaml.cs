@@ -46,7 +46,7 @@ public partial class App : Application
             SampleScripts.InstallIfAbsent(AppPaths.SampleScriptsDir, AppPaths.ScriptsDir, log);
             _config = new ConfigStore(AppPaths.ConfigFile, log);
             _config.Load();
-            _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, OpenWithShell, log);
+            _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, RevealInExplorer, log);
 
             var ui = new WpfUiDispatcher(Dispatcher);
             _tracker = new TaskbarTracker(Dispatcher);
@@ -72,7 +72,13 @@ public partial class App : Application
         }
     }
 
-    static void OpenWithShell(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    // Show the file selected in Explorer instead of opening it: the default app for .json/.log
+    // may be missing or broken (Store Notepad fails on these paths), Explorer always works.
+    static void RevealInExplorer(string path)
+    {
+        // Explorer only understands the /select,"path" form, so build the argument string by hand.
+        using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\""));
+    }
 
     void ShowConfigNotice(ConfigError error, bool atStartup)
     {
