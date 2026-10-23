@@ -22,14 +22,14 @@
                 </Image>
             </Grid>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,4,0">
+            <StackPanel x:Name="TextPanel" Grid.Column="1" VerticalAlignment="Center" Margin="0,0,4,0">
                 <TextBlock x:Name="TitleText" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TileForeground}"/>
                 <TextBlock x:Name="SubtitleText" FontSize="11.5" TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TileDim}"/>
             </StackPanel>
 
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+            <StackPanel x:Name="ExtrasPanel" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                 <Canvas x:Name="SparkHost" Width="56" Height="26" Visibility="Collapsed">
                     <Polyline x:Name="Spark" StrokeThickness="1.5" Stroke="#7AA2F7"/>
                 </Canvas>

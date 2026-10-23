@@ -10,16 +10,16 @@ using static TaskbarTiles.Host.Taskbar.NativeMethods;
 
 namespace TaskbarTiles.Host.UI;
 
-/// <summary>One per display: a borderless topmost strip sized to its visible tiles, placed in the free zone.</summary>
+/// <summary>One per display: a borderless topmost strip sized to its visible slots, placed in the free zone.</summary>
 public sealed class TileBar : Window, ITileBarView
 {
     const double GapDip = 6;
 
     readonly StackPanel _panel = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
-    readonly List<TileView> _views = [];
+    readonly List<SlotView> _views = [];
     readonly ITileLog _log;
     readonly TileCommands _commands;
-    IReadOnlyList<TileRuntime> _requested = [];
+    IReadOnlyList<BarSlot> _slots = [];
     IntPtr _hwnd;
     TaskbarInfo? _info;
     bool? _light;
@@ -42,11 +42,12 @@ public sealed class TileBar : Window, ITileBarView
         Content = _panel;
         Theme.ApplyTo(Resources, light: false);
 
-        // Bar-wide menu for the gaps between tiles; each tile gets its own menu in SetTiles.
-        ContextMenu = BuildMenu(null);
+        // Bar-wide menu for the gaps between tiles; each slot gets its own menu in SetSlots.
+        ContextMenu = new ContextMenu();
+        Fill(ContextMenu, null);
         // The bar is WS_EX_NOACTIVATE, so it never becomes the foreground window and the menu
         // never sees outside clicks. Bring the bar to the foreground while a menu is open.
-        // ContextMenuOpening bubbles, so this also covers the tiles' menus.
+        // ContextMenuOpening bubbles, so this also covers the slots' menus.
         ContextMenuOpening += (_, _) => { if (_hwnd != IntPtr.Zero) SetForegroundWindow(_hwnd); };
 
         SourceInitialized += (_, _) =>
@@ -64,34 +65,38 @@ public sealed class TileBar : Window, ITileBarView
     public string DisplayId { get; }
     public event EventHandler? ExitRequested;
 
-    /// <summary>Shows the first member of each slot (stacks render in full later in milestone 3).</summary>
-    public void SetSlots(IReadOnlyList<BarSlot> slots) => SetTiles(slots.Select(s => s.Members[0]).ToList());
-
-    /// <summary>Replaces the tiles unless the same runtimes are already shown in the same order.</summary>
-    void SetTiles(IReadOnlyList<TileRuntime> runtimes)
+    /// <summary>
+    /// Shows the slots. Views whose slot content is unchanged are kept (with their rotation state), even when they moved.
+    /// </summary>
+    public void SetSlots(IReadOnlyList<BarSlot> slots)
     {
-        if (_requested.SequenceEqual(runtimes)) return;
-        _requested = runtimes.ToList();
+        if (_slots.SequenceEqual(slots)) return;
+        _slots = slots.ToList();
 
-        foreach (var v in _views) v.Detach();
+        var pool = _views.ToList();
         _views.Clear();
         _panel.Children.Clear();
-        foreach (var rt in runtimes)
+        foreach (var slot in slots)
         {
-            TileView view;
-            try
+            var view = pool.FirstOrDefault(v => v.Slot.SameContent(slot));
+            if (view is not null)
             {
-                view = new TileView(rt, () => _light ?? false, _commands, _log) { Margin = new Thickness(0, 0, GapDip, 0) };
-                view.ContextMenu = BuildMenu(rt);
+                pool.Remove(view);
+                view.Retarget(slot);
             }
-            catch (Exception ex)
+            else
             {
-                _log.Error($"Tile '{rt.TileId}' could not be shown", ex);
-                continue;
+                try { view = CreateView(slot); }
+                catch (Exception ex)
+                {
+                    _log.Error($"Slot {slot.Index} ({string.Join(", ", slot.Members.Select(m => m.TileId))}) could not be shown", ex);
+                    continue;
+                }
             }
             _views.Add(view);
             _panel.Children.Add(view);
         }
+        foreach (var unused in pool) unused.Detach();
         Reflow();
     }
 
@@ -106,9 +111,17 @@ public sealed class TileBar : Window, ITileBarView
         Reflow();
     }
 
-    ContextMenu BuildMenu(TileRuntime? tile)
+    SlotView CreateView(BarSlot slot)
     {
-        var menu = new ContextMenu();
+        var view = new SlotView(slot, () => _light ?? false, _commands, _log) { ContextMenu = new ContextMenu() };
+        // Built when it opens, for the member shown at that moment.
+        view.ContextMenuOpening += (_, _) => Fill(view.ContextMenu, view.Current.Runtime);
+        return view;
+    }
+
+    void Fill(ContextMenu menu, TileRuntime? tile)
+    {
+        menu.Items.Clear();
         foreach (var entry in TileMenu.Entries(onTile: tile is not null))
         {
             if (entry.IsSeparator)
@@ -125,7 +138,6 @@ public sealed class TileBar : Window, ITileBarView
                 item.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
             menu.Items.Add(item);
         }
-        return menu;
     }
 
     void Reflow()
@@ -134,7 +146,7 @@ public sealed class TileBar : Window, ITileBarView
         var zone = _info.FreeZone.Zone;
         var scale = _info.DpiScale;
 
-        var widths = _views.Select(v => v.Width).ToList();
+        var widths = _views.Select(v => v.FullWidth).ToList();
         var count = _info.Hidden || zone.IsEmpty ? 0 : FitTiles.Count(widths, zone.Width / scale, GapDip);
         for (var i = 0; i < _views.Count; i++)
         {
