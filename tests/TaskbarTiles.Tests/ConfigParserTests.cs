@@ -76,7 +76,10 @@ public class ConfigParserTests
     [InlineData("5")]
     [InlineData("null")]
     [InlineData("\"99999999999h\"")]
-    public void Non_string_or_invalid_rotate_is_a_config_error(string rotateJson)
+    [InlineData("\"0s\"")]
+    [InlineData("\"500ms\"")]
+    [InlineData("\"61m\"")]
+    public void Non_string_invalid_or_out_of_range_rotate_is_a_config_error(string rotateJson)
     {
         var json = "{ \"tiles\": { \"a\": { \"connector\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": " + rotateJson + " } ] } } }";
 
@@ -84,6 +87,19 @@ public class ConfigParserTests
 
         Assert.False(result.Success);
         Assert.Contains("rotate", result.Error!.Message);
+    }
+
+    [Theory]
+    [InlineData("1s", 1)]
+    [InlineData("1h", 3600)]
+    public void Rotate_accepts_1s_to_1h(string rotate, int seconds)
+    {
+        var json = "{ \"tiles\": { \"a\": { \"connector\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": \"" + rotate + "\" } ] } } }";
+
+        var result = ConfigParser.Parse(json);
+
+        Assert.True(result.Success, result.Error?.ToString());
+        Assert.Equal(TimeSpan.FromSeconds(seconds), Assert.IsType<StackSlot>(result.Config!.Displays["primary"].Slots[0]).Rotate);
     }
 
     [Fact]
