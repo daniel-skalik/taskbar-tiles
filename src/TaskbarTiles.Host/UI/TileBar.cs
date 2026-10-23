@@ -4,6 +4,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Layout;
@@ -87,6 +88,7 @@ public sealed class TileBar : Window, ITileBarView
             if (foreground != _hwnd) _menuForeground = foreground;
             SetForegroundWindow(_hwnd);
         };
+        ContextMenuClosing += (_, _) => ForgetMenuForegroundAfterClick();
         PreviewKeyDown += (_, e) =>
         {
             if (!_editing || e.Key != Key.Escape) return;
@@ -201,6 +203,8 @@ public sealed class TileBar : Window, ITileBarView
         var view = new SlotView(slot, () => _light ?? false, _commands, _log) { ContextMenu = new ContextMenu(), Editing = _editing };
         // Built when it opens, for the member shown at that moment.
         view.ContextMenuOpening += (_, _) => FillSlotMenu(view.ContextMenu, view);
+        // Tiles in the overflow popup live in another window, so their menu events never reach the bar.
+        view.ContextMenuClosing += (_, _) => ForgetMenuForegroundAfterClick();
         view.MouseLeftButtonDown += (_, e) => BeginDrag(view, e);
         view.RemoveRequested += (_, _) =>
         {
@@ -253,11 +257,18 @@ public sealed class TileBar : Window, ITileBarView
         return item;
     }
 
+    // The saved window belongs to one menu. ContextMenuClosing may fire before or after the chosen item's Click
+    // handler (EnterEditMode reads it there), so clear from a queued callback that runs after both.
+    void ForgetMenuForegroundAfterClick() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () => _menuForeground = IntPtr.Zero);
+
     void EnterEditMode()
     {
+        var menuForeground = _menuForeground; // take it: it must not outlive this menu choice
+        _menuForeground = IntPtr.Zero;
         _editor.SetEditMode(true); // every bar, this one included
         if (!IsVisible) return;
-        _previousForeground = _menuForeground;
+        _previousForeground = menuForeground;
         Activate();
         Focus();
     }
