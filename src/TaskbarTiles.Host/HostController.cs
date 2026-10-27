@@ -37,8 +37,11 @@ public interface ILayoutEditor
     /// <summary>What edit mode's "+" offers on this display.</summary>
     IReadOnlyList<GalleryItem> GalleryFor(string displayId);
 
-    /// <summary>Places the gallery item at the end of the display's layout, adding its tile definition when it is new.</summary>
-    ConfigError? AddFromGallery(string displayId, GalleryItem item);
+    /// <summary>
+    /// Places the gallery item at the end of the display's layout, adding its tile definition when it is new. With
+    /// <paramref name="stackWith"/> it joins that slot instead, as "Create stack…" does (<see cref="LayoutEdits.StackInto"/>).
+    /// </summary>
+    ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null);
 
     /// <summary>
     /// × and "Remove tile": removes slot <paramref name="index"/>, or with <paramref name="member"/> one member of a stack,
@@ -167,9 +170,15 @@ public sealed class HostController(
         return TileGallery.Build(cfg, layout, catalog.Connectors.Keys, templates ?? ScriptTemplates.Samples);
     }
 
-    public ConfigError? AddFromGallery(string displayId, GalleryItem item)
+    public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null)
     {
-        if (item.NewTile is not { } definition) return EditLayout(displayId, l => LayoutEdits.Append(l, item.TileId));
+        DisplayLayout Place(DisplayLayout layout, string id)
+        {
+            var placed = LayoutEdits.Append(layout, id);
+            return stackWith is { } target ? LayoutEdits.StackInto(placed, placed.Slots.Count - 1, target) : placed;
+        }
+
+        if (item.NewTile is not { } definition) return EditLayout(displayId, l => Place(l, item.TileId));
 
         var (target, refused) = Editable(displayId);
         if (target is not { } t) return refused;
@@ -179,7 +188,7 @@ public sealed class HostController(
             var taken = root["tiles"] is System.Text.Json.Nodes.JsonObject tiles ? tiles.Select(tile => tile.Key) : [];
             var id = TileGallery.UniqueId(item.TileId, taken);
             ConfigJson.SetTile(root, id, definition);
-            ConfigJson.SetDisplay(root, t.Key, LayoutEdits.Append(t.Layout, id));
+            ConfigJson.SetDisplay(root, t.Key, Place(t.Layout, id));
         }));
     }
 

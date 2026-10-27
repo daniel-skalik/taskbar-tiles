@@ -74,7 +74,7 @@ Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit m
 
 The right-click menu changes the layout too, in and outside edit mode:
 
-- On a tile, **Create stack with ▸** lists the other tiles on this display that are not in a stack (by the title they show, or their id). Pick one to make a stack of the two where the tile you clicked is.
+- On a tile, **Create stack…** opens the same panel as **+**. It lists the other tiles on this display that are not in a stack (by the title they show, or their id), then the tiles you can add. Pick one to make a stack of the two where the tile you clicked is.
 - On a stack, **Add to stack ▸** lists this display's tiles that are not in a stack; the one you pick moves into this stack. **Remove from stack** takes the member shown out, right after the stack; **Pause rotation** stops it.
 - **Remove tile** works like `×`.
 

@@ -47,23 +47,20 @@ public class TileCommandsTests
             new[]
             {
                 "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "",
-                "Create stack with", "", "Edit layout", "Remove tile", "",
+                "Create stack…", "", "Edit layout", "Remove tile", "",
                 "Show config file", "", "Exit Taskbar Tiles",
             },
             TileMenu.Entries(MiddleTile, editing: false).Select(e => e.Header));
 
     [Fact]
-    public void Create_stack_with_lists_the_choices_in_a_submenu()
+    public void Create_stack_opens_the_picker_instead_of_a_submenu()
     {
-        var entry = TileMenu.Entries(MiddleTile, editing: false).Single(e => e.Header == "Create stack with");
+        var entry = TileMenu.Entries(MiddleTile with { StackChoices = [] }, editing: false).Single(e => e.Header == "Create stack…");
 
-        Assert.True(entry.Enabled);
-        Assert.False(entry.IsSeparator);
-        Assert.Null(entry.Layout);
-        var choice = Assert.Single(entry.Submenu!);
-        Assert.Equal("Bee", choice.Header);
-        Assert.Equal(LayoutCommand.CreateStack, choice.Layout);
-        Assert.Equal(new StackChoice(2, "b", "Bee"), choice.Choice);
+        Assert.True(entry.Enabled); // the picker also offers new tiles, so it is never empty for lack of choices here
+        Assert.Equal(LayoutCommand.CreateStack, entry.Layout);
+        Assert.Null(entry.Submenu);
+        Assert.Null(entry.Choice);
     }
 
     [Fact]
@@ -76,18 +73,16 @@ public class TileCommandsTests
         Assert.Equal(LayoutCommand.AddToStack, Assert.Single(running[5].Submenu!).Layout);
         Assert.Equal(LayoutCommand.PauseRotation, running[7].Layout);
         Assert.Equal(LayoutCommand.ResumeRotation, paused[7].Layout);
-        Assert.DoesNotContain(running, e => e.Header == "Create stack with");
+        Assert.DoesNotContain(running, e => e.Header == "Create stack…");
     }
 
     [Fact]
-    public void Stack_pickers_without_choices_are_disabled()
+    public void Add_to_stack_without_choices_is_disabled()
     {
-        var plain = TileMenu.Entries(new SlotMenuState(IsStack: false, RotationPaused: false, StackChoices: []), editing: false);
         var stack = TileMenu.Entries(new SlotMenuState(IsStack: true, RotationPaused: false, StackChoices: []), editing: false);
 
-        Assert.False(plain.Single(e => e.Header == "Create stack with").Enabled);
         Assert.False(stack.Single(e => e.Header == "Add to stack").Enabled);
-        Assert.True(plain.Single(e => e.Layout == LayoutCommand.RemoveTile).Enabled);
+        Assert.True(stack.Single(e => e.Layout == LayoutCommand.RemoveTile).Enabled);
     }
 
     static MenuSlot Plain(int index, string id, string? title = null) => new(index, false, [id], title);

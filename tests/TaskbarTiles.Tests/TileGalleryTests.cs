@@ -94,6 +94,44 @@ public class TileGalleryTests
         Assert.DoesNotContain(host.GalleryFor("MAIN"), i => i.Title == "ci");
     }
 
+    [Fact]
+    public void Adding_a_new_tile_to_a_stack_puts_it_into_that_slot()
+    {
+        var writer = new FakeConfigWriter(Config);
+        var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), writer: writer, templates: [Template]);
+        host.Start();
+        var item = host.GalleryFor("MAIN").Single(i => i.Title == "Clock and uptime");
+
+        Assert.Null(host.AddFromGallery("MAIN", item, stackWith: 0));
+
+        Assert.Equal("script", writer.Current.Tiles["uptime-2"].Connector);
+        var slot = Assert.IsType<StackSlot>(Assert.Single(writer.Current.Displays["primary"].Slots));
+        Assert.Equal(new[] { "spotify", "uptime-2" }, slot.TileIds);
+    }
+
+    [Fact]
+    public void Adding_an_existing_tile_to_a_plain_tile_makes_a_stack_in_its_place()
+    {
+        var writer = new FakeConfigWriter("""
+            { "tiles": { "spotify": { "connector": "media" }, "ci": { "connector": "script", "settings": { "hooks": { "click": "x" } } }, "uptime": { "connector": "script", "settings": { "hooks": { "click": "x" } } } },
+              "displays": { "primary": { "slots": [ { "tile": "spotify" }, { "tile": "uptime" } ] } } }
+            """);
+        var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), writer: writer, templates: []);
+        host.Start();
+        var item = host.GalleryFor("MAIN").Single(i => i.Title == "ci");
+
+        Assert.Null(host.AddFromGallery("MAIN", item, stackWith: 0));
+
+        var slots = writer.Current.Displays["primary"].Slots;
+        Assert.Equal(2, slots.Count);
+        Assert.Equal(new[] { "spotify", "ci" }, Assert.IsType<StackSlot>(slots[0]).TileIds);
+        Assert.Equal(new TileSlot("uptime", false), slots[1]);
+    }
+
     static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

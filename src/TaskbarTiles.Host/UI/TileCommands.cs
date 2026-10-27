@@ -57,7 +57,7 @@ public static class TileMenu
             }
             else
             {
-                entries.Add(Picker("Create stack with", LayoutCommand.CreateStack, slot.StackChoices));
+                entries.Add(new("Create stack…", Layout: LayoutCommand.CreateStack)); // opens the stack picker panel
             }
             entries.Add(MenuEntry.Separator);
             entries.Add(editEntry);

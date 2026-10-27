@@ -235,18 +235,25 @@ public sealed class TileBar : Window, ITileBarView
 
     void FillSlotMenu(ContextMenu menu, SlotView view)
     {
-        // Every slot of this display, overflowed ones included: the stack pickers offer all its plain tiles. A tile in the
-        // error look has no title (its "Error" says nothing), so the picker shows its id.
-        var slots = _slots
-            .Select(s => new MenuSlot(s.Index, s.IsStack, s.Members.Select(m => m.TileId).ToList(), s.Members.FirstOrDefault() is { LastError: null } first ? first.State.Title : null))
-            .ToList();
         var state = new SlotMenuState(
             IsStack: view.Slot.IsStack,
             RotationPaused: view.Rotation?.Paused == true,
-            StackChoices: TileMenu.StackChoices(slots, view.Slot.Index));
+            StackChoices: StackChoicesFor(view));
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
         menu.Items.Clear();
         foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
+    }
+
+    /// <summary>
+    /// The plain tiles of this display the clicked slot can stack with, overflowed ones included. A tile in the error
+    /// look has no title (its "Error" says nothing), so it is listed by its id.
+    /// </summary>
+    IReadOnlyList<StackChoice> StackChoicesFor(SlotView view)
+    {
+        var slots = _slots
+            .Select(s => new MenuSlot(s.Index, s.IsStack, s.Members.Select(m => m.TileId).ToList(), s.Members.FirstOrDefault() is { LastError: null } first ? first.State.Title : null))
+            .ToList();
+        return TileMenu.StackChoices(slots, view.Slot.Index);
     }
 
     Control Item(MenuEntry entry, SlotView? view, int member)
@@ -303,6 +310,9 @@ public sealed class TileBar : Window, ITileBarView
             case LayoutCommand.ResumeRotation when view.Rotation is { } rotation:
                 rotation.Paused = false;
                 break;
+            case LayoutCommand.CreateStack when choice is null:
+                ShowStackPicker(view);
+                break;
             case LayoutCommand.CreateStack or LayoutCommand.AddToStack when choice is not null:
                 // The chosen tile joins the clicked slot: a new stack [clicked, chosen] where the clicked tile is,
                 // or the end of the clicked stack.
@@ -339,29 +349,79 @@ public sealed class TileBar : Window, ITileBarView
     /// <summary>The + button: tiles this display does not show yet, a new tile per plugin, and the sample scripts.</summary>
     void ShowGallery()
     {
-        IReadOnlyList<GalleryItem> items;
-        try { items = _editor.GalleryFor(DisplayId); }
+        if (Gallery() is not { } items) return;
+        var panel = PanelHeader("Add a tile", items.Count == 0
+            ? "Nothing to add: every tile is on this display already."
+            : "It is added at the end of this display's tiles.");
+        panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
+            (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item)))))));
+        FlyoutWindow.ShowPanel(_addButton, panel, _light ?? false, _log);
+    }
+
+    /// <summary>
+    /// "Create stack…" on a plain tile: the panel of the + button, offering this display's other plain tiles first.
+    /// The picked tile joins the clicked one in a new stack where the clicked tile is.
+    /// </summary>
+    void ShowStackPicker(SlotView view)
+    {
+        if (Gallery() is not { } items) return;
+        var target = view.Slot.Index;
+        var choices = StackChoicesFor(view);
+        var panel = PanelHeader("Create a stack", choices.Count + items.Count == 0
+            ? "Nothing to stack with: add another tile first."
+            : "The tile you pick is stacked with this one.");
+        if (choices.Count > 0)
+        {
+            panel.Children.Add(Section("On this display"));
+            panel.Children.Add(Buttons(choices.Select(c => (c.Label, c.TileId,
+                (Action)(() => Edit(l => LayoutEdits.StackInto(l, c.SlotIndex, target)))))));
+        }
+        if (items.Count > 0)
+        {
+            if (choices.Count > 0) panel.Children.Add(Section("Add a tile"));
+            panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
+                (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target)))))));
+        }
+        FlyoutWindow.ShowPanel(view, panel, _light ?? false, _log);
+    }
+
+    IReadOnlyList<GalleryItem>? Gallery()
+    {
+        try { return _editor.GalleryFor(DisplayId); }
         catch (Exception ex)
         {
             _log.Error("Could not list the tile gallery", ex);
-            return;
+            return null;
         }
+    }
 
+    static StackPanel PanelHeader(string title, string hint)
+    {
         var panel = new StackPanel();
-        panel.Children.Add(FlyoutWindow.Text("Add a tile", 14, FontWeights.SemiBold, "TileForeground"));
-        var hint = FlyoutWindow.Text(items.Count == 0
-            ? "Nothing to add: every tile is on this display already."
-            : "It is added at the end of this display's tiles.", 12, FontWeights.Normal, "TileDim");
-        hint.Margin = new Thickness(0, 2, 0, 10);
-        panel.Children.Add(hint);
+        panel.Children.Add(FlyoutWindow.Text(title, 14, FontWeights.SemiBold, "TileForeground"));
+        var text = FlyoutWindow.Text(hint, 12, FontWeights.Normal, "TileDim");
+        text.Margin = new Thickness(0, 2, 0, 10);
+        panel.Children.Add(text);
+        return panel;
+    }
 
+    static TextBlock Section(string title)
+    {
+        var text = FlyoutWindow.Text(title, 12, FontWeights.SemiBold, "TileDim");
+        text.Margin = new Thickness(0, 4, 0, 6);
+        return text;
+    }
+
+    /// <summary>Two columns of buttons with a title and subtitle each; a click closes the panel and runs the action.</summary>
+    UniformGrid Buttons(IEnumerable<(string Title, string Subtitle, Action Click)> items)
+    {
         var grid = new UniformGrid { Columns = 2 };
-        foreach (var item in items)
+        foreach (var (titleText, subtitleText, click) in items)
         {
             var content = new StackPanel();
-            var title = FlyoutWindow.Text(item.Title, 12.5, FontWeights.SemiBold, "TileForeground");
+            var title = FlyoutWindow.Text(titleText, 12.5, FontWeights.SemiBold, "TileForeground");
             title.TextTrimming = TextTrimming.CharacterEllipsis;
-            var subtitle = FlyoutWindow.Text(item.Subtitle, 11.5, FontWeights.Normal, "TileDim");
+            var subtitle = FlyoutWindow.Text(subtitleText, 11.5, FontWeights.Normal, "TileDim");
             subtitle.TextTrimming = TextTrimming.CharacterEllipsis;
             content.Children.Add(title);
             content.Children.Add(subtitle);
@@ -375,12 +435,11 @@ public sealed class TileBar : Window, ITileBarView
             button.Click += (_, _) =>
             {
                 FlyoutWindow.CloseOpen();
-                Save(() => _editor.AddFromGallery(DisplayId, item));
+                click();
             };
             grid.Children.Add(button);
         }
-        panel.Children.Add(grid);
-        FlyoutWindow.ShowPanel(_addButton, panel, _light ?? false, _log);
+        return grid;
     }
 
     void BeginDrag(SlotView view, MouseButtonEventArgs e)
