@@ -19,8 +19,15 @@ public sealed class KindLoader(ITileLog log)
 
     static readonly string ContractsName = typeof(ITileConnector).Assembly.GetName().Name!;
 
+    /// <summary>What each kind loaded at startup, so a kind whose folder vanishes for one rescan and returns keeps its DLLs.</summary>
+    readonly Dictionary<string, KindDlls> _startupDlls = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The first scan: reads every tile.json and loads every kind's DLLs.</summary>
-    public KindTable Load(string tilesDir) => Scan(tilesDir, previous: null);
+    public KindTable Load(string tilesDir)
+    {
+        _startupDlls.Clear();
+        return Scan(tilesDir, previous: null);
+    }
 
     /// <summary>
     /// A later scan: reads every tile.json again but never loads a DLL (.NET cannot unload one safely). A known kind keeps
@@ -72,8 +79,8 @@ public sealed class KindLoader(ITileLog log)
     {
         var json = TileJson.Read(dir, id);
         var dllStamp = Stamp(dir, path => path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
-        var dlls = previous is null ? LoadDlls(id, dir, dllStamp)
-            : previous.Find(id) is { } before ? before.Dlls
+        var dlls = previous is null ? _startupDlls[id] = LoadDlls(id, dir, dllStamp)
+            : _startupDlls.TryGetValue(id, out var before) ? before
             : dllStamp.Length == 0 ? KindDlls.None
             : new KindDlls(KindDlls.None.Connectors,
                 $@"The DLLs in tiles\{id} were added while Taskbar Tiles was running; restart it to load them.", Stamp: "");

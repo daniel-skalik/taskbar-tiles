@@ -94,6 +94,26 @@ public class KindStoreTests
     }
 
     [Fact]
+    public void Rescan_raises_Changed_when_a_kind_turns_broken_without_its_files_changing()
+    {
+        using var tiles = new TempDir();
+        WriteKind(tiles.Path, "ping", "Ping");
+        using var store = new KindStore(tiles.Path, new CollectingLog());
+        store.Load();
+        var changes = 0;
+        store.Changed += (_, _) => changes++;
+
+        using (new FileStream(Path.Combine(tiles.Path, "ping", "tile.json"), FileMode.Open, FileAccess.Read, FileShare.None))
+            store.Rescan(); // unreadable for the moment: stamp unchanged, kind broken
+        Assert.StartsWith("Could not read", store.Current.Kinds["ping"].Error);
+        Assert.Equal(1, changes);
+
+        store.Rescan(); // readable again: recovers
+        Assert.Null(store.Current.Kinds["ping"].Error);
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
     public void Start_watching_creates_a_missing_tiles_folder()
     {
         using var data = new TempDir();

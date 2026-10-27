@@ -86,7 +86,7 @@ public sealed class KindStore(string tilesDir, ITileLog log) : IDisposable
         a.Kinds.Count == b.Kinds.Count
         && a.FoldersWithoutTileJson.SetEquals(b.FoldersWithoutTileJson)
         && a.Kinds.All(kv => b.Kinds.TryGetValue(kv.Key, out var other)
-                             && other.Stamp == kv.Value.Stamp && other.DllStamp == kv.Value.DllStamp);
+                             && other.Stamp == kv.Value.Stamp && other.DllStamp == kv.Value.DllStamp && other.Error == kv.Value.Error);
 
     public void Dispose()
     {

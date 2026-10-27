@@ -90,6 +90,9 @@ public sealed record TileJson(string Name, string Description, string Connector,
         }
     }
 
+    /// <summary>" (line N)" (1-based) for a JsonException's zero-based line number; nothing when the parser gave none.</summary>
+    internal static string LineSuffix(long? zeroBasedLine) => zeroBasedLine is { } line ? $" (line {line + 1})" : "";
+
     public static TileJson Parse(string text, string shownPath)
     {
         JsonDocument doc;
@@ -99,7 +102,7 @@ public sealed record TileJson(string Name, string Description, string Connector,
         }
         catch (JsonException ex)
         {
-            return Broken($"{shownPath} is not valid JSON: {ConfigParser.TrimJsonMessage(ex.Message)} (line {ex.LineNumber + 1})");
+            return Broken($"{shownPath} is not valid JSON: {ConfigParser.TrimJsonMessage(ex.Message)}{LineSuffix(ex.LineNumber)}");
         }
 
         using (doc)

@@ -106,6 +106,13 @@ public class KindLoaderTests
         Assert.Contains(log.Snapshot(), m => m.StartsWith("ERROR") && m.Contains("bad"));
     }
 
+    [Fact]
+    public void The_line_suffix_is_omitted_when_the_parser_gives_no_line_number()
+    {
+        Assert.Equal(" (line 4)", TileJson.LineSuffix(3));
+        Assert.Equal("", TileJson.LineSuffix(null));
+    }
+
     [Theory]
     [InlineData("""{ "connector": "script" }""", "\"name\"")]
     [InlineData("""{ "name": "X" }""", "\"connector\"")]
@@ -242,6 +249,26 @@ public class KindLoaderTests
         Assert.True(kind.NeedsRestart);
         Assert.Equal(new[] { "sample" }, next.DllsChanged);
         Assert.Empty(first.DllsChanged);
+    }
+
+    [Fact]
+    public void A_dll_kind_whose_folder_vanishes_for_one_rescan_keeps_its_loaded_dlls_when_it_returns()
+    {
+        using var tiles = new TempDir();
+        var dir = Kind(tiles, "sample", SampleKindJson("sample"));
+        CopySamplePlugin(dir);
+        var loader = new KindLoader(new CollectingLog());
+        var first = loader.Load(tiles.Path);
+        var away = Path.Combine(tiles.Path, "..", "tt-away-" + Guid.NewGuid().ToString("N"));
+
+        Directory.Move(dir, away);
+        var gone = loader.Rescan(first);
+        Directory.Move(away, dir);
+        var back = loader.Rescan(gone);
+
+        Assert.Null(gone.Find("sample"));
+        Assert.Null(back.Kinds["sample"].Error);
+        Assert.Same(first.Kinds["sample"].Dlls, back.Kinds["sample"].Dlls);
     }
 
     [Fact]

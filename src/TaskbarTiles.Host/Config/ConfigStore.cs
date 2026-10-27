@@ -119,7 +119,7 @@ public sealed class ConfigStore(string path, ITileLog log, Func<HostConfig, Conf
             try
             {
                 var text = ReadWithRetry();
-                var before = Parse(text);
+                var before = ConfigParser.Parse(text); // syntax only: a missing kind must not block removing its tile
                 if (!before.Success)
                     return new ConfigError("config.json has an error, so nothing was saved: " + before.Error!.Message,
                         before.Error.Line, before.Error.Column);

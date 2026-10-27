@@ -127,6 +127,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _kinds?.Dispose(); // first: stop the event source before its consumers close
         FlyoutWindow.CloseOpen();
         NotificationWindow.CloseOpen();
         if (_host is not null)
@@ -138,7 +139,6 @@ public partial class App : Application
             catch (AggregateException) { }
         }
         _tracker?.Dispose();
-        _kinds?.Dispose();
         _config?.Dispose();
         _singleInstance?.Dispose();
         base.OnExit(e);

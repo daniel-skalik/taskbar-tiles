@@ -39,7 +39,7 @@ It publishes a Release build into a staging folder next to the install folder an
 
 ## Tile kinds
 
-Each kind of tile is one folder in `%LOCALAPPDATA%\TaskbarTiles\tiles\`, holding everything it needs. To share a tile, zip its folder; to install one, unzip it there (it appears in the `+` picker within a second).
+Each kind of tile is one folder in `%LOCALAPPDATA%\TaskbarTiles\tiles\`, holding everything it needs. To share a tile, zip its folder; to install one, unzip it there. A script-only kind appears in the `+` picker within a second; a kind with DLLs needs a Taskbar Tiles restart (a notice says so). Plugins live inside their kind folder: `%LOCALAPPDATA%\TaskbarTiles\plugins` is no longer scanned.
 
 ```
 tiles\
