@@ -67,7 +67,7 @@ Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit m
 - Tiles get a dashed outline and a `×`. Clicks no longer open popups.
 - Drag a tile onto the left or right part of another tile to move it there.
 - Drop it onto the middle of a stack to add it to the stack, or onto the middle of another tile to make a stack of the two.
-- `×` removes the tile from this display. On a stack it removes the member shown (scroll the wheel to pick one); a stack left with one member becomes a plain tile. The tile's definition stays under `tiles`, so `+` can bring it back.
+- `×` removes the tile from this display. On a stack it removes the member shown (scroll the wheel to pick one); a stack left with one member becomes a plain tile. When no display entry (including `*`, and entries of monitors that are not connected) places the tile any more, its definition under `tiles` is deleted in the same save; `config.json.bak` still has it. Tiles you defined by hand but have not placed anywhere yet are never deleted, and `+` lists them first.
 - `+` adds a tile at the end: a tile you already have that this display does not show, a new tile from a loaded plugin, or a new script tile from one of the sample scripts. New tiles get a free id such as `ping-2`.
 - **Done** or Esc leaves edit mode.
 

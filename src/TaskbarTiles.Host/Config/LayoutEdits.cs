@@ -87,6 +87,10 @@ public static class LayoutEdits
     public static DisplayLayout Append(DisplayLayout layout, string tileId) =>
         new(layout.Slots.Append(new TileSlot(tileId, false)).ToList());
 
+    /// <summary>Tile ids <paramref name="before"/> places that <paramref name="after"/> no longer places, in order.</summary>
+    public static IReadOnlyList<string> RemovedTileIds(DisplayLayout before, DisplayLayout after) =>
+        DisplayResolver.PlacedTileIds(before).Except(DisplayResolver.PlacedTileIds(after), StringComparer.Ordinal).ToList();
+
     /// <summary>True when both layouts hold equal slots in the same order.</summary>
     public static bool SameSlots(DisplayLayout a, DisplayLayout b) => a.Slots.SequenceEqual(b.Slots);
 

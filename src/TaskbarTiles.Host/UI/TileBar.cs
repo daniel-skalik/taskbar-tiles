@@ -210,7 +210,7 @@ public sealed class TileBar : Window, ITileBarView
         {
             var current = view.Slot;
             var member = view.CurrentMember;
-            Edit(l => LayoutEdits.Remove(l, current.Index, current.IsStack ? member : null));
+            Save(() => _editor.RemoveTile(DisplayId, current.Index, current.IsStack ? member : null));
         };
         return view;
     }
@@ -300,7 +300,7 @@ public sealed class TileBar : Window, ITileBarView
                 Edit(l => LayoutEdits.RemoveFromStack(l, slot.Index, member));
                 break;
             case LayoutCommand.RemoveTile:
-                Edit(l => LayoutEdits.Remove(l, slot.Index, slot.IsStack ? member : null));
+                Save(() => _editor.RemoveTile(DisplayId, slot.Index, slot.IsStack ? member : null));
                 break;
         }
     }

@@ -36,7 +36,13 @@ public class HostControllerLayoutTests
         public HostController Host { get; }
 
         public JsonElement Displays => JsonDocument.Parse(Writer.Json).RootElement.GetProperty("displays");
+
+        public string[] TileIds => JsonDocument.Parse(Writer.Json).RootElement.GetProperty("tiles").EnumerateObject().Select(p => p.Name).ToArray();
     }
+
+    /// <summary>Config plus a tile defined by hand but not placed on any display.</summary>
+    static readonly string WithSpare = Config.Replace(
+        "\"c\": { \"connector\": \"ghost\" } }", "\"c\": { \"connector\": \"ghost\" }, \"spare\": { \"connector\": \"ghost\" } }");
 
     [Fact]
     public void A_stack_is_one_slot_and_all_its_members_get_runtimes()
@@ -158,6 +164,63 @@ public class HostControllerLayoutTests
         Assert.Same(c, f.Host.Runtimes["c"]); // still on SECOND through "*"
         Assert.Equal(new[] { "a", "b" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
         Assert.True(f.Writer.Current.Tiles.ContainsKey("c")); // the definition stays
+    }
+
+    [Fact]
+    public void Removing_the_last_placement_of_a_tile_deletes_its_definition_in_the_same_save()
+    {
+        var f = new Fixture(WithSpare);
+
+        Assert.Null(f.Host.RemoveTile("MAIN", 0, null));
+
+        Assert.Equal(1, f.Writer.Saves);
+        Assert.Equal(new[] { "b", "c", "spare" }, f.TileIds);
+        Assert.Equal(new[] { "b", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+        Assert.False(f.Host.Runtimes.ContainsKey("a"));
+    }
+
+    [Fact]
+    public void Removing_a_stack_member_nothing_else_places_deletes_its_definition()
+    {
+        var f = new Fixture(Config);
+
+        Assert.Null(f.Host.RemoveTile("MAIN", 1, 0)); // b
+
+        Assert.Equal(new[] { "a", "c" }, f.TileIds);
+        Assert.Equal(new[] { "a", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+    }
+
+    [Fact]
+    public void A_tile_another_display_entry_places_keeps_its_definition()
+    {
+        var f = new Fixture(Config); // only MAIN is connected; "*" still places c
+
+        Assert.Null(f.Host.RemoveTile("MAIN", 1, 1));
+
+        Assert.Equal(new[] { "a", "b", "c" }, f.TileIds);
+    }
+
+    [Fact]
+    public void Edits_that_remove_no_tile_never_prune_unplaced_definitions()
+    {
+        var f = new Fixture(WithSpare);
+
+        Assert.Null(f.Host.EditLayout("MAIN", l => LayoutEdits.Drop(l, 0, 1, DropPosition.After)));
+        Assert.Null(f.Host.EditLayout("MAIN", l => LayoutEdits.RemoveFromStack(l, 0, 0)));
+
+        Assert.Equal(2, f.Writer.Saves);
+        Assert.Contains("spare", f.TileIds);
+    }
+
+    [Fact]
+    public void Removing_with_a_stale_index_saves_nothing()
+    {
+        var f = new Fixture(Config);
+
+        Assert.Null(f.Host.RemoveTile("MAIN", 9, null));
+        Assert.NotNull(f.Host.RemoveTile("GONE", 0, null));
+
+        Assert.Equal(0, f.Writer.Saves);
     }
 
     [Fact]

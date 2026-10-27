@@ -38,6 +38,29 @@ public class ConfigJsonTests
     }
 
     [Fact]
+    public void Remove_unplaced_tiles_deletes_only_candidates_no_display_places()
+    {
+        var root = ConfigJson.ParseRoot("""
+        { "tiles": { "a": { "connector": "x" }, "b": { "connector": "x" }, "c": { "connector": "x" }, "spare": { "connector": "x" } },
+          "displays": { "primary": { "slots": ["a"] }, "*": { "slots": [ { "stack": ["b"] } ] } } }
+        """);
+
+        ConfigJson.RemoveUnplacedTiles(root, ["b", "c"]);
+
+        Assert.Equal(new[] { "a", "b", "spare" }, root["tiles"]!.AsObject().Select(t => t.Key));
+    }
+
+    [Fact]
+    public void Remove_unplaced_tiles_leaves_a_config_that_does_not_parse_alone()
+    {
+        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "connector": "x" } }, "displays": { "primary": { "slots": ["ghost"] } } }""");
+
+        ConfigJson.RemoveUnplacedTiles(root, ["a"]);
+
+        Assert.NotNull(root["tiles"]!["a"]);
+    }
+
+    [Fact]
     public void Set_display_keeps_other_keys_and_their_order()
     {
         var root = ConfigJson.ParseRoot("""

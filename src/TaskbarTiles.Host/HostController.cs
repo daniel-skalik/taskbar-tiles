@@ -39,6 +39,13 @@ public interface ILayoutEditor
 
     /// <summary>Places the gallery item at the end of the display's layout, adding its tile definition when it is new.</summary>
     ConfigError? AddFromGallery(string displayId, GalleryItem item);
+
+    /// <summary>
+    /// × and "Remove tile": removes slot <paramref name="index"/>, or with <paramref name="member"/> one member of a stack,
+    /// from the display's layout. A tile no display entry (including "*") places afterwards loses its definition under
+    /// "tiles" in the same save; other unplaced definitions are kept.
+    /// </summary>
+    ConfigError? RemoveTile(string displayId, int index, int? member);
 }
 
 /// <summary>
@@ -97,15 +104,25 @@ public sealed class HostController(
 
     public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit)
     {
-        var (display, refused) = EditTarget(displayId);
-        if (display is null) return refused;
-        var cfg = config();
-        var layout = DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
-        var changed = edit(layout);
-        if (LayoutEdits.SameSlots(layout, changed)) return null;
+        var (target, refused) = Editable(displayId);
+        if (target is not { } t) return refused;
+        var changed = edit(t.Layout);
+        if (LayoutEdits.SameSlots(t.Layout, changed)) return null;
+        return Saved(LayoutOf(displayId, t.Key), writer!.Save(root => ConfigJson.SetDisplay(root, t.Key, changed)));
+    }
 
-        var key = DisplayResolver.EditKey(cfg, displayId, display.IsPrimary);
-        return Saved(displayId, key, writer!.Save(root => ConfigJson.SetDisplay(root, key, changed)));
+    public ConfigError? RemoveTile(string displayId, int index, int? member)
+    {
+        var (target, refused) = Editable(displayId);
+        if (target is not { } t) return refused;
+        var changed = LayoutEdits.Remove(t.Layout, index, member);
+        if (LayoutEdits.SameSlots(t.Layout, changed)) return null;
+        var removed = LayoutEdits.RemovedTileIds(t.Layout, changed);
+        return Saved(LayoutOf(displayId, t.Key), writer!.Save(root =>
+        {
+            ConfigJson.SetDisplay(root, t.Key, changed);
+            ConfigJson.RemoveUnplacedTiles(root, removed); // after the change, so this display no longer counts
+        }));
     }
 
     public IReadOnlyList<GalleryItem> GalleryFor(string displayId)
@@ -120,20 +137,28 @@ public sealed class HostController(
     {
         if (item.NewTile is not { } definition) return EditLayout(displayId, l => LayoutEdits.Append(l, item.TileId));
 
-        var (display, refused) = EditTarget(displayId);
-        if (display is null) return refused;
-        var cfg = config();
-        var layout = DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
-        var key = DisplayResolver.EditKey(cfg, displayId, display.IsPrimary);
-        return Saved(displayId, key, writer!.Save(root =>
+        var (target, refused) = Editable(displayId);
+        if (target is not { } t) return refused;
+        return Saved(LayoutOf(displayId, t.Key), writer!.Save(root =>
         {
             // Pick the id from the file being saved, so a tile added by hand but not reloaded yet is never replaced.
-            var taken = root["tiles"] is System.Text.Json.Nodes.JsonObject tiles ? tiles.Select(t => t.Key) : [];
+            var taken = root["tiles"] is System.Text.Json.Nodes.JsonObject tiles ? tiles.Select(tile => tile.Key) : [];
             var id = TileGallery.UniqueId(item.TileId, taken);
             ConfigJson.SetTile(root, id, definition);
-            ConfigJson.SetDisplay(root, key, LayoutEdits.Append(layout, id));
+            ConfigJson.SetDisplay(root, t.Key, LayoutEdits.Append(t.Layout, id));
         }));
     }
+
+    /// <summary>The layout the display shows and the key its edits are saved under, or (null, why it cannot be edited).</summary>
+    ((DisplayLayout Layout, string Key)? Target, ConfigError? Refused) Editable(string displayId)
+    {
+        var (display, refused) = EditTarget(displayId);
+        if (display is null) return (null, refused);
+        var cfg = config();
+        return ((DisplayResolver.Resolve(cfg, displayId, display.IsPrimary), DisplayResolver.EditKey(cfg, displayId, display.IsPrimary)), null);
+    }
+
+    static string LayoutOf(string displayId, string key) => $"the layout of display '{displayId}' under \"{key}\"";
 
     /// <summary>The display to edit, or (null, why not).</summary>
     (TaskbarInfo? Display, ConfigError? Refused) EditTarget(string displayId)
@@ -144,10 +169,11 @@ public sealed class HostController(
         return display is null ? (null, new ConfigError($"Display '{displayId}' is no longer connected.")) : (display, null);
     }
 
-    ConfigError? Saved(string displayId, string key, ConfigError? error)
+    /// <summary>After a save: logs what was saved and rebuilds the bars, or returns why nothing was saved.</summary>
+    ConfigError? Saved(string what, ConfigError? error)
     {
         if (error is not null) return error;
-        logFor("host").Info($"Saved the layout of display '{displayId}' under \"{key}\"");
+        logFor("host").Info($"Saved {what}");
         ui.Post(Sync); // not inline: the request usually comes from a handler of a view this rebuilds
         return null;
     }

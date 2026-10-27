@@ -138,6 +138,16 @@ public class LayoutEditsTests
     }
 
     [Fact]
+    public void Removed_tile_ids_are_the_ones_the_edit_took_off_the_display()
+    {
+        var before = L(T("a"), S(Five, "b", "c"), T("c"));
+
+        Assert.Equal(new[] { "a" }, LayoutEdits.RemovedTileIds(before, LayoutEdits.Remove(before, 0)));
+        Assert.Empty(LayoutEdits.RemovedTileIds(before, LayoutEdits.Remove(before, 1, member: 1))); // c is still placed
+        Assert.Equal(new[] { "b", "c" }, LayoutEdits.RemovedTileIds(before, L(T("a"))));
+    }
+
+    [Fact]
     public void Append_adds_a_plain_tile_at_the_end() =>
         Same(L(T("a"), T("b")), LayoutEdits.Append(L(T("a")), "b"));
 

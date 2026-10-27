@@ -49,6 +49,21 @@ public static class ConfigJson
         };
     }
 
+    /// <summary>
+    /// Deletes tiles[id] for every candidate no display entry places (including "*" and entries of displays not connected
+    /// now). Call it after the layout change, with the ids that change took off a display. Placement is read with
+    /// ConfigParser, so every slot form counts; a tree that does not parse is left alone (saving refuses it anyway).
+    /// </summary>
+    public static void RemoveUnplacedTiles(JsonObject root, IEnumerable<string> candidates)
+    {
+        if (root["tiles"] is not JsonObject tiles) return;
+        var parsed = ConfigParser.Parse(Serialize(root));
+        if (!parsed.Success) return;
+        var placed = parsed.Config!.Displays.Values.SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal);
+        foreach (var id in candidates.Distinct(StringComparer.Ordinal))
+            if (!placed.Contains(id)) tiles.Remove(id);
+    }
+
     /// <summary>A plain tile is its id, a pinned tile { "tile", "pin" }, a stack { "stack", "rotate" }.</summary>
     public static JsonNode ToNode(Slot slot) => slot switch
     {
