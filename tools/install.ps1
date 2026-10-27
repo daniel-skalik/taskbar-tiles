@@ -1,23 +1,29 @@
 <#
 .SYNOPSIS
-    Builds Taskbar Tiles and installs it for the current user.
+    Builds Taskbar Tiles and installs it for the current user. install.cmd in the repository root runs this script.
 
 .DESCRIPTION
-    Run it from your own terminal (not from an agent session: the Claude desktop app redirects an agent's writes
-    under %LOCALAPPDATA% to a private copy). Safe to run again; each run replaces the installed app.
+    Run it from your own terminal or by double-clicking install.cmd (not from an agent session: the Claude desktop app
+    redirects an agent's writes under %LOCALAPPDATA% to a private copy). Safe to run again; each run replaces the
+    installed app and the bundled tile kinds.
 
     1. Publishes src\TaskbarTiles.Host (Release) into a staging folder next to the install folder and verifies it.
     2. Stops TaskbarTiles.exe if it runs from the install folder.
     3. Swaps the staging folder in for the install folder.
-    4. Creates or updates the TaskbarTiles shortcut in the Startup folder.
-    5. Starts the installed app.
+    4. Replaces the bundled tile kinds uptime, ping and media in the tiles folder with the new copies.
+    5. Creates or updates the TaskbarTiles shortcut in the Startup folder.
+    6. Starts the installed app.
 
     If the publish fails, the running app and the installed copy are left untouched.
 
-    Your config.json, scripts, plugins and logs in %LOCALAPPDATA%\TaskbarTiles are never touched.
+    Your config.json, logs and every other folder in tiles\ (your own kinds) are never touched. To change a bundled
+    kind, copy its folder under a new name first: install replaces tiles\uptime, tiles\ping and tiles\media.
 
 .PARAMETER AppDir
     Install folder. Default: %LOCALAPPDATA%\TaskbarTiles\app.
+
+.PARAMETER TilesDir
+    Tile kinds folder whose bundled kinds are replaced. Default: %LOCALAPPDATA%\TaskbarTiles\tiles.
 
 .PARAMETER NoShortcut
     Do not create or update the Startup shortcut.
@@ -26,11 +32,15 @@
     Do not start the app afterwards.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File tools\install.ps1
+    install.cmd
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File tools\install.ps1 -AppDir D:\tmp\app -TilesDir D:\tmp\tiles -NoShortcut -NoStart
 #>
 [CmdletBinding()]
 param(
     [string]$AppDir = (Join-Path $env:LOCALAPPDATA 'TaskbarTiles\app'),
+    [string]$TilesDir = (Join-Path $env:LOCALAPPDATA 'TaskbarTiles\tiles'),
     [switch]$NoShortcut,
     [switch]$NoStart
 )
@@ -42,6 +52,8 @@ $AppDir = [System.IO.Path]::GetFullPath($AppDir).TrimEnd('\')
 $exe = Join-Path $AppDir 'TaskbarTiles.exe'
 $stage = "$AppDir.new"
 $old = "$AppDir.old"
+$TilesDir = [System.IO.Path]::GetFullPath($TilesDir).TrimEnd('\')
+$bundledKinds = @('uptime', 'ping', 'media') # replaced on every install; other folders in tiles\ are the user's
 
 if (-not (Test-Path -LiteralPath $project)) { throw "Cannot find $project. Run this script from the repository's tools folder." }
 
@@ -110,7 +122,21 @@ if (Test-Path -LiteralPath $old) {
 }
 Write-Host "Installed $exe"
 
-# 4. Startup shortcut (shows in Task Manager > Startup apps).
+# 4. Replace the bundled tile kinds (the app is stopped, as for the swap). Other folders in tiles\ are never touched.
+New-Item -ItemType Directory -Force -Path $TilesDir | Out-Null
+foreach ($kind in $bundledKinds) {
+    $source = Join-Path $AppDir "tiles\$kind"
+    $target = Join-Path $TilesDir $kind
+    try {
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+        Copy-Item -LiteralPath $source -Destination $target -Recurse
+    } catch {
+        throw "Could not replace $target : $($_.Exception.Message) The new app is installed but was not started; close whatever uses that folder and run the install again."
+    }
+    Write-Host "Replaced tile kind $kind in $TilesDir"
+}
+
+# 5. Startup shortcut (shows in Task Manager > Startup apps).
 if ($NoShortcut) {
     Write-Host 'Skipped the Startup shortcut (-NoShortcut).'
 } else {
@@ -124,7 +150,7 @@ if ($NoShortcut) {
     Write-Host "Startup shortcut: $link -> $exe"
 }
 
-# 5. Start.
+# 6. Start.
 if ($NoStart) {
     Write-Host 'Not started (-NoStart).'
 } elseif ($others.Count -gt 0) {
