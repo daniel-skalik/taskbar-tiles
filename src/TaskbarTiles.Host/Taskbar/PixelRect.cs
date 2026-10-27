@@ -6,6 +6,9 @@ public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom
     public int Width => Right - Left;
     public int Height => Bottom - Top;
     public bool IsEmpty => Width <= 0 || Height <= 0;
+
+    /// <summary>True for a pixel inside: the left and top edges belong to the rectangle, the right and bottom ones do not.</summary>
+    public bool Contains(int x, int y) => x >= Left && x < Right && y >= Top && y < Bottom;
 }
 
 /// <summary>Raw window rectangles of one taskbar. Children are null when the window is missing or zero-sized.</summary>

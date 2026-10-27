@@ -62,10 +62,11 @@ This is recomputed whenever the free space changes (apps opened or closed, align
 
 ## Edit layout
 
-Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit mode at once (so a display without tiles can get some), but each one edits only its own display's tiles.
+Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit mode at once (so a display without tiles can get some). Each one edits its own display's tiles; dragging a tile onto another taskbar moves it to that display.
 
 - Tiles get a dashed outline and a `×`. Clicks no longer open popups.
-- Drag a tile onto the left or right part of another tile to move it there.
+- Drag a tile onto the left or right part of another tile, or between two tiles, to move it there.
+- Drag a tile onto another monitor's taskbar to move it to that display: before, into or after the tile under the pointer, as on its own taskbar, or at the end when you release it anywhere else on that taskbar (`+`, **Done**, or a taskbar without tiles). If that display already shows the tile, it only leaves this one. Both displays' entries are saved together. Releasing outside every taskbar cancels the drag. Tiles inside the `»` popup cannot be dragged.
 - Drop it onto the middle of a stack to add it to the stack, or onto the middle of another tile to make a stack of the two.
 - `×` removes the tile from this display. On a stack it removes the member shown (scroll the wheel to pick one); a stack left with one member becomes a plain tile. When no display entry (including `*`, and entries of monitors that are not connected) places the tile any more, its definition under `tiles` is deleted in the same save; `config.json.bak` still has it. Tiles you defined by hand but have not placed anywhere yet are never deleted, and `+` lists them first.
 - `+` adds a tile at the end: a tile you already have that this display does not show, a new tile from a loaded plugin, or a new script tile from one of the sample scripts. New tiles get a free id such as `ping-2`.

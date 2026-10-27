@@ -18,6 +18,7 @@ public partial class App : Application
     TaskbarTracker? _tracker;
     HostController? _host;
     TileCommands? _commands;
+    readonly TileBarRegistry _bars = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -94,7 +95,7 @@ public partial class App : Application
 
     ITileBarView CreateBar(string displayId)
     {
-        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!);
+        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!, _bars);
         bar.ExitRequested += (_, _) => Shutdown();
         return bar;
     }

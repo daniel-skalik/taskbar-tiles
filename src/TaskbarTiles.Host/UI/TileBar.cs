@@ -34,6 +34,7 @@ public sealed class TileBar : Window, ITileBarView
     readonly ITileLog _log;
     readonly TileCommands _commands;
     readonly ILayoutEditor _editor;
+    readonly TileBarRegistry _bars;
     IReadOnlyList<BarSlot> _slots = [];
     List<SlotView> _overflowed = [];
     StackPanel? _overflowPanel; // set while the overflow popup is open
@@ -44,15 +45,17 @@ public sealed class TileBar : Window, ITileBarView
     IntPtr _menuForeground; // the foreground window before a menu took it for the bar
     IntPtr _previousForeground; // the window that was in front when edit mode activated this bar
     SlotView? _dragSource;
-    SlotView? _dropTarget;
+    SlotView? _dropTarget; // the slot of this bar a drop would stack onto
+    TileBar? _hoverBar; // while this bar drags: the bar under the pointer, which shows the drop preview
     Point _dragStart;
     bool _dragging;
 
-    public TileBar(string displayId, ITileLog log, TileCommands commands, ILayoutEditor editor)
+    public TileBar(string displayId, ITileLog log, TileCommands commands, ILayoutEditor editor, TileBarRegistry bars)
     {
         _log = log;
         _commands = commands;
         _editor = editor;
+        _bars = bars;
         DisplayId = displayId;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -105,6 +108,7 @@ public sealed class TileBar : Window, ITileBarView
 
         // Create the HWND now (no Show) so _hwnd and ex-styles exist; Reflow alone owns Show/Hide.
         _hwnd = new WindowInteropHelper(this).EnsureHandle();
+        bars.Add(this);
     }
 
     public string DisplayId { get; }
@@ -118,6 +122,7 @@ public sealed class TileBar : Window, ITileBarView
         if (_slots.SequenceEqual(slots)) return;
         _slots = slots.ToList();
         EndDrag();
+        ClearDropPreview(); // another bar may be dragging over this one
         CloseOverflow(); // the popup may hold views that move or go away
 
         var pool = _views.ToList();
@@ -165,6 +170,7 @@ public sealed class TileBar : Window, ITileBarView
         if (_editing == editing) return;
         _editing = editing;
         EndDrag();
+        ClearDropPreview();
         FlyoutWindow.CloseOpen();
         foreach (var view in _views) view.Editing = editing;
         SetActivatable(editing);
@@ -391,23 +397,22 @@ public sealed class TileBar : Window, ITileBarView
             _dragging = true;
             _dragSource.Opacity = 0.35;
         }
-        if (!_dragging) return;
-        var (target, position) = DropTargetAt(e);
-        SetDropTarget(position == DropPosition.Into ? target : null);
+        if (_dragging) HoverAt(PointToScreen(p));
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
         if (_dragSource is null) return;
-        var source = _dragSource;
-        var dragged = _dragging;
-        var (target, position) = DropTargetAt(e);
+        var dragged = _dragging ? _dragSource : null;
+        var screen = PointToScreen(e.GetPosition(this));
+        var bar = dragged is null ? null : _bars.BarAt(screen);
+        var drop = bar?.DropAt(screen, ReferenceEquals(bar, this) ? dragged : null);
         EndDrag();
-        if (!dragged || target is null) return;
-        var from = source.Slot.Index;
-        var to = target.Slot.Index;
-        Edit(l => LayoutEdits.Drop(l, from, to, position));
+        if (dragged is null || bar is null || drop is not { } d) return; // a click, or released outside every bar: cancel
+        var from = dragged.Slot.Index;
+        var toDisplay = bar.DisplayId;
+        Save(() => _editor.MoveToDisplay(DisplayId, from, toDisplay, d.Target, d.Position));
     }
 
     protected override void OnLostMouseCapture(MouseEventArgs e)
@@ -416,20 +421,50 @@ public sealed class TileBar : Window, ITileBarView
         EndDrag();
     }
 
-    /// <summary>The bar slot under the pointer (not the dragged one) and where on it: the middle 40 % means "into".</summary>
-    (SlotView? Target, DropPosition Position) DropTargetAt(MouseEventArgs e)
+    /// <summary>Shows where the slot would land on the bar under the pointer: this one or another display's.</summary>
+    void HoverAt(Point screen)
     {
-        foreach (var view in _views)
+        var bar = _bars.BarAt(screen);
+        if (!ReferenceEquals(bar, _hoverBar))
         {
-            if (ReferenceEquals(view, _dragSource) || !ReferenceEquals(view.Parent, _panel) || view.ActualWidth <= 0) continue;
-            var p = e.GetPosition(view);
-            if (Inside(p, view.ActualWidth, view.ActualHeight)) return (view, LayoutEdits.DropPositionAt(p.X / view.ActualWidth));
+            _hoverBar?.ClearDropPreview();
+            _hoverBar = bar;
         }
-        return (null, DropPosition.Before);
+        bar?.ShowDropPreview(screen, ReferenceEquals(bar, this) ? _dragSource : null);
     }
 
-    /// <summary>True when the point lies within a slot of the given size; releasing outside the bar cancels a drag.</summary>
-    internal static bool Inside(Point p, double width, double height) => p.X >= 0 && p.X < width && p.Y >= 0 && p.Y < height;
+    /// <summary>True when this bar is in edit mode, on screen, and its window holds the screen point (physical pixels).</summary>
+    internal bool HoldsPoint(Point screen) =>
+        _editing && IsVisible && NativeMethods.Rect(_hwnd) is { } rect
+        && rect.Contains((int)Math.Floor(screen.X), (int)Math.Floor(screen.Y));
+
+    /// <summary>
+    /// Where a slot released at the screen point lands on this bar: before, into or after one of its shown slots, or
+    /// (null, After) to append when it shows none. <paramref name="dragged"/> is the slot itself when the drag started here.
+    /// </summary>
+    internal (int? Target, DropPosition Position) DropAt(Point screen, SlotView? dragged)
+    {
+        var (candidates, spot) = SpotAt(screen, dragged);
+        return DropGeometry.ToDrop(spot, candidates.Select(v => v.Slot.Index).ToList());
+    }
+
+    /// <summary>While a drag (from this bar or another) is over this bar: highlights the slot a drop would stack onto.</summary>
+    internal void ShowDropPreview(Point screen, SlotView? dragged)
+    {
+        var (candidates, spot) = SpotAt(screen, dragged);
+        SetDropTarget(spot.Into ? candidates[spot.Index] : null);
+    }
+
+    internal void ClearDropPreview() => SetDropTarget(null);
+
+    /// <summary>The shown slots a drop can land by (all but the dragged one) and the spot under the screen point.</summary>
+    (List<SlotView> Candidates, DropSpot Spot) SpotAt(Point screen, SlotView? dragged)
+    {
+        var candidates = _views.Where(v => ReferenceEquals(v.Parent, _panel) && !ReferenceEquals(v, dragged)).ToList();
+        // Layout offsets, not rendered positions: render transforms must not move the drop spots.
+        var spans = candidates.Select(v => new SlotSpan(VisualTreeHelper.GetOffset(v).X, v.ActualWidth)).ToList();
+        return (candidates, DropGeometry.SpotAt(spans, _panel.PointFromScreen(screen).X));
+    }
 
     void SetDropTarget(SlotView? target)
     {
@@ -445,7 +480,9 @@ public sealed class TileBar : Window, ITileBarView
         _dragSource = null; // first: releasing the capture raises LostMouseCapture, which calls back here
         _dragging = false;
         if (source is not null) source.Opacity = 1;
-        SetDropTarget(null);
+        var hover = _hoverBar;
+        _hoverBar = null;
+        hover?.ClearDropPreview();
         if (IsMouseCaptured) ReleaseMouseCapture();
     }
 
@@ -558,6 +595,9 @@ public sealed class TileBar : Window, ITileBarView
 
     protected override void OnClosed(EventArgs e)
     {
+        EndDrag();
+        ClearDropPreview();
+        _bars.Remove(this);
         CloseOverflow();
         foreach (var v in _views) v.Detach();
         base.OnClosed(e);
