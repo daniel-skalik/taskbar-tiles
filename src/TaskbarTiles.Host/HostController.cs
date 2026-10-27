@@ -46,6 +46,14 @@ public interface ILayoutEditor
     /// "tiles" in the same save; other unplaced definitions are kept.
     /// </summary>
     ConfigError? RemoveTile(string displayId, int index, int? member);
+
+    /// <summary>
+    /// Drag and drop between displays' bars. Slot <paramref name="fromIndex"/> of the source display lands before, into or
+    /// after slot <paramref name="target"/> of the target display, or at its end when target is null; tiles the target
+    /// display already places only leave the source. One save writes both displays' edit keys. On the same display this
+    /// is <see cref="LayoutEdits.Drop"/> (a null target changes nothing).
+    /// </summary>
+    ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position);
 }
 
 /// <summary>
@@ -123,6 +131,27 @@ public sealed class HostController(
             ConfigJson.SetDisplay(root, t.Key, changed);
             ConfigJson.RemoveUnplacedTiles(root, removed); // after the change, so this display no longer counts
         }));
+    }
+
+    public ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position)
+    {
+        if (fromDisplayId == toDisplayId)
+            return target is { } to ? EditLayout(fromDisplayId, l => LayoutEdits.Drop(l, fromIndex, to, position)) : null;
+
+        var (source, refused) = Editable(fromDisplayId);
+        if (source is not { } s) return refused;
+        var (destination, refusedTarget) = Editable(toDisplayId);
+        if (destination is not { } d) return refusedTarget;
+        if (s.Layout.Slots.ElementAtOrDefault(fromIndex) is not { } slot) return null; // a stale index: nothing to move
+
+        var newSource = LayoutEdits.Remove(s.Layout, fromIndex);
+        var newTarget = LayoutEdits.DropIncoming(d.Layout, slot, target, position);
+        return Saved($"a move from display '{fromDisplayId}' (\"{s.Key}\") to display '{toDisplayId}' (\"{d.Key}\")",
+            writer!.Save(root =>
+            {
+                ConfigJson.SetDisplay(root, s.Key, newSource);
+                ConfigJson.SetDisplay(root, d.Key, newTarget);
+            }));
     }
 
     public IReadOnlyList<GalleryItem> GalleryFor(string displayId)

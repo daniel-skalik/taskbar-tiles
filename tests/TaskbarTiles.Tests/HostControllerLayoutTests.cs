@@ -224,6 +224,84 @@ public class HostControllerLayoutTests
     }
 
     [Fact]
+    public void Moving_a_slot_to_another_display_writes_both_entries_in_one_save()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "SECOND", 0, DropPosition.Before));
+
+        Assert.Equal(1, f.Writer.Saves);
+        Assert.Equal(new[] { "b", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+        Assert.Equal(new[] { "a", "c" }, f.Bars["SECOND"].Tiles.Select(t => t.TileId));
+        Assert.True(f.Bars["SECOND"].Slots[0].Pinned); // the pin moves along
+        Assert.Equal(1, f.Displays.GetProperty("primary").GetProperty("slots").GetArrayLength());
+        Assert.Equal(2, f.Displays.GetProperty("SECOND").GetProperty("slots").GetArrayLength());
+        Assert.Equal(new[] { "c" }, f.Displays.GetProperty("*").GetProperty("slots").EnumerateArray().Select(e => e.GetString())); // never written
+    }
+
+    [Fact]
+    public void Moving_a_stack_to_a_display_that_places_one_member_moves_only_the_rest()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 1, "SECOND", null, DropPosition.After));
+
+        Assert.Equal(new[] { "a" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+        Assert.Equal(new[] { "c", "b" }, f.Bars["SECOND"].Tiles.Select(t => t.TileId));
+        Assert.False(f.Bars["SECOND"].Slots[1].IsStack);
+    }
+
+    [Fact]
+    public void Moving_a_tile_to_a_display_that_already_places_it_only_removes_it()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));
+
+        Assert.Null(f.Host.MoveToDisplay("SECOND", 0, "MAIN", null, DropPosition.After));
+
+        Assert.Equal(1, f.Writer.Saves);
+        Assert.Empty(f.Bars["SECOND"].Tiles);
+        Assert.Equal(new[] { "a", "b", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+        Assert.Equal(0, f.Displays.GetProperty("SECOND").GetProperty("slots").GetArrayLength());
+        Assert.Contains("c", f.TileIds);
+    }
+
+    [Fact]
+    public void A_display_without_tiles_accepts_a_move()
+    {
+        var f = new Fixture(Config.Replace("\"*\": { \"slots\": [\"c\"] }", "\"*\": { \"slots\": [] }"), ("MAIN", true), ("SECOND", false));
+        Assert.Empty(f.Bars["SECOND"].Slots);
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "SECOND", null, DropPosition.After));
+
+        Assert.Equal(new[] { "a" }, f.Bars["SECOND"].Tiles.Select(t => t.TileId));
+        Assert.Equal(new[] { "b", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+    }
+
+    [Fact]
+    public void Moving_within_one_display_is_a_drop()
+    {
+        var f = new Fixture(Config);
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "MAIN", 1, DropPosition.After));
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "MAIN", null, DropPosition.After)); // nothing to drop by
+
+        Assert.Equal(1, f.Writer.Saves);
+        Assert.Equal(new[] { "b", "c", "a" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+    }
+
+    [Fact]
+    public void Moving_from_or_to_an_unknown_display_or_a_stale_slot_saves_nothing()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));
+
+        Assert.NotNull(f.Host.MoveToDisplay("GONE", 0, "SECOND", null, DropPosition.After));
+        Assert.NotNull(f.Host.MoveToDisplay("MAIN", 0, "GONE", null, DropPosition.After));
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 9, "SECOND", null, DropPosition.After));
+
+        Assert.Equal(0, f.Writer.Saves);
+    }
+
+    [Fact]
     public void Edit_mode_switches_every_bar_and_reaches_bars_created_while_on()
     {
         var f = new Fixture(Config, ("MAIN", true), ("SECOND", false));

@@ -148,6 +148,41 @@ public class LayoutEditsTests
     }
 
     [Fact]
+    public void An_incoming_slot_lands_before_into_or_after_the_target()
+    {
+        var layout = L(T("a"), T("b"));
+
+        Same(L(T("a"), T("x"), T("b")), LayoutEdits.DropIncoming(layout, T("x"), 1, DropPosition.Before));
+        Same(L(T("a"), T("x"), T("b")), LayoutEdits.DropIncoming(layout, T("x"), 0, DropPosition.After));
+        Same(L(T("a"), S(Five, "b", "x")), LayoutEdits.DropIncoming(layout, T("x"), 1, DropPosition.Into));
+        Same(L(S(Eight, "a", "x", "y"), T("b")), LayoutEdits.DropIncoming(layout, S(Eight, "x", "y"), 0, DropPosition.Into));
+    }
+
+    [Fact]
+    public void An_incoming_slot_without_a_fitting_target_is_appended_with_its_pin()
+    {
+        Same(L(T("a"), T("x", pin: true)), LayoutEdits.DropIncoming(L(T("a")), T("x", pin: true), null, DropPosition.After));
+        Same(L(T("a"), T("x")), LayoutEdits.DropIncoming(L(T("a")), T("x"), 7, DropPosition.Before));
+        Same(L(T("x")), LayoutEdits.DropIncoming(DisplayLayout.Empty, T("x"), null, DropPosition.After));
+    }
+
+    [Fact]
+    public void An_incoming_tile_the_layout_already_places_changes_nothing()
+    {
+        var layout = L(T("a"), S(Five, "b", "c"));
+
+        Same(layout, LayoutEdits.DropIncoming(layout, T("c"), 0, DropPosition.Before));
+        Same(layout, LayoutEdits.DropIncoming(layout, S(Eight, "a", "b"), null, DropPosition.After));
+    }
+
+    [Fact]
+    public void An_incoming_stack_leaves_out_members_the_layout_already_places()
+    {
+        Same(L(T("a"), S(Eight, "b", "c")), LayoutEdits.DropIncoming(L(T("a")), S(Eight, "a", "b", "c"), null, DropPosition.After));
+        Same(L(T("a"), T("c")), LayoutEdits.DropIncoming(L(T("a")), S(Eight, "a", "c"), null, DropPosition.After));
+    }
+
+    [Fact]
     public void Append_adds_a_plain_tile_at_the_end() =>
         Same(L(T("a"), T("b")), LayoutEdits.Append(L(T("a")), "b"));
 

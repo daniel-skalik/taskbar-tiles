@@ -83,6 +83,27 @@ public static class LayoutEdits
         return new DisplayLayout(slots);
     }
 
+    /// <summary>
+    /// A slot dragged here from another display. Tiles this layout already places are left out (a stack keeps the rest
+    /// and becomes a plain tile with one left; with none left nothing changes). With a <paramref name="target"/> that
+    /// fits it lands before, into or after that slot like <see cref="Drop"/>; otherwise it is appended. A plain tile keeps
+    /// its pin, a stack its rotate.
+    /// </summary>
+    public static DisplayLayout DropIncoming(DisplayLayout layout, Slot slot, int? target, DropPosition position)
+    {
+        var placed = DisplayResolver.PlacedTileIds(layout).ToHashSet(StringComparer.Ordinal);
+        Slot? incoming = slot switch
+        {
+            TileSlot t => placed.Contains(t.TileId) ? null : t,
+            StackSlot s => Collapse(new StackSlot(s.TileIds.Where(id => !placed.Contains(id)).ToList(), s.Rotate)),
+            _ => null,
+        };
+        if (incoming is null) return layout;
+
+        var appended = new DisplayLayout(layout.Slots.Append(incoming).ToList());
+        return target is { } t2 && Valid(layout, t2) ? Drop(appended, appended.Slots.Count - 1, t2, position) : appended;
+    }
+
     /// <summary>Adds a plain tile at the end.</summary>
     public static DisplayLayout Append(DisplayLayout layout, string tileId) =>
         new(layout.Slots.Append(new TileSlot(tileId, false)).ToList());
