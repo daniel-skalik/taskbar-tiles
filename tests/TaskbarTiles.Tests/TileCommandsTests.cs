@@ -14,7 +14,7 @@ public class TileCommandsTests
     {
         readonly List<FakeConnector> _connectors = [];
 
-        public Fixture(Action<FakeConnector, int>? setup = null)
+        public Fixture(Action<FakeConnector, int>? setup = null, string tileDirectory = "")
         {
             Commands = new TileCommands(Dir.File("config.json"), Path.Combine(Dir.Path, "logs"), p => Opened.Add(p), Log);
             Runtime = new TileRuntime("tile1", "fake", 132, () =>
@@ -26,7 +26,8 @@ public class TileCommandsTests
                     _connectors.Add(c);
                 }
                 return c;
-            }, NoSettings, new ImmediateDispatcher(), Log, new TileRuntimeOptions { Backoff = new BackoffSchedule([TimeSpan.FromMinutes(10)]) });
+            }, NoSettings, new ImmediateDispatcher(), Log,
+                new TileRuntimeOptions { Backoff = new BackoffSchedule([TimeSpan.FromMinutes(10)]), TileDirectory = tileDirectory });
         }
 
         public TempDir Dir { get; } = new();
@@ -46,7 +47,7 @@ public class TileCommandsTests
         Assert.Equal(
             new[]
             {
-                "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "",
+                "Show tile folder", "Refresh now", "Show connector log", "Restart tile", "",
                 "Create stack…", "", "Edit layout", "Remove tile", "",
                 "Show config file", "", "Exit Taskbar Tiles",
             },
@@ -137,12 +138,24 @@ public class TileCommandsTests
     }
 
     [Fact]
-    public async Task Configure_opens_the_config_file()
+    public async Task Show_tile_folder_reveals_the_kind_folder()
     {
-        using var f = new Fixture();
+        using var kind = new TempDir();
+        using var f = new Fixture(tileDirectory: kind.Path);
         await f.Runtime.StartAsync();
 
-        await f.Commands.ExecuteAsync(f.Runtime, TileCommand.Configure);
+        await f.Commands.ExecuteAsync(f.Runtime, TileCommand.ShowFolder);
+
+        Assert.Equal(new[] { kind.Path }, f.Opened);
+    }
+
+    [Fact]
+    public async Task Show_tile_folder_reveals_the_config_file_when_the_folder_is_gone()
+    {
+        using var f = new Fixture(tileDirectory: Path.Combine(Path.GetTempPath(), "tt-gone-" + Guid.NewGuid().ToString("N")));
+        await f.Runtime.StartAsync();
+
+        await f.Commands.ExecuteAsync(f.Runtime, TileCommand.ShowFolder);
 
         Assert.Equal(new[] { f.Dir.File("config.json") }, f.Opened);
     }
@@ -220,7 +233,7 @@ public class TileCommandsTests
         await f.Runtime.StartAsync();
         var commands = new TileCommands(f.Dir.File("config.json"), f.Dir.Path, _ => throw new InvalidOperationException("no editor"), f.Log);
 
-        await commands.ExecuteAsync(f.Runtime, TileCommand.Configure);
+        await commands.ExecuteAsync(f.Runtime, TileCommand.ShowFolder);
         commands.OpenConfig();
 
         Assert.Equal(2, f.Log.Snapshot().Count(m => m.StartsWith("ERROR") && m.Contains("no editor")));
