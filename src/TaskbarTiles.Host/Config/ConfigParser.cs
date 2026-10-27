@@ -142,7 +142,8 @@ public static class ConfigParser
         return d.RootElement.Clone();
     }
 
-    static string TrimJsonMessage(string message)
+    /// <summary>System.Text.Json's message without its " Path: …" / " LineNumber: …" tail. Also used for tile.json.</summary>
+    internal static string TrimJsonMessage(string message)
     {
         var cut = message.IndexOf(" Path:", StringComparison.Ordinal);
         if (cut < 0) cut = message.IndexOf(" LineNumber:", StringComparison.Ordinal);
