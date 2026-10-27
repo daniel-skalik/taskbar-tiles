@@ -114,7 +114,7 @@ The config notice and the tile error popup already exist; the last good config s
 | Instance uses `"connector"` | Config notice: `Tile 'x' uses "connector"; tiles now name a kind: "kind": "<folder>"` |
 | Instance `kind` has no folder in `tiles\` | Config notice naming the tile and the missing `tiles\<kind>` folder |
 | Instance `settings` contains `hooks` | Config notice: `hooks belong in tiles\<kind>\tile.json` |
-| `tile.json` missing, not valid JSON, or missing `name`/`connector` | Kind still in the table as broken; logged; its tiles show a tile error naming the file (and line for JSON errors). Other kinds work. |
+| `tile.json` not valid JSON, or missing `name`/`connector` | Kind still in the table as broken; logged; its tiles show a tile error naming the file (and line for JSON errors). Other kinds work. |
 | `connector` not `"script"` and not declared by a DLL in the folder | Tile error on that kind's tiles |
 | A kind DLL fails to load | Tile error on that kind's tiles |
 | Two DLLs in one folder declare the same connector id | Tile error on that kind's tiles |
