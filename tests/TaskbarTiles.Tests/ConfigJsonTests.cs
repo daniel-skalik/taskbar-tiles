@@ -41,13 +41,15 @@ public class ConfigJsonTests
     public void Remove_unplaced_tiles_deletes_only_candidates_no_display_places()
     {
         var root = ConfigJson.ParseRoot("""
-        { "tiles": { "a": { "connector": "x" }, "b": { "connector": "x" }, "c": { "connector": "x" }, "spare": { "connector": "x" } },
-          "displays": { "primary": { "slots": ["a"] }, "*": { "slots": [ { "stack": ["b"] } ] } } }
+        { "tiles": { "a": { "connector": "x" }, "b": { "connector": "x" }, "c": { "connector": "x" }, "d": { "connector": "x" }, "spare": { "connector": "x" } },
+          "displays": { "primary": { "slots": ["a"] }, "*": { "slots": [ { "stack": ["d"] } ] },
+                        "\\\\?\\DISPLAY#X": { "slots": ["b"] } } }
         """);
 
-        ConfigJson.RemoveUnplacedTiles(root, ["b", "c"]);
+        ConfigJson.RemoveUnplacedTiles(root, ["b", "c", "d"]);
 
-        Assert.Equal(new[] { "a", "b", "spare" }, root["tiles"]!.AsObject().Select(t => t.Key));
+        // b: placed only by a display that is not connected; d: only through "*"; both stay
+        Assert.Equal(new[] { "a", "b", "d", "spare" }, root["tiles"]!.AsObject().Select(t => t.Key));
     }
 
     [Fact]
