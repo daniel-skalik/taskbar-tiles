@@ -4,6 +4,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
@@ -25,6 +26,8 @@ public sealed class TileBar : Window, ITileBarView
     const double AddWidth = 40;
     const double DoneWidth = 56;
     const double DragThreshold = 4;
+    const double DropGapDip = 40; // how far a drop preview slides tiles apart; edit mode keeps this much room after Done
+    static readonly TimeSpan SlideDuration = TimeSpan.FromMilliseconds(150);
 
     readonly StackPanel _panel = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, InsetDip, 0, InsetDip) };
     readonly List<SlotView> _views = [];
@@ -47,6 +50,9 @@ public sealed class TileBar : Window, ITileBarView
     SlotView? _dragSource;
     SlotView? _dropTarget; // the slot of this bar a drop would stack onto
     TileBar? _hoverBar; // while this bar drags: the bar under the pointer, which shows the drop preview
+    DragGhost? _ghost;
+    Point _grab; // where the pointer holds the dragged slot, in DIP from its top-left corner
+    readonly Dictionary<FrameworkElement, double> _slides = []; // elements of this bar slid by a drop preview, and how far
     Point _dragStart;
     bool _dragging;
 
@@ -382,6 +388,7 @@ public sealed class TileBar : Window, ITileBarView
         if (!_editing || !ReferenceEquals(view.Parent, _panel)) return;
         _dragSource = view;
         _dragStart = e.GetPosition(this);
+        _grab = e.GetPosition(view);
         _dragging = false;
         CaptureMouse();
         e.Handled = true;
@@ -395,6 +402,7 @@ public sealed class TileBar : Window, ITileBarView
         if (!_dragging && (Math.Abs(p.X - _dragStart.X) > DragThreshold || Math.Abs(p.Y - _dragStart.Y) > DragThreshold))
         {
             _dragging = true;
+            _ghost = CreateGhost(_dragSource); // before the fade, so the ghost shows the tile at full strength
             _dragSource.Opacity = 0.35;
         }
         if (_dragging) HoverAt(PointToScreen(p));
@@ -424,6 +432,7 @@ public sealed class TileBar : Window, ITileBarView
     /// <summary>Shows where the slot would land on the bar under the pointer: this one or another display's.</summary>
     void HoverAt(Point screen)
     {
+        _ghost?.MoveTo(screen);
         var bar = _bars.BarAt(screen);
         if (!ReferenceEquals(bar, _hoverBar))
         {
@@ -448,14 +457,56 @@ public sealed class TileBar : Window, ITileBarView
         return DropGeometry.ToDrop(spot, candidates.Select(v => v.Slot.Index).ToList());
     }
 
-    /// <summary>While a drag (from this bar or another) is over this bar: highlights the slot a drop would stack onto.</summary>
+    /// <summary>
+    /// While a drag (from this bar or another) is over this bar: highlights the slot a drop would stack onto, or slides
+    /// the slots after the drop gap (and », + and Done) apart. Render transforms only, so nothing reflows.
+    /// </summary>
     internal void ShowDropPreview(Point screen, SlotView? dragged)
     {
         var (candidates, spot) = SpotAt(screen, dragged);
         SetDropTarget(spot.Into ? candidates[spot.Index] : null);
+
+        var shown = _panel.Children.OfType<FrameworkElement>().ToList();
+        var slots = shown.OfType<SlotView>().ToList();
+        var draggedAt = dragged is null ? -1 : slots.IndexOf(dragged);
+        var shifts = DropGeometry.Shifts(slots.Count, draggedAt, spot, DropGapDip);
+        var chromeShift = DropGeometry.OpensGap(spot, draggedAt) ? DropGapDip : 0;
+        foreach (var element in shown)
+            SlideTo(element, element is SlotView view ? shifts[slots.IndexOf(view)] : chromeShift);
     }
 
-    internal void ClearDropPreview() => SetDropTarget(null);
+    /// <summary>Ends a drop preview on this bar: no highlight, and every slid element snaps back without animation.</summary>
+    internal void ClearDropPreview()
+    {
+        SetDropTarget(null);
+        foreach (var element in _slides.Keys)
+        {
+            if (element.RenderTransform is not TranslateTransform slide) continue;
+            slide.BeginAnimation(TranslateTransform.XProperty, null);
+            slide.X = 0;
+        }
+        _slides.Clear();
+    }
+
+    /// <summary>Animates the element's horizontal slide to <paramref name="x"/> DIP over 150 ms, unless it is already headed there.</summary>
+    void SlideTo(FrameworkElement element, double x)
+    {
+        if ((_slides.TryGetValue(element, out var current) ? current : 0) == x) return;
+        _slides[element] = x;
+        if (element.RenderTransform is not TranslateTransform slide) element.RenderTransform = slide = new TranslateTransform();
+        slide.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(x, SlideDuration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+    }
+
+    DragGhost? CreateGhost(SlotView view)
+    {
+        try { return new DragGhost(view, _grab); }
+        catch (Exception ex)
+        {
+            _log.Error("Could not create the drag ghost; dragging without it", ex);
+            return null;
+        }
+    }
 
     /// <summary>The shown slots a drop can land by (all but the dragged one) and the spot under the screen point.</summary>
     (List<SlotView> Candidates, DropSpot Spot) SpotAt(Point screen, SlotView? dragged)
@@ -480,6 +531,9 @@ public sealed class TileBar : Window, ITileBarView
         _dragSource = null; // first: releasing the capture raises LostMouseCapture, which calls back here
         _dragging = false;
         if (source is not null) source.Opacity = 1;
+        var ghost = _ghost;
+        _ghost = null;
+        ghost?.Close();
         var hover = _hoverBar;
         _hoverBar = null;
         hover?.ClearDropPreview();
@@ -492,7 +546,9 @@ public sealed class TileBar : Window, ITileBarView
         var zone = _info.FreeZone.Zone;
         var scale = _info.DpiScale;
         var hidden = _info.Hidden || zone.IsEmpty;
-        var chrome = _editing ? AddWidth + GapDip + DoneWidth : 0;
+        // In edit mode the bar keeps DropGapDip of transparent room after Done, so a drop preview can slide tiles apart
+        // without resizing the bar or reflowing its tiles.
+        var chrome = _editing ? AddWidth + GapDip + DoneWidth + DropGapDip : 0;
 
         var layout = hidden
             ? null
@@ -541,6 +597,7 @@ public sealed class TileBar : Window, ITileBarView
             shown.Add(_addButton);
             shown.Add(_doneButton);
         }
+        _panel.Margin = new Thickness(0, InsetDip, showChrome ? DropGapDip : 0, InsetDip);
 
         if (_dragSource is not null && !shown.Contains(_dragSource)) EndDrag(); // the dragged slot went into overflow
         if (!overflowed.SequenceEqual(_overflowed)) CloseOverflow();

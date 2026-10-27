@@ -40,4 +40,42 @@ public class DropGeometryTests
     [Fact]
     public void A_bar_without_slots_appends() =>
         Assert.Equal(((int?)null, DropPosition.After), DropGeometry.ToDrop(new DropSpot(0, false), []));
+
+    [Fact]
+    public void On_another_bar_the_slots_after_the_gap_slide_right()
+    {
+        Assert.True(DropGeometry.OpensGap(new DropSpot(1, false), dragged: -1));
+        Assert.Equal(new double[] { 0, 40, 40 }, DropGeometry.Shifts(3, dragged: -1, new DropSpot(1, false), 40));
+    }
+
+    [Fact]
+    public void Stacking_or_no_spot_opens_no_gap()
+    {
+        Assert.False(DropGeometry.OpensGap(new DropSpot(1, true), -1));
+        Assert.False(DropGeometry.OpensGap(null, -1));
+        Assert.Equal(new double[] { 0, 0 }, DropGeometry.Shifts(2, -1, new DropSpot(1, true), 40));
+        Assert.Equal(new double[] { 0, 0 }, DropGeometry.Shifts(2, -1, null, 40));
+    }
+
+    [Fact]
+    public void The_dragged_slots_own_place_opens_no_gap()
+    {
+        Assert.False(DropGeometry.OpensGap(new DropSpot(1, false), dragged: 1));
+        Assert.Equal(new double[] { 0, 0, 0 }, DropGeometry.Shifts(3, dragged: 1, new DropSpot(1, false), 40));
+    }
+
+    [Fact]
+    public void On_the_source_bar_the_dragged_slot_slides_with_the_slots_after_the_gap()
+    {
+        Assert.Equal(new double[] { 40, 40, 40 }, DropGeometry.Shifts(3, dragged: 1, new DropSpot(0, false), 40));
+        Assert.Equal(new double[] { 0, 0, 40 }, DropGeometry.Shifts(3, dragged: 0, new DropSpot(1, false), 40));
+    }
+
+    [Fact]
+    public void A_gap_after_the_last_slot_moves_no_slot()
+    {
+        Assert.True(DropGeometry.OpensGap(new DropSpot(2, false), dragged: 1)); // », + and Done still slide
+        Assert.Equal(new double[] { 0, 0, 0 }, DropGeometry.Shifts(3, dragged: 1, new DropSpot(2, false), 40));
+        Assert.Equal(new double[] { 0, 0 }, DropGeometry.Shifts(2, dragged: -1, new DropSpot(2, false), 40));
+    }
 }

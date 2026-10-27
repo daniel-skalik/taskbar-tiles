@@ -45,4 +45,28 @@ public static class DropGeometry
             return (slotIndexes[spot.Index], spot.Into ? DropPosition.Into : DropPosition.Before);
         return slotIndexes.Count > 0 ? (slotIndexes[^1], DropPosition.After) : (null, DropPosition.After);
     }
+
+    /// <summary>
+    /// True when the spot opens a gap: it is not "into", and not the dragged slot's own place on its own bar.
+    /// <paramref name="dragged"/> is the dragged slot's position among the bar's shown slots, or -1 on another bar.
+    /// </summary>
+    public static bool OpensGap(DropSpot? spot, int dragged) => spot is { Into: false } s && s.Index != dragged;
+
+    /// <summary>
+    /// How far each of a bar's <paramref name="count"/> shown slots slides right to open the gap: <paramref name="gap"/>
+    /// for the slots after it, 0 for the ones before. Spot indexes skip the dragged slot (<paramref name="dragged"/>, or -1
+    /// when the drag started on another bar); the dragged slot itself slides when the gap is left of it.
+    /// </summary>
+    public static IReadOnlyList<double> Shifts(int count, int dragged, DropSpot? spot, double gap)
+    {
+        var shifts = new double[count];
+        if (!OpensGap(spot, dragged)) return shifts;
+        var at = spot!.Value.Index;
+        for (var j = 0; j < count; j++)
+        {
+            var position = dragged >= 0 && j > dragged ? j - 1 : j;
+            if (position >= at) shifts[j] = gap;
+        }
+        return shifts;
+    }
 }
