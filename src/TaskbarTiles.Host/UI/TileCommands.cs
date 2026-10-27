@@ -11,18 +11,27 @@ public enum TileCommand { Configure, Refresh, ShowLog, Restart }
 public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
 
 /// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
-public enum LayoutCommand { MoveLeft, MoveRight, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
+public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
 
-/// <summary>One context-menu line; an entry with no command is a separator.</summary>
+/// <summary>
+/// One context-menu line. An entry with a submenu opens it; an entry with neither a command nor a submenu is a separator.
+/// <see cref="Choice"/> is the tile a stack picker's line stands for.
+/// </summary>
 public sealed record MenuEntry(string Header, TileCommand? Tile = null, BarCommand? Bar = null, LayoutCommand? Layout = null,
-    bool Enabled = true)
+    bool Enabled = true, StackChoice? Choice = null, IReadOnlyList<MenuEntry>? Submenu = null)
 {
     public static MenuEntry Separator { get; } = new("");
-    public bool IsSeparator => Tile is null && Bar is null && Layout is null;
+    public bool IsSeparator => Tile is null && Bar is null && Layout is null && Submenu is null;
 }
 
+/// <summary>A slot of this display as the menu sees it: config index, tile ids and the title its first member shows.</summary>
+public sealed record MenuSlot(int Index, bool IsStack, IReadOnlyList<string> TileIds, string? Title);
+
+/// <summary>A plain tile a stack picker offers: its slot's config index, its id and the label shown.</summary>
+public sealed record StackChoice(int SlotIndex, string TileId, string Label);
+
 /// <summary>What the menu needs to know about the right-clicked slot.</summary>
-public sealed record SlotMenuState(bool IsFirst, bool IsLast, bool IsStack, bool RotationPaused, bool CanStack);
+public sealed record SlotMenuState(bool IsStack, bool RotationPaused, IReadOnlyList<StackChoice> StackChoices);
 
 public static class TileMenu
 {
@@ -38,10 +47,9 @@ public static class TileMenu
             entries.Add(new("Show connector log", TileCommand.ShowLog));
             entries.Add(new("Restart tile", TileCommand.Restart));
             entries.Add(MenuEntry.Separator);
-            entries.Add(new("Move left", Layout: LayoutCommand.MoveLeft, Enabled: !slot.IsFirst));
-            entries.Add(new("Move right", Layout: LayoutCommand.MoveRight, Enabled: !slot.IsLast));
             if (slot.IsStack)
             {
+                entries.Add(Picker("Add to stack", LayoutCommand.AddToStack, slot.StackChoices));
                 entries.Add(new("Remove from stack", Layout: LayoutCommand.RemoveFromStack));
                 entries.Add(slot.RotationPaused
                     ? new("Resume rotation", Layout: LayoutCommand.ResumeRotation)
@@ -49,7 +57,7 @@ public static class TileMenu
             }
             else
             {
-                entries.Add(new("Add to stack", Layout: LayoutCommand.AddToStack, Enabled: slot.CanStack));
+                entries.Add(Picker("Create stack with", LayoutCommand.CreateStack, slot.StackChoices));
             }
             entries.Add(MenuEntry.Separator);
             entries.Add(editEntry);
@@ -66,6 +74,35 @@ public static class TileMenu
         entries.Add(new("Exit Taskbar Tiles", Bar: BarCommand.Exit));
         return entries;
     }
+
+    /// <summary>
+    /// The plain tiles of this display a stack picker offers for the clicked slot: for a plain tile every other plain tile
+    /// (never one with the clicked tile's id), for a stack every plain tile not in it yet. Each is labelled with the title
+    /// its tile shows, or its id when that title has no letter or digit; labels that would repeat get the id appended.
+    /// </summary>
+    public static IReadOnlyList<StackChoice> StackChoices(IReadOnlyList<MenuSlot> slots, int clicked)
+    {
+        var target = slots.FirstOrDefault(s => s.Index == clicked);
+        if (target is null) return [];
+        var candidates = slots
+            .Where(s => !s.IsStack && s.TileIds.Count == 1 && s.Index != clicked && !target.TileIds.Contains(s.TileIds[0]))
+            .ToList();
+        var labels = candidates.Select(Label).ToList();
+        return candidates.Select((s, i) =>
+        {
+            var id = s.TileIds[0];
+            var repeated = labels[i] != id && labels.Count(l => l == labels[i]) > 1;
+            return new StackChoice(s.Index, id, repeated ? $"{labels[i]} ({id})" : labels[i]);
+        }).ToList();
+    }
+
+    static string Label(MenuSlot slot) =>
+        slot.Title is { } title && title.Any(char.IsLetterOrDigit) ? title.Trim() : slot.TileIds[0];
+
+    /// <summary>A submenu with one line per choice; disabled when there is nothing to pick.</summary>
+    static MenuEntry Picker(string header, LayoutCommand command, IReadOnlyList<StackChoice> choices) =>
+        new(header, Enabled: choices.Count > 0,
+            Submenu: choices.Select(c => new MenuEntry(c.Label, Layout: command, Choice: c)).ToList());
 }
 
 /// <summary>Executes tile commands. Called on the UI thread; never throws.</summary>

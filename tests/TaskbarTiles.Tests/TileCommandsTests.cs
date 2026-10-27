@@ -39,7 +39,7 @@ public class TileCommandsTests
         public void Dispose() => Dir.Dispose();
     }
 
-    static readonly SlotMenuState MiddleTile = new(IsFirst: false, IsLast: false, IsStack: false, RotationPaused: false, CanStack: true);
+    static readonly SlotMenuState MiddleTile = new(IsStack: false, RotationPaused: false, StackChoices: [new StackChoice(2, "b", "Bee")]);
 
     [Fact]
     public void Tile_menu_lists_tile_commands_layout_commands_then_bar_commands() =>
@@ -47,33 +47,87 @@ public class TileCommandsTests
             new[]
             {
                 "Configure connector…", "Refresh now", "Show connector log", "Restart tile", "",
-                "Move left", "Move right", "Add to stack", "", "Edit layout", "Remove tile", "",
+                "Create stack with", "", "Edit layout", "Remove tile", "",
                 "Show config file", "", "Exit Taskbar Tiles",
             },
             TileMenu.Entries(MiddleTile, editing: false).Select(e => e.Header));
 
     [Fact]
-    public void Stack_menu_offers_remove_from_stack_and_pause_or_resume()
+    public void Create_stack_with_lists_the_choices_in_a_submenu()
+    {
+        var entry = TileMenu.Entries(MiddleTile, editing: false).Single(e => e.Header == "Create stack with");
+
+        Assert.True(entry.Enabled);
+        Assert.False(entry.IsSeparator);
+        Assert.Null(entry.Layout);
+        var choice = Assert.Single(entry.Submenu!);
+        Assert.Equal("Bee", choice.Header);
+        Assert.Equal(LayoutCommand.CreateStack, choice.Layout);
+        Assert.Equal(new StackChoice(2, "b", "Bee"), choice.Choice);
+    }
+
+    [Fact]
+    public void Stack_menu_offers_add_to_stack_remove_from_stack_and_pause_or_resume()
     {
         var running = TileMenu.Entries(MiddleTile with { IsStack = true }, editing: false);
         var paused = TileMenu.Entries(MiddleTile with { IsStack = true, RotationPaused = true }, editing: false);
 
-        Assert.Equal(new[] { "Remove from stack", "Pause rotation" }, running.Skip(7).Take(2).Select(e => e.Header));
-        Assert.Equal(LayoutCommand.PauseRotation, running[8].Layout);
-        Assert.Equal(LayoutCommand.ResumeRotation, paused[8].Layout);
-        Assert.DoesNotContain(running, e => e.Layout == LayoutCommand.AddToStack);
+        Assert.Equal(new[] { "Add to stack", "Remove from stack", "Pause rotation" }, running.Skip(5).Take(3).Select(e => e.Header));
+        Assert.Equal(LayoutCommand.AddToStack, Assert.Single(running[5].Submenu!).Layout);
+        Assert.Equal(LayoutCommand.PauseRotation, running[7].Layout);
+        Assert.Equal(LayoutCommand.ResumeRotation, paused[7].Layout);
+        Assert.DoesNotContain(running, e => e.Header == "Create stack with");
     }
 
     [Fact]
-    public void Moves_and_add_to_stack_are_disabled_where_they_cannot_apply()
+    public void Stack_pickers_without_choices_are_disabled()
     {
-        var only = TileMenu.Entries(new SlotMenuState(IsFirst: true, IsLast: true, IsStack: false, RotationPaused: false, CanStack: false), editing: false);
+        var plain = TileMenu.Entries(new SlotMenuState(IsStack: false, RotationPaused: false, StackChoices: []), editing: false);
+        var stack = TileMenu.Entries(new SlotMenuState(IsStack: true, RotationPaused: false, StackChoices: []), editing: false);
 
-        Assert.False(only.Single(e => e.Layout == LayoutCommand.MoveLeft).Enabled);
-        Assert.False(only.Single(e => e.Layout == LayoutCommand.MoveRight).Enabled);
-        Assert.False(only.Single(e => e.Layout == LayoutCommand.AddToStack).Enabled);
-        Assert.True(only.Single(e => e.Layout == LayoutCommand.RemoveTile).Enabled);
+        Assert.False(plain.Single(e => e.Header == "Create stack with").Enabled);
+        Assert.False(stack.Single(e => e.Header == "Add to stack").Enabled);
+        Assert.True(plain.Single(e => e.Layout == LayoutCommand.RemoveTile).Enabled);
     }
+
+    static MenuSlot Plain(int index, string id, string? title = null) => new(index, false, [id], title);
+    static MenuSlot Stack(int index, params string[] ids) => new(index, true, ids, null);
+
+    [Fact]
+    public void Create_stack_choices_are_the_other_plain_tiles()
+    {
+        var slots = new[] { Plain(0, "a", "Alpha"), Stack(1, "s1", "s2"), Plain(2, "b", "Bravo"), Plain(4, "a", "Alpha") };
+
+        Assert.Equal(new[] { new StackChoice(2, "b", "Bravo") }, TileMenu.StackChoices(slots, clicked: 0));
+    }
+
+    [Fact]
+    public void Add_to_stack_choices_are_the_plain_tiles_not_in_the_stack()
+    {
+        var slots = new[] { Plain(0, "a", "Alpha"), Stack(1, "a", "b"), Plain(2, "c", "Charlie") };
+
+        Assert.Equal(new[] { new StackChoice(2, "c", "Charlie") }, TileMenu.StackChoices(slots, clicked: 1));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("…")]
+    public void A_title_without_letters_or_digits_shows_the_tile_id(string? title) =>
+        Assert.Equal("ping", TileMenu.StackChoices([Plain(0, "a", "Alpha"), Plain(1, "ping", title)], clicked: 0).Single().Label);
+
+    [Fact]
+    public void Repeated_labels_get_the_tile_id()
+    {
+        var slots = new[] { Plain(0, "a", "Alpha"), Plain(1, "ping", "Ping"), Plain(2, "ping-2", "Ping"), Plain(3, "up", " Uptime ") };
+
+        Assert.Equal(new[] { "Ping (ping)", "Ping (ping-2)", "Uptime" }, TileMenu.StackChoices(slots, clicked: 0).Select(c => c.Label));
+    }
+
+    [Fact]
+    public void An_unknown_clicked_slot_has_no_choices() =>
+        Assert.Empty(TileMenu.StackChoices([Plain(0, "a"), Plain(1, "b")], clicked: 7));
 
     [Fact]
     public void Bar_menu_has_only_bar_commands()

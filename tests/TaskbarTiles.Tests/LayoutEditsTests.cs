@@ -85,7 +85,7 @@ public class LayoutEditsTests
     }
 
     [Fact]
-    public void Move_left_and_right_are_drops_before_and_after_the_neighbor()
+    public void Drops_before_and_after_a_neighbor_move_a_stack_as_one_slot()
     {
         var layout = L(T("a"), S(Five, "b", "c"), T("d"));
         Same(L(S(Five, "b", "c"), T("a"), T("d")), LayoutEdits.Drop(layout, 1, 0, DropPosition.Before));
@@ -93,33 +93,12 @@ public class LayoutEditsTests
     }
 
     [Fact]
-    public void Add_to_stack_joins_the_nearest_stack_left_first_on_a_tie()
+    public void Stacking_a_chosen_tile_into_the_clicked_one_keeps_the_clicked_place()
     {
-        var layout = L(S(Five, "s1", "s2"), T("a"), S(Eight, "s3", "s4"));
-        Same(L(S(Five, "s1", "s2", "a"), S(Eight, "s3", "s4")), LayoutEdits.AddToNearestStack(layout, 1));
-    }
-
-    [Fact]
-    public void Add_to_stack_prefers_a_closer_stack_on_the_right()
-    {
-        var layout = L(S(Five, "s1", "s2"), T("a"), T("b"), S(Eight, "s3", "s4"));
-        Same(L(S(Five, "s1", "s2"), T("a"), S(Eight, "s3", "s4", "b")), LayoutEdits.AddToNearestStack(layout, 2));
-    }
-
-    [Fact]
-    public void Add_to_stack_without_a_stack_pairs_with_the_right_neighbor_or_the_left_one_when_last()
-    {
-        Same(L(S(Five, "b", "a"), T("c")), LayoutEdits.AddToNearestStack(L(T("a"), T("b"), T("c")), 0));
-        Same(L(T("a"), S(Five, "b", "c")), LayoutEdits.AddToNearestStack(L(T("a"), T("b"), T("c")), 2));
-    }
-
-    [Fact]
-    public void Add_to_stack_leaves_a_stack_or_a_lone_tile_alone()
-    {
-        var withStack = L(S(Five, "a", "b"), T("c"));
-        Same(withStack, LayoutEdits.AddToNearestStack(withStack, 0));
-        var lone = L(T("a"));
-        Same(lone, LayoutEdits.AddToNearestStack(lone, 0));
+        // "Create stack with ▸": the clicked tile (index 2) stays where it is and comes first.
+        Same(L(T("b"), S(Five, "c", "a")), LayoutEdits.StackInto(L(T("a"), T("b"), T("c")), from: 0, target: 2));
+        // "Add to stack ▸": the chosen tile goes to the end of the clicked stack, which keeps its rotate.
+        Same(L(S(Eight, "s1", "s2", "x")), LayoutEdits.StackInto(L(S(Eight, "s1", "s2"), T("x")), from: 1, target: 0));
     }
 
     [Fact]

@@ -71,7 +71,13 @@ Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit m
 - `+` adds a tile at the end: a tile you already have that this display does not show, a new tile from a loaded plugin, or a new script tile from one of the sample scripts. New tiles get a free id such as `ping-2`.
 - **Done** or Esc leaves edit mode.
 
-Outside edit mode the right-click menu also has **Move left**, **Move right**, **Add to stack** (joins the nearest stack, or makes a stack with the neighbor), **Remove from stack** and **Remove tile**.
+The right-click menu changes the layout too, in and outside edit mode:
+
+- On a tile, **Create stack with ▸** lists the other tiles on this display that are not in a stack (by the title they show, or their id). Pick one to make a stack of the two where the tile you clicked is.
+- On a stack, **Add to stack ▸** lists this display's tiles that are not in a stack; the one you pick moves into this stack. **Remove from stack** takes the member shown out, right after the stack; **Pause rotation** stops it.
+- **Remove tile** works like `×`.
+
+To move a tile, drag it in edit mode.
 
 ### Which display entry is written
 

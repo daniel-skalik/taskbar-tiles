@@ -52,24 +52,6 @@ public static class LayoutEdits
         return new DisplayLayout(slots);
     }
 
-    /// <summary>
-    /// "Add to stack": joins the nearest stack (the left one on a tie). Without a stack, it forms a new stack with
-    /// the slot to its right (or to its left when it is last). A stack itself, or the only slot, is left alone.
-    /// </summary>
-    public static DisplayLayout AddToNearestStack(DisplayLayout layout, int index)
-    {
-        if (!Valid(layout, index) || layout.Slots[index] is StackSlot) return layout;
-
-        var nearest = -1;
-        for (var distance = 1; distance < layout.Slots.Count && nearest < 0; distance++)
-        {
-            if (Valid(layout, index - distance) && layout.Slots[index - distance] is StackSlot) nearest = index - distance;
-            else if (Valid(layout, index + distance) && layout.Slots[index + distance] is StackSlot) nearest = index + distance;
-        }
-        if (nearest < 0) nearest = Valid(layout, index + 1) ? index + 1 : index - 1;
-        return Valid(layout, nearest) ? StackInto(layout, index, nearest) : layout;
-    }
-
     /// <summary>"Remove from stack": the member becomes a plain tile right after the stack.</summary>
     public static DisplayLayout RemoveFromStack(DisplayLayout layout, int index, int member)
     {

@@ -223,13 +223,15 @@ public sealed class TileBar : Window, ITileBarView
 
     void FillSlotMenu(ContextMenu menu, SlotView view)
     {
-        var position = _views.IndexOf(view);
+        // Every slot of this display, overflowed ones included: the stack pickers offer all its plain tiles. A tile in the
+        // error look has no title (its "Error" says nothing), so the picker shows its id.
+        var slots = _slots
+            .Select(s => new MenuSlot(s.Index, s.IsStack, s.Members.Select(m => m.TileId).ToList(), s.Members.FirstOrDefault() is { LastError: null } first ? first.State.Title : null))
+            .ToList();
         var state = new SlotMenuState(
-            IsFirst: position <= 0,
-            IsLast: position == _views.Count - 1,
             IsStack: view.Slot.IsStack,
             RotationPaused: view.Rotation?.Paused == true,
-            CanStack: !view.Slot.IsStack && _views.Count > 1);
+            StackChoices: TileMenu.StackChoices(slots, view.Slot.Index));
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
         menu.Items.Clear();
         foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
@@ -238,14 +240,19 @@ public sealed class TileBar : Window, ITileBarView
     Control Item(MenuEntry entry, SlotView? view, int member)
     {
         if (entry.IsSeparator) return new Separator();
-        var item = new MenuItem { Header = entry.Header, IsEnabled = entry.Enabled };
-        if (entry.Tile is { } command && view is not null)
+        // Tile titles may hold "_", which a menu header would take as an access key marker.
+        var item = new MenuItem { Header = entry.Header.Replace("_", "__"), IsEnabled = entry.Enabled };
+        if (entry.Submenu is { } submenu)
+        {
+            foreach (var child in submenu) item.Items.Add(Item(child, view, member));
+        }
+        else if (entry.Tile is { } command && view is not null)
         {
             var runtime = view.Slot.Members[member];
             item.Click += async (_, _) => await _commands.ExecuteAsync(runtime, command); // never throws
         }
         else if (entry.Layout is { } layout && view is not null)
-            item.Click += (_, _) => Run(layout, view, member);
+            item.Click += (_, _) => Run(layout, view, member, entry.Choice);
         else if (entry.Bar == BarCommand.EditLayout)
             item.Click += (_, _) => EnterEditMode();
         else if (entry.Bar == BarCommand.DoneEditing)
@@ -273,10 +280,9 @@ public sealed class TileBar : Window, ITileBarView
         Focus();
     }
 
-    void Run(LayoutCommand command, SlotView view, int member)
+    void Run(LayoutCommand command, SlotView view, int member, StackChoice? choice)
     {
         var slot = view.Slot;
-        var position = _views.IndexOf(view);
         switch (command)
         {
             case LayoutCommand.PauseRotation when view.Rotation is { } rotation:
@@ -285,16 +291,10 @@ public sealed class TileBar : Window, ITileBarView
             case LayoutCommand.ResumeRotation when view.Rotation is { } rotation:
                 rotation.Paused = false;
                 break;
-            case LayoutCommand.MoveLeft when position > 0:
-                var left = _views[position - 1].Slot.Index;
-                Edit(l => LayoutEdits.Drop(l, slot.Index, left, DropPosition.Before));
-                break;
-            case LayoutCommand.MoveRight when position >= 0 && position < _views.Count - 1:
-                var right = _views[position + 1].Slot.Index;
-                Edit(l => LayoutEdits.Drop(l, slot.Index, right, DropPosition.After));
-                break;
-            case LayoutCommand.AddToStack:
-                Edit(l => LayoutEdits.AddToNearestStack(l, slot.Index));
+            case LayoutCommand.CreateStack or LayoutCommand.AddToStack when choice is not null:
+                // The chosen tile joins the clicked slot: a new stack [clicked, chosen] where the clicked tile is,
+                // or the end of the clicked stack.
+                Edit(l => LayoutEdits.StackInto(l, choice.SlotIndex, slot.Index));
                 break;
             case LayoutCommand.RemoveFromStack:
                 Edit(l => LayoutEdits.RemoveFromStack(l, slot.Index, member));
