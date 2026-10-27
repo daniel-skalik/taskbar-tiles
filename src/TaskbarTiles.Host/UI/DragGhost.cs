@@ -61,14 +61,18 @@ public sealed class DragGhost : Window
         return bitmap;
     }
 
-    /// <summary>Moves the ghost so the grabbed point sits under <paramref name="screen"/> (physical pixels); shows it the first time.</summary>
+    /// <summary>
+    /// Moves the ghost so the grabbed point sits under <paramref name="screen"/> (physical pixels); shows it the first time.
+    /// Moving onto a monitor with another scale changes the window's DPI, which changes the grab offset in pixels, so the
+    /// ghost is placed again at the new scale (always on the first show).
+    /// </summary>
     public void MoveTo(Point screen)
     {
         var first = !IsVisible;
+        var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         Place(screen);
-        if (!first) return;
-        Show(); // ShowActivated is false and the window is WS_EX_NOACTIVATE: it never takes activation
-        Place(screen); // again, now at the DPI of the monitor it landed on
+        if (first) Show(); // ShowActivated is false and the window is WS_EX_NOACTIVATE: it never takes activation
+        if (first || VisualTreeHelper.GetDpi(this).DpiScaleX != dpi) Place(screen);
     }
 
     void Place(Point screen)

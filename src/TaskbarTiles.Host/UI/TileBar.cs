@@ -474,6 +474,16 @@ public sealed class TileBar : Window, ITileBarView
         var chromeShift = DropGeometry.OpensGap(spot, draggedAt) ? DropGapDip : 0;
         foreach (var element in shown)
             SlideTo(element, element is SlotView view ? shifts[slots.IndexOf(view)] : chromeShift);
+        // A slot that left the panel mid-preview (into the » popup) must not stay shifted.
+        foreach (var gone in _slides.Keys.Where(e => !shown.Contains(e)).ToList())
+        {
+            if (gone.RenderTransform is TranslateTransform slide)
+            {
+                slide.BeginAnimation(TranslateTransform.XProperty, null);
+                slide.X = 0;
+            }
+            _slides.Remove(gone);
+        }
     }
 
     /// <summary>Ends a drop preview on this bar: no highlight, and every slid element snaps back without animation.</summary>

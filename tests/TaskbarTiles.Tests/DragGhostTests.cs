@@ -36,6 +36,9 @@ public class DragGhostTests
         Assert.Equal(198, bitmap.PixelWidth);
         Assert.Equal(60, bitmap.PixelHeight);
         Assert.True(bitmap.IsFrozen);
+        var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+        bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+        Assert.Contains(Enumerable.Range(0, pixels.Length / 4), i => pixels[i * 4 + 3] != 0); // not a blank render
         view.Detach();
     });
 }
