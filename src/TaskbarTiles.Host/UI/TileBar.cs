@@ -235,10 +235,7 @@ public sealed class TileBar : Window, ITileBarView
 
     void FillSlotMenu(ContextMenu menu, SlotView view)
     {
-        var state = new SlotMenuState(
-            IsStack: view.Slot.IsStack,
-            RotationPaused: view.Rotation?.Paused == true,
-            StackChoices: StackChoicesFor(view));
+        var state = new SlotMenuState(IsStack: view.Slot.IsStack, RotationPaused: view.Rotation?.Paused == true);
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
         menu.Items.Clear();
         foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
@@ -261,17 +258,13 @@ public sealed class TileBar : Window, ITileBarView
         if (entry.IsSeparator) return new Separator();
         // Tile titles may hold "_", which a menu header would take as an access key marker.
         var item = new MenuItem { Header = entry.Header.Replace("_", "__"), IsEnabled = entry.Enabled };
-        if (entry.Submenu is { } submenu)
-        {
-            foreach (var child in submenu) item.Items.Add(Item(child, view, member));
-        }
-        else if (entry.Tile is { } command && view is not null)
+        if (entry.Tile is { } command && view is not null)
         {
             var runtime = view.Slot.Members[member];
             item.Click += async (_, _) => await _commands.ExecuteAsync(runtime, command); // never throws
         }
         else if (entry.Layout is { } layout && view is not null)
-            item.Click += (_, _) => Run(layout, view, member, entry.Choice);
+            item.Click += (_, _) => Run(layout, view, member);
         else if (entry.Bar == BarCommand.EditLayout)
             item.Click += (_, _) => EnterEditMode();
         else if (entry.Bar == BarCommand.DoneEditing)
@@ -299,7 +292,7 @@ public sealed class TileBar : Window, ITileBarView
         Focus();
     }
 
-    void Run(LayoutCommand command, SlotView view, int member, StackChoice? choice)
+    void Run(LayoutCommand command, SlotView view, int member)
     {
         var slot = view.Slot;
         switch (command)
@@ -310,13 +303,8 @@ public sealed class TileBar : Window, ITileBarView
             case LayoutCommand.ResumeRotation when view.Rotation is { } rotation:
                 rotation.Paused = false;
                 break;
-            case LayoutCommand.CreateStack when choice is null:
+            case LayoutCommand.CreateStack or LayoutCommand.AddToStack:
                 ShowStackPicker(view);
-                break;
-            case LayoutCommand.CreateStack or LayoutCommand.AddToStack when choice is not null:
-                // The chosen tile joins the clicked slot: a new stack [clicked, chosen] where the clicked tile is,
-                // or the end of the clicked stack.
-                Edit(l => LayoutEdits.StackInto(l, choice.SlotIndex, slot.Index));
                 break;
             case LayoutCommand.RemoveFromStack:
                 Edit(l => LayoutEdits.RemoveFromStack(l, slot.Index, member));
@@ -359,8 +347,9 @@ public sealed class TileBar : Window, ITileBarView
     }
 
     /// <summary>
-    /// "Create stack…" on a plain tile: the panel of the + button, offering this display's other plain tiles first.
-    /// The picked tile joins the clicked one in a new stack where the clicked tile is.
+    /// "Create stack…" on a plain tile and "Add to stack…" on a stack: the panel of the + button, offering this display's
+    /// plain tiles (not in the clicked stack) first. The picked tile joins the clicked slot: a new stack where the clicked
+    /// tile is, or the end of the clicked stack.
     /// </summary>
     void ShowStackPicker(SlotView view)
     {
@@ -368,14 +357,14 @@ public sealed class TileBar : Window, ITileBarView
         var target = view.Slot.Index;
         var clicked = view.Slot.Members[0].TileId;
         var choices = StackChoicesFor(view);
-        var panel = PanelHeader("Create a stack", choices.Count + items.Count == 0
+        var panel = PanelHeader(view.Slot.IsStack ? "Add to stack" : "Create a stack", choices.Count + items.Count == 0
             ? "Nothing to stack with: add another tile first."
-            : "The tile you pick is stacked with this one.");
+            : view.Slot.IsStack ? "The tile you pick joins the end of this stack." : "The tile you pick is stacked with this one.");
         if (choices.Count > 0)
         {
             panel.Children.Add(Section("On this display"));
             panel.Children.Add(Buttons(choices.Select(c => (c.Label, c.TileId,
-                (Action)(() => Edit(l => StackPlainTiles(l, c.TileId, clicked)))))));
+                (Action)(() => Edit(l => StackWith(l, c.TileId, clicked)))))));
         }
         if (items.Count > 0)
         {
@@ -388,14 +377,19 @@ public sealed class TileBar : Window, ITileBarView
     }
 
     /// <summary>
-    /// Stacks plain tile <paramref name="chosen"/> into plain tile <paramref name="clicked"/>, found by id when the pick is
-    /// made: the layout may have changed while the panel was open. Unchanged when either is no longer a plain tile here.
+    /// Stacks plain tile <paramref name="chosen"/> into the slot holding <paramref name="clicked"/>, both found by id when
+    /// the pick is made: the layout may have changed while the panel was open. Unchanged when either is gone.
     /// </summary>
-    static DisplayLayout StackPlainTiles(DisplayLayout layout, string chosen, string clicked)
+    static DisplayLayout StackWith(DisplayLayout layout, string chosen, string clicked)
     {
         var slots = layout.Slots.ToList();
         var from = slots.FindIndex(s => s is TileSlot t && t.TileId == chosen);
-        var target = slots.FindIndex(s => s is TileSlot t && t.TileId == clicked);
+        var target = slots.FindIndex(s => s switch
+        {
+            TileSlot t => t.TileId == clicked,
+            StackSlot stack => stack.TileIds.Contains(clicked),
+            _ => false,
+        });
         return from < 0 || target < 0 ? layout : LayoutEdits.StackInto(layout, from, target);
     }
 

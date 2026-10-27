@@ -14,14 +14,13 @@ public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
 public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
 
 /// <summary>
-/// One context-menu line. An entry with a submenu opens it; an entry with neither a command nor a submenu is a separator.
-/// <see cref="Choice"/> is the tile a stack picker's line stands for.
+/// One context-menu line; an entry without a command is a separator.
 /// </summary>
 public sealed record MenuEntry(string Header, TileCommand? Tile = null, BarCommand? Bar = null, LayoutCommand? Layout = null,
-    bool Enabled = true, StackChoice? Choice = null, IReadOnlyList<MenuEntry>? Submenu = null)
+    bool Enabled = true)
 {
     public static MenuEntry Separator { get; } = new("");
-    public bool IsSeparator => Tile is null && Bar is null && Layout is null && Submenu is null;
+    public bool IsSeparator => Tile is null && Bar is null && Layout is null;
 }
 
 /// <summary>A slot of this display as the menu sees it: config index, tile ids and the title its first member shows.</summary>
@@ -31,7 +30,7 @@ public sealed record MenuSlot(int Index, bool IsStack, IReadOnlyList<string> Til
 public sealed record StackChoice(int SlotIndex, string TileId, string Label);
 
 /// <summary>What the menu needs to know about the right-clicked slot.</summary>
-public sealed record SlotMenuState(bool IsStack, bool RotationPaused, IReadOnlyList<StackChoice> StackChoices);
+public sealed record SlotMenuState(bool IsStack, bool RotationPaused);
 
 public static class TileMenu
 {
@@ -49,7 +48,7 @@ public static class TileMenu
             entries.Add(MenuEntry.Separator);
             if (slot.IsStack)
             {
-                entries.Add(Picker("Add to stack", LayoutCommand.AddToStack, slot.StackChoices));
+                entries.Add(new("Add to stack…", Layout: LayoutCommand.AddToStack)); // opens the stack picker panel
                 entries.Add(new("Remove from stack", Layout: LayoutCommand.RemoveFromStack));
                 entries.Add(slot.RotationPaused
                     ? new("Resume rotation", Layout: LayoutCommand.ResumeRotation)
@@ -97,13 +96,7 @@ public static class TileMenu
     }
 
     static string Label(MenuSlot slot) =>
-        slot.Title is { } title && title.Any(char.IsLetterOrDigit) ? title.Trim() : slot.TileIds[0];
-
-    /// <summary>A submenu with one line per choice; disabled when there is nothing to pick.</summary>
-    static MenuEntry Picker(string header, LayoutCommand command, IReadOnlyList<StackChoice> choices) =>
-        new(header, Enabled: choices.Count > 0,
-            Submenu: choices.Select(c => new MenuEntry(c.Label, Layout: command, Choice: c)).ToList());
-}
+        slot.Title is { } title && title.Any(char.IsLetterOrDigit) ? title.Trim() : slot.TileIds[0];}
 
 /// <summary>Executes tile commands. Called on the UI thread; never throws.</summary>
 public sealed class TileCommands(string configFile, string logsDir, Action<string> openFile, ITileLog log)
