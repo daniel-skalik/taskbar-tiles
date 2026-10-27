@@ -43,16 +43,17 @@ public partial class App : Application
             AppDomain.CurrentDomain.UnhandledException += (_, a) => log.Error("Unhandled exception", a.ExceptionObject as Exception);
             TaskScheduler.UnobservedTaskException += (_, a) => { log.Error("Unobserved task exception", a.Exception); a.SetObserved(); };
 
-            var catalog = new PluginLoader(log).LoadFrom(AppPaths.PluginRoots);
+            var catalog = new PluginLoader(log).LoadFrom([AppPaths.PluginsDir]);
+            var kinds = new KindLoader(log).Load(AppPaths.TilesDir);
             SampleScripts.InstallIfAbsent(AppPaths.SampleScriptsDir, AppPaths.ScriptsDir, log);
-            _config = new ConfigStore(AppPaths.ConfigFile, log);
+            _config = new ConfigStore(AppPaths.ConfigFile, log, cfg => KindValidation.Check(cfg, kinds));
             _config.Load();
             _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, RevealInExplorer, log);
 
             var ui = new WpfUiDispatcher(Dispatcher);
             _tracker = new TaskbarTracker(Dispatcher);
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
-                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config);
+                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config, () => kinds);
 
             _config.Changed += (_, _) => ui.Post(() =>
             {
@@ -64,7 +65,7 @@ public partial class App : Application
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
             _host.Start();
             if (_config.LastError is { } startupError) ShowConfigNotice(startupError, atStartup: true);
-            log.Info($"Started with {catalog.Connectors.Count} connector(s): {string.Join(", ", catalog.Connectors.Keys)}");
+            log.Info($"Started with {catalog.Connectors.Count} built-in connector(s) and {kinds.Kinds.Count} tile kind(s): {string.Join(", ", kinds.Kinds.Keys)}");
         }
         catch (Exception ex)
         {

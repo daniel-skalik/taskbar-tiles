@@ -28,7 +28,7 @@ public class ConfigJsonTests
             new TileSlot("b", true),
             new StackSlot(["a", "b"], TimeSpan.FromSeconds(8)),
         ]);
-        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "connector": "x" }, "b": { "connector": "x" } } }""");
+        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "kind": "x" }, "b": { "kind": "x" } } }""");
 
         ConfigJson.SetDisplay(root, "primary", layout);
         var parsed = ConfigParser.Parse(ConfigJson.Serialize(root));
@@ -41,7 +41,7 @@ public class ConfigJsonTests
     public void Remove_unplaced_tiles_deletes_only_candidates_no_display_places()
     {
         var root = ConfigJson.ParseRoot("""
-        { "tiles": { "a": { "connector": "x" }, "b": { "connector": "x" }, "c": { "connector": "x" }, "d": { "connector": "x" }, "spare": { "connector": "x" } },
+        { "tiles": { "a": { "kind": "x" }, "b": { "kind": "x" }, "c": { "kind": "x" }, "d": { "kind": "x" }, "spare": { "kind": "x" } },
           "displays": { "primary": { "slots": ["a"] }, "*": { "slots": [ { "stack": ["d"] } ] },
                         "\\\\?\\DISPLAY#X": { "slots": ["b"] } } }
         """);
@@ -55,7 +55,7 @@ public class ConfigJsonTests
     [Fact]
     public void Remove_unplaced_tiles_leaves_a_config_that_does_not_parse_alone()
     {
-        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "connector": "x" } }, "displays": { "primary": { "slots": ["ghost"] } } }""");
+        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "kind": "x" } }, "displays": { "primary": { "slots": ["ghost"] } } }""");
 
         ConfigJson.RemoveUnplacedTiles(root, ["a"]);
 
@@ -69,7 +69,7 @@ public class ConfigJsonTests
         {
           // dropped on save
           "custom": 1,
-          "tiles": { "a": { "connector": "x", "note": "kept" } },
+          "tiles": { "a": { "kind": "x", "note": "kept" } },
           "displays": { "*": { "slots": [] }, "primary": { "slots": [], "extra": true }, },
         }
         """);
@@ -98,30 +98,33 @@ public class ConfigJsonTests
     }
 
     [Fact]
-    public void Set_tile_writes_connector_and_settings()
+    public void Set_tile_writes_the_kind_and_settings_only_when_there_are_any()
     {
-        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "connector": "x" } } }""");
-        var settings = JsonDocument.Parse("""{ "hooks": { "click": "scripts/a.ps1" } }""").RootElement.Clone();
+        var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "kind": "x" } } }""");
+        var empty = JsonDocument.Parse("{}").RootElement.Clone();
+        var host = JsonDocument.Parse("""{ "host": "192.168.1.1" }""").RootElement.Clone();
 
-        ConfigJson.SetTile(root, "b", new TileConfig("script", settings));
+        ConfigJson.SetTile(root, "b", new TileConfig("ping", empty));
+        ConfigJson.SetTile(root, "c", new TileConfig("ping", host));
         var parsed = ConfigParser.Parse(ConfigJson.Serialize(root));
 
+        Assert.Equal("""{"kind":"ping"}""", root["tiles"]!["b"]!.ToJsonString());
         Assert.True(parsed.Success, parsed.Error?.ToString());
-        Assert.Equal(new[] { "a", "b" }, parsed.Config!.Tiles.Keys);
-        Assert.Equal("scripts/a.ps1", parsed.Config.Tiles["b"].Settings.GetProperty("hooks").GetProperty("click").GetString());
+        Assert.Equal(new[] { "a", "b", "c" }, parsed.Config!.Tiles.Keys);
+        Assert.Equal("192.168.1.1", parsed.Config.Tiles["c"].Settings.GetProperty("host").GetString());
     }
 
     [Fact]
     public void Serialize_indents_and_keeps_non_ascii_readable()
     {
-        var root = ConfigJson.ParseRoot("""{ "tiles": { "café": { "connector": "x", "settings": {} } } }""");
+        var root = ConfigJson.ParseRoot("""{ "tiles": { "café": { "kind": "x", "settings": {} } } }""");
 
         var text = ConfigJson.Serialize(root);
 
         Assert.Contains("café", text);
         Assert.Contains(Environment.NewLine + "  \"tiles\"", text);
         Assert.EndsWith(Environment.NewLine, text);
-        Assert.Equal("x", ConfigParser.Parse(text).Config!.Tiles["café"].Connector);
+        Assert.Equal("x", ConfigParser.Parse(text).Config!.Tiles["café"].Kind);
     }
 
     [Fact]

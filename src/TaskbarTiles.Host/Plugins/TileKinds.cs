@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TaskbarTiles.Host.Config;
 
 namespace TaskbarTiles.Host.Plugins;
@@ -39,6 +40,20 @@ public sealed record TileKind(
 
     /// <summary>The DLLs on disk differ from the ones loaded at startup; only an app restart loads them.</summary>
     public bool NeedsRestart => DllStamp != Dlls.Stamp;
+
+    /// <summary>
+    /// Effective settings: this kind's settings with each top-level key of the instance's settings replacing the kind's
+    /// key of the same name (shallow; new keys are appended). What connectors get and the script's TILE_SETTINGS_JSON.
+    /// </summary>
+    public JsonElement SettingsFor(JsonElement instanceSettings)
+    {
+        var merged = JsonNode.Parse(Settings.GetRawText()) as JsonObject ?? new JsonObject();
+        if (instanceSettings.ValueKind == JsonValueKind.Object)
+            foreach (var property in instanceSettings.EnumerateObject())
+                merged[property.Name] = JsonNode.Parse(property.Value.GetRawText());
+        using var doc = JsonDocument.Parse(merged.ToJsonString());
+        return doc.RootElement.Clone();
+    }
 }
 
 /// <summary>Every kind in tiles\, by folder name (case-insensitive), and the folders that have no tile.json.</summary>

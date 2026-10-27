@@ -16,7 +16,12 @@ public static class AppPaths
     /// <summary>Sample scripts shipped next to the exe.</summary>
     public static string SampleScriptsDir => Path.Combine(AppContext.BaseDirectory, "scripts");
 
-    /// <summary>Built-in plugins next to the exe first, then the user's plugins.</summary>
-    public static IReadOnlyList<string> PluginRoots =>
-        [Path.Combine(AppContext.BaseDirectory, "plugins"), Path.Combine(DataDir, "plugins")];
+    /// <summary>One folder per tile kind (tile.json, scripts, DLLs); the folder name is the kind's id.</summary>
+    public static string TilesDir => Path.Combine(DataDir, "tiles");
+
+    /// <summary>
+    /// Connectors built into the app: only the script connector (plugins\TaskbarTiles.Plugins.Script\). Every other
+    /// connector DLL lives in a kind folder; %LOCALAPPDATA%\TaskbarTiles\plugins is no longer scanned.
+    /// </summary>
+    public static string PluginsDir => Path.Combine(AppContext.BaseDirectory, "plugins");
 }

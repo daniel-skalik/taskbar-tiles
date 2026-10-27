@@ -80,13 +80,17 @@ public static class ConfigParser
     static TileConfig BuildTile(string id, JsonElement el)
     {
         if (el.ValueKind != JsonValueKind.Object) throw new ConfigException($"Tile '{id}' must be an object.");
-        if (!el.TryGetProperty("connector", out var c) || c.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(c.GetString()))
-            throw new ConfigException($"Tile '{id}' needs a \"connector\" name.");
+        if (el.TryGetProperty("connector", out _)) // the inline form before tile folders; no migration
+            throw new ConfigException($"Tile '{id}' uses \"connector\"; tiles now name a kind: \"kind\": \"<folder>\"");
+        if (!el.TryGetProperty("kind", out var k) || k.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(k.GetString()))
+            throw new ConfigException($"Tile '{id}' needs a \"kind\": the name of its folder in tiles\\.");
 
+        var kind = k.GetString()!;
         var settings = el.TryGetProperty("settings", out var s) && s.ValueKind == JsonValueKind.Object
             ? s.Clone()
             : EmptyObject();
-        return new TileConfig(c.GetString()!, settings);
+        if (settings.TryGetProperty("hooks", out _)) throw new ConfigException($@"hooks belong in tiles\{kind}\tile.json");
+        return new TileConfig(kind, settings);
     }
 
     static DisplayLayout BuildLayout(string display, JsonElement el, IReadOnlyDictionary<string, TileConfig> tiles)

@@ -9,8 +9,11 @@ public sealed record HostConfig(
     public static HostConfig Empty { get; } = new(new Dictionary<string, TileConfig>(), new Dictionary<string, DisplayLayout>());
 }
 
-/// <summary>Settings is a cloned element, safe to keep after parsing.</summary>
-public sealed record TileConfig(string Connector, JsonElement Settings);
+/// <summary>
+/// A tile instance: the kind (a folder in tiles\) and the settings that replace the kind's own, key by key.
+/// Settings is a cloned element, safe to keep after parsing.
+/// </summary>
+public sealed record TileConfig(string Kind, JsonElement Settings);
 
 public sealed record DisplayLayout(IReadOnlyList<Slot> Slots)
 {

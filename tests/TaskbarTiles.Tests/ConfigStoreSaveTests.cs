@@ -9,7 +9,7 @@ public class ConfigStoreSaveTests
     const string Original = """
     {
       // my notes
-      "tiles": { "a": { "connector": "x" }, "b": { "connector": "x" } },
+      "tiles": { "a": { "kind": "x" }, "b": { "kind": "x" } },
       "displays": { "primary": { "slots": ["a"] } }
     }
     """;
@@ -148,11 +148,11 @@ public class ConfigStoreSaveTests
         File.WriteAllText(dir.File("config.json"), Original);
         using var store = new ConfigStore(dir.File("config.json"), new CollectingLog());
         store.Load();
-        File.WriteAllText(dir.File("config.json"), Original.Replace("\"b\": { \"connector\": \"x\" }", "\"b\": { \"connector\": \"x\" }, \"c\": { \"connector\": \"y\" }"));
+        File.WriteAllText(dir.File("config.json"), Original.Replace("\"b\": { \"kind\": \"x\" }", "\"b\": { \"kind\": \"x\" }, \"c\": { \"kind\": \"y\" }"));
 
         Assert.Null(store.Save(PlaceBoth));
 
-        Assert.Equal("y", store.Current.Tiles["c"].Connector);
+        Assert.Equal("y", store.Current.Tiles["c"].Kind);
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class ConfigStoreSaveTests
         var reloaded = new TaskCompletionSource();
         store.Changed += (_, _) => reloaded.TrySetResult();
 
-        File.WriteAllText(dir.File("config.json"), """{ "tiles": { "z": { "connector": "x" } } }""");
+        File.WriteAllText(dir.File("config.json"), """{ "tiles": { "z": { "kind": "x" } } }""");
 
         await reloaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(store.Current.Tiles.ContainsKey("z"));

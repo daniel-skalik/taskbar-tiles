@@ -1,3 +1,5 @@
+using System.IO;
+using System.Text.Json;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Layout;
@@ -38,7 +40,7 @@ public interface ILayoutEditor
     IReadOnlyList<GalleryItem> GalleryFor(string displayId);
 
     /// <summary>
-    /// Places the gallery item at the end of the display's layout, adding its tile definition when it is new. With
+    /// Places the gallery item at the end of the display's layout, adding an instance of its kind when it is new. With
     /// <paramref name="stackWith"/> it joins that slot instead, as "Create stack…" does (<see cref="LayoutEdits.StackInto"/>).
     /// </summary>
     ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null);
@@ -60,8 +62,9 @@ public interface ILayoutEditor
 }
 
 /// <summary>
-/// Keeps runtimes and bars in sync with config and connected displays.
+/// Keeps runtimes and bars in sync with config, the tile kinds and connected displays.
 /// One runtime per tile id placed on any display (stack members included); one bar per display. Runs on the UI thread.
+/// <paramref name="catalog"/> holds the connectors built into the app (script); <paramref name="kinds"/> the kind table.
 /// </summary>
 public sealed class HostController(
     ConnectorCatalog catalog,
@@ -72,9 +75,12 @@ public sealed class HostController(
     Func<string, ITileBarView> createBar,
     string? configDirectory = null,
     IConfigWriter? writer = null,
-    IReadOnlyList<ScriptTemplate>? templates = null) : ILayoutEditor, IAsyncDisposable
+    Func<KindTable>? kinds = null) : ILayoutEditor, IAsyncDisposable
 {
-    readonly Dictionary<string, (TileRuntime Runtime, TileConfig Config)> _runtimes = new(StringComparer.Ordinal);
+    /// <summary>How one tile runs; a runtime is kept while its Fingerprint is unchanged.</summary>
+    sealed record TilePlan(string ConnectorId, double Width, Func<ITileConnector> Create, JsonElement Settings, string Directory, string Fingerprint);
+
+    readonly Dictionary<string, (TileRuntime Runtime, string Fingerprint)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
     readonly TileRuntimeOptions _runtimeOptions = new() { ConfigDirectory = configDirectory ?? AppPaths.DataDir };
     bool _disposed;
@@ -90,7 +96,7 @@ public sealed class HostController(
         Sync();
     }
 
-    /// <summary>Call on the UI thread after config.json reloaded.</summary>
+    /// <summary>Call on the UI thread after config.json reloaded or the kind table changed.</summary>
     public void ConfigChanged() => Sync();
 
     public void NotifyResumed()
@@ -167,8 +173,10 @@ public sealed class HostController(
         var cfg = config();
         var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
         var layout = display is null ? DisplayLayout.Empty : DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
-        return TileGallery.Build(cfg, layout, catalog.Connectors.Keys, templates ?? ScriptTemplates.Samples);
+        return TileGallery.Build(cfg, layout, Kinds());
     }
+
+    KindTable Kinds() => kinds?.Invoke() ?? KindTable.Empty;
 
     public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null)
     {
@@ -277,31 +285,58 @@ public sealed class HostController(
 
     void SyncRuntimes(HostConfig cfg, HashSet<string> wanted)
     {
+        var table = Kinds();
+        var plans = new Dictionary<string, TilePlan>(StringComparer.Ordinal);
+        foreach (var id in wanted)
+            if (cfg.Tiles.TryGetValue(id, out var tile)) plans[id] = Plan(tile, table);
+
         foreach (var (id, entry) in _runtimes.ToList())
         {
-            var keep = wanted.Contains(id) && cfg.Tiles.TryGetValue(id, out var now) && SameConfig(now, entry.Config);
-            if (keep) continue;
+            if (plans.TryGetValue(id, out var plan) && plan.Fingerprint == entry.Fingerprint) continue;
             _runtimes.Remove(id);
             _ = entry.Runtime.DisposeAsync().AsTask();
         }
 
-        foreach (var id in wanted)
+        foreach (var (id, plan) in plans)
         {
-            if (_runtimes.ContainsKey(id) || !cfg.Tiles.TryGetValue(id, out var tileCfg)) continue;
-
-            var connectorId = tileCfg.Connector;
-            // The runtime calls this on the thread pool (plugin constructors are plugin code) and again for every restart.
-            // A throwing constructor shows the error look and is retried with backoff.
-            Func<ITileConnector> create = () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId);
-            var width = catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth;
-            var runtime = new TileRuntime(id, connectorId, width, create, tileCfg.Settings, ui, logFor($"tile-{id}"), _runtimeOptions);
-            _runtimes[id] = (runtime, tileCfg);
+            if (_runtimes.ContainsKey(id)) continue;
+            var runtime = new TileRuntime(id, plan.ConnectorId, plan.Width, plan.Create, plan.Settings, ui, logFor($"tile-{id}"),
+                _runtimeOptions with { TileDirectory = plan.Directory });
+            _runtimes[id] = (runtime, plan.Fingerprint);
             _ = runtime.StartAsync();
         }
     }
 
-    static bool SameConfig(TileConfig a, TileConfig b) =>
-        a.Connector == b.Connector && a.Settings.GetRawText() == b.Settings.GetRawText();
+    /// <summary>
+    /// The tile's kind connector with the effective settings and the kind folder, or a tile error when the kind is missing
+    /// or broken. The fingerprint changes with the kind's tile.json and scripts (its stamp), so editing one kind restarts
+    /// only that kind's tiles.
+    /// </summary>
+    TilePlan Plan(TileConfig tile, KindTable table)
+    {
+        if (table.Find(tile.Kind) is not { } kind)
+        {
+            var missing = $@"There is no tiles\{tile.Kind} folder with a tile.json.";
+            return new(tile.Kind, PluginLoader.DefaultTileWidth, () => new BrokenKindConnector(missing), tile.Settings,
+                Path.Combine(table.TilesDir, tile.Kind), $"missing\n{tile.Kind}\n{tile.Settings.GetRawText()}");
+        }
+
+        var settings = kind.SettingsFor(tile.Settings);
+        var fingerprint = $"{kind.Directory}\n{kind.Stamp}\n{kind.Error}\n{settings.GetRawText()}";
+        if (kind.Error is { } error)
+            return new(kind.Connector.Length > 0 ? kind.Connector : kind.Id, PluginLoader.DefaultTileWidth,
+                () => new BrokenKindConnector(error), settings, kind.Directory, fingerprint);
+
+        // The runtime calls Create on the thread pool (plugin constructors are plugin code) and again for every restart.
+        // A throwing constructor shows the error look and is retried with backoff.
+        if (kind.Plugin is { } plugin)
+            return new(plugin.Id, plugin.Width, () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint);
+
+        var connectorId = kind.Connector; // "script": built into the app
+        var width = catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth;
+        return new(connectorId, width, () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId), settings,
+            kind.Directory, fingerprint);
+    }
 
     /// <summary>
     /// Bars (WPF windows) are closed synchronously before the first await, so call this on the UI thread.

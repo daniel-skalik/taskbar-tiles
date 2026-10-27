@@ -46,7 +46,7 @@ public class HostControllerTests
     static HostConfig Parse(string json) => ConfigParser.Parse(json).Config!;
 
     const string TwoTiles = """
-    { "tiles": { "a": { "connector": "ghost" }, "b": { "connector": "ghost" } },
+    { "tiles": { "a": { "kind": "ghost" }, "b": { "kind": "ghost" } },
       "displays": { "primary": { "slots": ["a", "b"] }, "*": { "slots": ["b"] } } }
     """;
 
@@ -104,7 +104,7 @@ public class HostControllerTests
         host.Start();
         var a = host.Runtimes["a"];
 
-        setCfg(Parse("""{ "tiles": { "a": { "connector": "ghost" } }, "displays": { "primary": { "slots": ["a"] } } }"""));
+        setCfg(Parse("""{ "tiles": { "a": { "kind": "ghost" } }, "displays": { "primary": { "slots": ["a"] } } }"""));
         host.ConfigChanged();
 
         Assert.Same(a, host.Runtimes["a"]);
@@ -119,33 +119,52 @@ public class HostControllerTests
         host.Start();
         var a = host.Runtimes["a"];
 
-        setCfg(Parse("""{ "tiles": { "a": { "connector": "ghost", "settings": { "x": 1 } }, "b": { "connector": "ghost" } }, "displays": { "primary": { "slots": ["a", "b"] } } }"""));
+        setCfg(Parse("""{ "tiles": { "a": { "kind": "ghost", "settings": { "x": 1 } }, "b": { "kind": "ghost" } }, "displays": { "primary": { "slots": ["a", "b"] } } }"""));
         host.ConfigChanged();
 
         Assert.NotSame(a, host.Runtimes["a"]);
     }
 
     [Fact]
-    public void Unknown_connector_gets_placeholder_runtime()
+    public async Task A_tile_whose_kind_is_missing_shows_a_tile_error()
     {
         var (host, _, _, _, _) = Create(Parse(TwoTiles));
         host.Start();
+
         Assert.Equal("ghost", host.Runtimes["a"].ConnectorId);
+        await Eventually.Holds(() => host.Runtimes["a"].LastError is not null);
+        Assert.Equal(@"There is no tiles\ghost folder with a tile.json.", host.Runtimes["a"].LastError!.Message);
+        Assert.False(host.Runtimes["a"].LastError!.Fatal);
+        await host.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task A_broken_kind_shows_its_error_on_its_tiles_only()
+    {
+        var kinds = TestKinds.Of(TestKinds.Broken("bad", @"tiles\bad\tile.json is not valid JSON: x (line 2)"), TestKinds.Script("ok"));
+        var cfg = Parse("""{ "tiles": { "a": { "kind": "bad" }, "b": { "kind": "ok" } }, "displays": { "primary": { "slots": ["a", "b"] } } }""");
+        var host = new HostController(ConnectorCatalog.Empty, () => cfg,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), kinds: () => kinds);
+
+        host.Start();
+
+        await Eventually.Holds(() => host.Runtimes["a"].LastError is not null && host.Runtimes["b"].State.Title == "Unknown connector");
+        Assert.Equal(@"tiles\bad\tile.json is not valid JSON: x (line 2)", host.Runtimes["a"].LastError!.Message);
+        Assert.Null(host.Runtimes["b"].LastError); // the other kind still runs (here: no script plugin, so the placeholder)
+        await host.DisposeAsync();
     }
 
     [Fact]
     public async Task Throwing_plugin_constructor_shows_an_error_tile()
     {
-        var catalog = new ConnectorCatalog(new Dictionary<string, ConnectorDescriptor>
-        {
-            ["bad"] = new("bad", typeof(ThrowingConnector), 100, "bad.dll"),
-        });
-        var cfg = Parse("""{ "tiles": { "a": { "connector": "bad" } }, "displays": { "primary": { "slots": ["a"] } } }""");
+        var kinds = TestKinds.Of(TestKinds.Plugin("bad", typeof(ThrowingConnector)));
+        var cfg = Parse("""{ "tiles": { "a": { "kind": "bad" } }, "displays": { "primary": { "slots": ["a"] } } }""");
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
         var bars = new Dictionary<string, FakeBar>();
         var log = new CollectingLog();
-        var host = new HostController(catalog, () => cfg, source, new ImmediateDispatcher(),
-            _ => log, id => bars[id] = new FakeBar(id));
+        var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
+            _ => log, id => bars[id] = new FakeBar(id), kinds: () => kinds);
 
         host.Start();
 
@@ -158,16 +177,13 @@ public class HostControllerTests
     }
 
     [Fact]
-    public async Task Connectors_are_built_off_the_calling_thread_and_get_the_config_directory()
+    public async Task Connectors_are_built_off_the_calling_thread_and_get_effective_settings_and_folders()
     {
-        var catalog = new ConnectorCatalog(new Dictionary<string, ConnectorDescriptor>
-        {
-            ["cap"] = new("cap", typeof(CapturingConnector), 100, "cap.dll"),
-        });
-        var cfg = Parse("""{ "tiles": { "a": { "connector": "cap" } }, "displays": { "primary": { "slots": ["a"] } } }""");
+        var kinds = TestKinds.Of(TestKinds.Plugin("cap", typeof(CapturingConnector), settingsJson: """{ "a": 1, "b": 2 }"""));
+        var cfg = Parse("""{ "tiles": { "x": { "kind": "cap", "settings": { "b": 3 } } }, "displays": { "primary": { "slots": ["x"] } } }""");
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
-        var host = new HostController(catalog, () => cfg, source, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), configDirectory: @"C:\cfg");
+        var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), configDirectory: @"C:\cfg", kinds: () => kinds);
 
         CapturingConnector.InsideStart = true;
         try { host.Start(); }
@@ -175,21 +191,44 @@ public class HostControllerTests
 
         var ctx = await CapturingConnector.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(@"C:\cfg", ctx.ConfigDirectory);
+        Assert.Equal(@"C:\tiles\cap", ctx.TileDirectory);
+        Assert.Equal(@"C:\tiles\cap", host.Runtimes["x"].TileDirectory);
+        Assert.Equal("""{"a":1,"b":3}""", ctx.Settings.GetRawText());
+        Assert.Equal(100, host.Runtimes["x"].Width);
         Assert.False(CapturingConnector.ConstructedInsideStart);
         await host.DisposeAsync();
     }
 
     [Fact]
+    public void Changing_a_kind_restarts_only_its_tiles()
+    {
+        var kinds = TestKinds.Of(TestKinds.Script("ping"), TestKinds.Script("uptime"));
+        var cfg = Parse("""
+            { "tiles": { "p1": { "kind": "ping" }, "p2": { "kind": "ping" }, "u": { "kind": "uptime" } },
+              "displays": { "primary": { "slots": ["p1", "p2", "u"] } } }
+            """);
+        var host = new HostController(ConnectorCatalog.Empty, () => cfg,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), kinds: () => kinds);
+        host.Start();
+        var before = host.Runtimes;
+
+        kinds = TestKinds.Of(TestKinds.Script("ping", stamp: "2"), TestKinds.Script("uptime"));
+        host.ConfigChanged();
+
+        Assert.NotSame(before["p1"], host.Runtimes["p1"]);
+        Assert.NotSame(before["p2"], host.Runtimes["p2"]);
+        Assert.Same(before["u"], host.Runtimes["u"]);
+    }
+
+    [Fact]
     public async Task DisposeAsync_does_not_deadlock_under_single_threaded_context()
     {
-        var catalog = new ConnectorCatalog(new Dictionary<string, ConnectorDescriptor>
-        {
-            ["slow"] = new("slow", typeof(SlowDisposeConnector), 100, "slow.dll"),
-        });
-        var cfg = Parse("""{ "tiles": { "a": { "connector": "slow" } }, "displays": { "primary": { "slots": ["a"] } } }""");
+        var kinds = TestKinds.Of(TestKinds.Plugin("slow", typeof(SlowDisposeConnector)));
+        var cfg = Parse("""{ "tiles": { "a": { "kind": "slow" } }, "displays": { "primary": { "slots": ["a"] } } }""");
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
-        var host = new HostController(catalog, () => cfg, source, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id));
+        var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), kinds: () => kinds);
         host.Start();
 
         var previous = SynchronizationContext.Current;
