@@ -8,13 +8,17 @@ using TaskbarTiles.Host.Runtime;
 
 namespace TaskbarTiles.Host.UI;
 
-/// <summary>Renders one tile's TileState and turns clicks into flyouts or actions.</summary>
+/// <summary>Renders one tile's TileState, full or compact (icon only), and turns clicks into flyouts or actions.</summary>
 public partial class TileView : UserControl
 {
+    static readonly FontFamily GlyphFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
+    static readonly FontFamily MonogramFont = new("Segoe UI");
+
     readonly Func<bool> _isLightTheme;
     readonly TileCommands _commands;
     readonly ITileLog _log;
     bool _urgent;
+    bool _compact;
     bool _clickInFlight;
     SolidColorBrush? _pulse;
 
@@ -37,6 +41,21 @@ public partial class TileView : UserControl
 
     public TileRuntime Runtime { get; }
 
+    /// <summary>Icon only, with title, subtitle and tooltip in the tooltip. The owner sets the width.</summary>
+    public bool Compact
+    {
+        get => _compact;
+        set
+        {
+            if (_compact == value) return;
+            _compact = value;
+            Render(Runtime.State);
+        }
+    }
+
+    /// <summary>What the popup is placed above; null means this tile. Tiles in the overflow popup point it at the » tile.</summary>
+    public FrameworkElement? FlyoutAnchor { get; set; }
+
     public void Detach()
     {
         Runtime.StateChanged -= OnStateChanged;
@@ -50,13 +69,33 @@ public partial class TileView : UserControl
         TitleText.Text = s.Title ?? "";
         SubtitleText.Text = s.Subtitle ?? "";
         SubtitleText.Visibility = string.IsNullOrEmpty(s.Subtitle) ? Visibility.Collapsed : Visibility.Visible;
-        ToolTip = string.IsNullOrEmpty(s.Tooltip) ? null : s.Tooltip;
+        ToolTip = _compact ? TileText.CompactTooltip(s) : string.IsNullOrEmpty(s.Tooltip) ? null : s.Tooltip;
 
         var picture = Theme.Decode(s.Image);
         Picture.Source = picture;
-        IconGlyph.Text = picture is null && s.Icon is { } icon ? Theme.Glyph(icon.Glyph) : "";
-        IconBackground.Background = picture is null && s.Icon is { } i2 ? Theme.ColorFor(i2.Color) : Brushes.Transparent;
-        IconHost.Visibility = picture is null && s.Icon is null ? Visibility.Collapsed : Visibility.Visible;
+        if (picture is null && s.Icon is { } icon)
+        {
+            IconGlyph.FontFamily = GlyphFont;
+            IconGlyph.Text = Theme.Glyph(icon.Glyph);
+            IconBackground.Background = Theme.ColorFor(icon.Color);
+        }
+        else if (picture is null && _compact)
+        {
+            // A compact tile without an icon still needs something to recognise it by.
+            IconGlyph.FontFamily = MonogramFont;
+            IconGlyph.Text = TileText.Monogram(s.Title);
+            IconBackground.Background = Theme.ColorFor(TileColor.Neutral);
+        }
+        else
+        {
+            IconGlyph.Text = "";
+            IconBackground.Background = Brushes.Transparent;
+        }
+        IconHost.Visibility = picture is null && s.Icon is null && !_compact ? Visibility.Collapsed : Visibility.Visible;
+        IconHost.Margin = _compact ? new Thickness(0) : new Thickness(0, 0, 8, 0);
+        Root.Padding = _compact ? new Thickness(5, 0, 5, 0) : new Thickness(6, 0, 6, 0); // 5 + 28 + 5 + 2 border = 40 DIP
+        TextPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
+        ExtrasPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
 
         ButtonPanel.Children.Clear();
         foreach (var b in s.Buttons)
@@ -69,10 +108,11 @@ public partial class TileView : UserControl
                 Style = (Style)FindResource("IconButton"),
             };
             var id = b.Id;
-            // TileRuntime drops a click on an action id that is still running.
+            // Same path as popup actions: host ids become commands, the rest go to the connector,
+            // which drops a click on an action id that is still running.
             button.Click += async (_, _) =>
             {
-                try { await Runtime.InvokeActionAsync(id); }
+                try { await _commands.InvokeAsync(Runtime, id); }
                 catch (Exception ex) { _log.Error($"Tile '{Runtime.TileId}' button '{id}' failed", ex); }
             };
             ButtonPanel.Children.Add(button);
@@ -152,7 +192,7 @@ public partial class TileView : UserControl
                     await Runtime.InvokeActionAsync(TileActions.Click);
                     break;
                 case FlyoutOutcome.Popup:
-                    FlyoutWindow.ShowAbove(this, result.Flyout!, Runtime, _isLightTheme(), _commands, _log);
+                    FlyoutWindow.ShowAbove(FlyoutAnchor ?? this, result.Flyout!, Runtime, _isLightTheme(), _commands, _log);
                     break;
             }
         }

@@ -32,4 +32,13 @@ public class ConfigNoticeTests
         Assert.DoesNotContain("..", body);
         Assert.StartsWith("Tile 'a' needs a \"connector\" name. ", body);
     }
+
+    [Fact]
+    public void Save_failure_says_the_file_is_unchanged()
+    {
+        var body = ConfigNotice.SaveFailedBody(new ConfigError("config.json has an error, so nothing was saved: Invalid JSON.", 4, 1));
+
+        Assert.StartsWith("config.json has an error, so nothing was saved: Invalid JSON. (line 4, column 1). config.json is unchanged.", body);
+        Assert.EndsWith("Click to show config.json in Explorer.", body);
+    }
 }

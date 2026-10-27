@@ -30,7 +30,7 @@ The default `config.json` (written only when none exists) already contains the `
 
 ## Hooks
 
-`settings.hooks` maps hook names to `{ "run": "...", "timeout": "20s" }`. Except for `interval`, a plain string is short for `{ "run": "..." }`.
+`settings.hooks` maps hook names to `{ "run": "...", "timeout": "20s" }` (`interval` also takes `every`; any other key is an error). Except for `interval`, a plain string is short for `{ "run": "..." }`.
 
 | Hook | `TILE_HOOK` | When it runs | What it prints |
 |---|---|---|---|
@@ -124,7 +124,7 @@ Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (
 - A script that cannot start (for example `python` is not installed: the tile says "could not start the script"), times out, exits with a non-zero code, or prints malformed JSON or something that is not a JSON object puts the tile in the error look: a warning icon, "Error", and the message in the subtitle and tooltip. Click the tile to see the script's stderr (or its output if stderr is empty), with **Restart tile** and **Open log** buttons. The next successful run clears the error look, even if that run prints nothing.
 - If a `flyout` (popup) script fails, the popup itself shows "Script error" with the details and the **Restart tile** and **Open log** buttons. The tile is not put in the error look, and the script runs again the next time you open the popup.
 - Unknown fields, values of the wrong type and non-finite numbers are ignored; each one is written to the tile's log as a warning, which helps catch typos such as `tittle`.
-- Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`) put the tile in the error look and nothing runs until `config.json` is fixed.
+- Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`, an unknown setting inside a hook such as `"timout"`, or `every` on a hook other than `interval`) put the tile in the error look and nothing runs until `config.json` is fixed.
 - Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** shows it selected in Explorer.
 - Right-click → **Refresh now** re-runs `interval` (or `startup`). **Restart tile** starts the connector again from scratch.
 

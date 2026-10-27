@@ -31,9 +31,24 @@ public class DisplayResolverTests
         Assert.Empty(DisplayResolver.Resolve(Config(("primary", Primary)), "DEV9", isPrimary: false).Slots);
 
     [Fact]
-    public void Visible_tile_ids_take_first_item_of_each_stack()
+    public void Placed_tile_ids_include_every_stack_member_once()
     {
-        var layout = new DisplayLayout([new TileSlot("a", false), new StackSlot(["b", "c"], TimeSpan.FromSeconds(5)), new StackSlot([], TimeSpan.FromSeconds(5))]);
-        Assert.Equal(new[] { "a", "b" }, DisplayResolver.VisibleTileIds(layout));
+        var layout = new DisplayLayout([new TileSlot("a", false), new StackSlot(["b", "c", "a"], TimeSpan.FromSeconds(5)), new StackSlot([], TimeSpan.FromSeconds(5))]);
+        Assert.Equal(new[] { "a", "b", "c" }, DisplayResolver.PlacedTileIds(layout));
     }
+
+    [Fact]
+    public void Edit_key_is_the_device_id_when_it_has_an_entry() =>
+        Assert.Equal("DEV1", DisplayResolver.EditKey(Config(("DEV1", Exact), ("primary", Primary)), "DEV1", isPrimary: true));
+
+    [Fact]
+    public void Edit_key_is_primary_on_the_primary_display_without_its_own_entry()
+    {
+        Assert.Equal("primary", DisplayResolver.EditKey(Config(("primary", Primary), ("*", Any)), "DEV1", isPrimary: true));
+        Assert.Equal("primary", DisplayResolver.EditKey(Config(("*", Any)), "DEV1", isPrimary: true));
+    }
+
+    [Fact]
+    public void Edit_key_is_the_device_id_on_other_displays_never_the_star() =>
+        Assert.Equal("DEV2", DisplayResolver.EditKey(Config(("primary", Primary), ("*", Any)), "DEV2", isPrimary: false));
 }

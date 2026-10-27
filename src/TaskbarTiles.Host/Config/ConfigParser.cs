@@ -21,7 +21,12 @@ public static class ConfigParser
         AllowTrailingCommas = true,
     };
 
-    static readonly TimeSpan DefaultRotate = TimeSpan.FromSeconds(5);
+    /// <summary>A stack's "rotate" when it has none; edit mode uses it for new stacks.</summary>
+    public static readonly TimeSpan DefaultRotate = TimeSpan.FromSeconds(5);
+
+    /// <summary>Bounds for "rotate": faster than 1 s is unreadable, slower than 1 h is not rotating.</summary>
+    public static readonly TimeSpan MinRotate = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaxRotate = TimeSpan.FromHours(1);
 
     public static ConfigParseResult Parse(string json)
     {
@@ -121,8 +126,10 @@ public static class ConfigParser
                 .Select(x => x.ValueKind == JsonValueKind.String ? x.GetString()! : throw new ConfigException($"Stack in slot {index} on display '{display}' must list tile ids."))
                 .ToList();
             var rotate = DefaultRotate;
-            if (el.TryGetProperty("rotate", out var r) && !Duration.TryParse(r.ValueKind == JsonValueKind.String ? r.GetString() : null, out rotate))
-                throw new ConfigException($"Invalid \"rotate\" in slot {index} on display '{display}'. Use e.g. 5s.");
+            if (el.TryGetProperty("rotate", out var r)
+                && (!Duration.TryParse(r.ValueKind == JsonValueKind.String ? r.GetString() : null, out rotate)
+                    || rotate < MinRotate || rotate > MaxRotate))
+                throw new ConfigException($"Invalid \"rotate\" in slot {index} on display '{display}'. Use a duration from 1s to 1h, e.g. 5s.");
             return new StackSlot(ids, rotate);
         }
 

@@ -8,7 +8,10 @@ using TaskbarTiles.Host.Taskbar;
 
 namespace TaskbarTiles.Host.UI;
 
-/// <summary>The popup above a tile. Only one is open at a time; it closes when it loses focus.</summary>
+/// <summary>
+/// The popup above a tile, the overflow popup and the tile gallery. Only one is open at a time; it closes when it
+/// loses focus.
+/// </summary>
 public static class FlyoutWindow
 {
     const double WidthDip = 320;
@@ -22,7 +25,15 @@ public static class FlyoutWindow
     }
 
     public static void ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light,
-        TileCommands commands, ITileLog log)
+        TileCommands commands, ITileLog log) =>
+        ShowPanel(anchor, Build(state, runtime, commands, log), light, log, WidthDip);
+
+    /// <summary>
+    /// Shows any content in the popup frame above <paramref name="anchor"/>: 320 DIP wide by default, or as wide as the
+    /// content with a null width. <paramref name="onClosed"/> runs when it closes, for whatever reason.
+    /// </summary>
+    public static void ShowPanel(FrameworkElement anchor, UIElement content, bool light, ITileLog log,
+        double? width = WidthDip, Action? onClosed = null)
     {
         CloseOpen();
 
@@ -34,19 +45,32 @@ public static class FlyoutWindow
             ShowInTaskbar = false,
             Topmost = true,
             ResizeMode = ResizeMode.NoResize,
-            SizeToContent = SizeToContent.Height,
-            Width = WidthDip,
+            SizeToContent = width is null ? SizeToContent.WidthAndHeight : SizeToContent.Height,
             UseLayoutRounding = true,
             Opacity = 0, // hidden until positioned on the target monitor at the right DPI
         };
+        if (width is { } w) window.Width = w;
         Theme.ApplyTo(window.Resources, light);
-        window.Content = Build(state, runtime, commands, log);
+        window.Content = Frame(content);
         window.Deactivated += (_, _) => { if (_open == window) CloseOpen(); };
+        if (onClosed is not null)
+            window.Closed += (_, _) =>
+            {
+                try { onClosed(); }
+                catch (Exception ex) { log.Error("Closing a popup failed", ex); }
+            };
         window.Loaded += (_, _) =>
         {
-            try { Position(window, anchor); }
+            var positioned = false;
+            try { positioned = Position(window, anchor); }
             catch (Exception ex) { log.Error("Flyout positioning failed", ex); }
-            finally { window.Opacity = 1; }
+            if (positioned) window.Opacity = 1;
+            else
+            {
+                // Never show a popup that could not be placed (for example its anchor left the visual tree).
+                log.Warn("Flyout closed: its anchor is not on screen");
+                if (_open == window) CloseOpen(); else window.Close();
+            }
         };
         _open = window;
         window.Show();
@@ -119,19 +143,25 @@ public static class FlyoutWindow
             panel.Children.Add(actions);
         }
 
+        return panel;
+    }
+
+    static Border Frame(UIElement content)
+    {
         var border = new Border
         {
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(14),
-            Child = panel,
+            Child = content,
         };
         border.SetResourceReference(Border.BackgroundProperty, "FlyoutBackground");
         border.SetResourceReference(Border.BorderBrushProperty, "FlyoutBorder");
         return border;
     }
 
-    static TextBlock Text(string text, double size, FontWeight weight, string brushKey)
+    /// <summary>A text line in the popup's colors: brushKey is a Theme key such as "TileForeground" or "TileDim".</summary>
+    public static TextBlock Text(string text, double size, FontWeight weight, string brushKey)
     {
         var tb = new TextBlock { Text = text, FontSize = size, FontWeight = weight, TextWrapping = TextWrapping.NoWrap };
         tb.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
@@ -143,10 +173,9 @@ public static class FlyoutWindow
     /// of the monitor holding the anchor. The window starts at Opacity 0; moving it onto the target monitor may
     /// change its DPI (WPF rescales synchronously), so we re-measure and re-apply until the DPI is stable (max 3 passes).
     /// </summary>
-    static void Position(Window window, FrameworkElement anchor)
+    static bool Position(Window window, FrameworkElement anchor)
     {
-        var anchorSource = PresentationSource.FromVisual(anchor) as HwndSource;
-        if (anchorSource?.CompositionTarget is null) return;
+        if (SourceOf(anchor) is not { } anchorSource) return false;
         var anchorScale = anchorSource.CompositionTarget.TransformToDevice.M11;
         var topLeft = anchor.PointToScreen(new Point(0, 0));
         var anchorWidthPx = anchor.ActualWidth * anchorScale;
@@ -174,5 +203,10 @@ public static class FlyoutWindow
             if (Math.Abs(after - dpi) < 0.001) break;
             dpi = after;
         }
+        return true;
     }
+
+    /// <summary>The window source of an anchor, or null when the anchor is in no window.</summary>
+    internal static HwndSource? SourceOf(Visual anchor) =>
+        PresentationSource.FromVisual(anchor) is HwndSource { CompositionTarget: not null } source ? source : null;
 }

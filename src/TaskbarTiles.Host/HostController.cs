@@ -1,5 +1,6 @@
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
+using TaskbarTiles.Host.Layout;
 using TaskbarTiles.Host.Plugins;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.Taskbar;
@@ -10,14 +11,57 @@ namespace TaskbarTiles.Host;
 public interface ITileBarView
 {
     string DisplayId { get; }
-    void SetTiles(IReadOnlyList<TileRuntime> runtimes);
+    void SetSlots(IReadOnlyList<BarSlot> slots);
     void Apply(TaskbarInfo info);
+
+    /// <summary>Edit mode: dashed tiles, drag, ×, + and Done.</summary>
+    void SetEditing(bool editing);
     void Close();
+}
+
+/// <summary>Layout changes a bar asks for. HostController implements it. UI thread only.</summary>
+public interface ILayoutEditor
+{
+    /// <summary>Edit mode is on for every bar at once; each bar still edits only its own display's layout.</summary>
+    bool Editing { get; }
+
+    void SetEditMode(bool editing);
+
+    /// <summary>
+    /// Applies <paramref name="edit"/> to the layout the display shows and saves config.json under the display's
+    /// edit key (<see cref="DisplayResolver.EditKey"/>). Returns null when saved or when nothing changed, otherwise why
+    /// nothing was saved.
+    /// </summary>
+    ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit);
+
+    /// <summary>What edit mode's "+" offers on this display.</summary>
+    IReadOnlyList<GalleryItem> GalleryFor(string displayId);
+
+    /// <summary>
+    /// Places the gallery item at the end of the display's layout, adding its tile definition when it is new. With
+    /// <paramref name="stackWith"/> it joins that slot instead, as "Create stack…" does (<see cref="LayoutEdits.StackInto"/>).
+    /// </summary>
+    ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null);
+
+    /// <summary>
+    /// × and "Remove tile": removes slot <paramref name="index"/>, or with <paramref name="member"/> one member of a stack,
+    /// from the display's layout. A tile no display entry (including "*") places afterwards loses its definition under
+    /// "tiles" in the same save; other unplaced definitions are kept.
+    /// </summary>
+    ConfigError? RemoveTile(string displayId, int index, int? member);
+
+    /// <summary>
+    /// Drag and drop between displays' bars. Slot <paramref name="fromIndex"/> of the source display lands before, into or
+    /// after slot <paramref name="target"/> of the target display, or at its end when target is null; tiles the target
+    /// display already places only leave the source. One save writes both displays' edit keys. On the same display this
+    /// is <see cref="LayoutEdits.Drop"/> (a null target changes nothing).
+    /// </summary>
+    ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position);
 }
 
 /// <summary>
 /// Keeps runtimes and bars in sync with config and connected displays.
-/// One runtime per tile id placed on any display; one bar per display. Runs on the UI thread.
+/// One runtime per tile id placed on any display (stack members included); one bar per display. Runs on the UI thread.
 /// </summary>
 public sealed class HostController(
     ConnectorCatalog catalog,
@@ -26,7 +70,9 @@ public sealed class HostController(
     IUiDispatcher ui,
     Func<string, ITileLog> logFor,
     Func<string, ITileBarView> createBar,
-    string? configDirectory = null) : IAsyncDisposable
+    string? configDirectory = null,
+    IConfigWriter? writer = null,
+    IReadOnlyList<ScriptTemplate>? templates = null) : ILayoutEditor, IAsyncDisposable
 {
     readonly Dictionary<string, (TileRuntime Runtime, TileConfig Config)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
@@ -34,6 +80,8 @@ public sealed class HostController(
     bool _disposed;
 
     public IReadOnlyDictionary<string, TileRuntime> Runtimes => _runtimes.ToDictionary(kv => kv.Key, kv => kv.Value.Runtime);
+
+    public bool Editing { get; private set; }
 
     public void Start()
     {
@@ -51,15 +99,136 @@ public sealed class HostController(
         foreach (var (runtime, _) in _runtimes.Values) runtime.RaiseResumed();
     }
 
+    /// <summary>
+    /// Turns edit mode on or off on every bar, so a display without tiles (whose bar is otherwise hidden) can get some.
+    /// </summary>
+    public void SetEditMode(bool editing)
+    {
+        if (_disposed || Editing == editing) return;
+        Editing = editing;
+        foreach (var (id, bar) in _bars)
+        {
+            try { bar.SetEditing(editing); }
+            catch (Exception ex) { logFor("host").Error($"Switching edit mode on display '{id}' failed", ex); }
+        }
+    }
+
+    public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit)
+    {
+        var (target, refused) = Editable(displayId);
+        if (target is not { } t) return refused;
+        var changed = edit(t.Layout);
+        if (LayoutEdits.SameSlots(t.Layout, changed)) return null;
+        return Saved(LayoutOf(displayId, t.Key), writer!.Save(root => ConfigJson.SetDisplay(root, t.Key, changed)));
+    }
+
+    public ConfigError? RemoveTile(string displayId, int index, int? member)
+    {
+        var (target, refused) = Editable(displayId);
+        if (target is not { } t) return refused;
+        var changed = LayoutEdits.Remove(t.Layout, index, member);
+        if (LayoutEdits.SameSlots(t.Layout, changed)) return null;
+        var removed = LayoutEdits.RemovedTileIds(t.Layout, changed);
+        return Saved(LayoutOf(displayId, t.Key), writer!.Save(root =>
+        {
+            ConfigJson.SetDisplay(root, t.Key, changed);
+            ConfigJson.RemoveUnplacedTiles(root, removed); // after the change, so this display no longer counts
+        }));
+    }
+
+    public ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position)
+    {
+        if (fromDisplayId == toDisplayId)
+            return EditLayout(fromDisplayId, l => target is { } to
+                ? LayoutEdits.Drop(l, fromIndex, to, position)
+                : LayoutEdits.Drop(l, fromIndex, l.Slots.Count - 1, DropPosition.After)); // no target: to the end
+
+        var (source, refused) = Editable(fromDisplayId);
+        if (source is not { } s) return refused;
+        var (destination, refusedTarget) = Editable(toDisplayId);
+        if (destination is not { } d) return refusedTarget;
+        if (s.Layout.Slots.ElementAtOrDefault(fromIndex) is not { } slot) return null; // a stale index: nothing to move
+
+        if (s.Key == d.Key) return new ConfigError($"Displays '{fromDisplayId}' and '{toDisplayId}' are both saved under \"{s.Key}\"; a move between them cannot be saved.");
+
+        var newSource = LayoutEdits.Remove(s.Layout, fromIndex);
+        var newTarget = LayoutEdits.DropIncoming(d.Layout, slot, target, position);
+        var targetChanged = !LayoutEdits.SameSlots(d.Layout, newTarget); // else a display inheriting "*" would be forked into its own entry
+        return Saved($"a move from display '{fromDisplayId}' (\"{s.Key}\") to display '{toDisplayId}' (\"{d.Key}\")",
+            writer!.Save(root =>
+            {
+                ConfigJson.SetDisplay(root, s.Key, newSource);
+                if (targetChanged) ConfigJson.SetDisplay(root, d.Key, newTarget);
+            }));
+    }
+
+    public IReadOnlyList<GalleryItem> GalleryFor(string displayId)
+    {
+        var cfg = config();
+        var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
+        var layout = display is null ? DisplayLayout.Empty : DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
+        return TileGallery.Build(cfg, layout, catalog.Connectors.Keys, templates ?? ScriptTemplates.Samples);
+    }
+
+    public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null)
+    {
+        DisplayLayout Place(DisplayLayout layout, string id)
+        {
+            var placed = LayoutEdits.Append(layout, id);
+            return stackWith is { } target ? LayoutEdits.StackInto(placed, placed.Slots.Count - 1, target) : placed;
+        }
+
+        if (item.NewTile is not { } definition) return EditLayout(displayId, l => Place(l, item.TileId));
+
+        var (target, refused) = Editable(displayId);
+        if (target is not { } t) return refused;
+        return Saved(LayoutOf(displayId, t.Key), writer!.Save(root =>
+        {
+            // Pick the id from the file being saved, so a tile added by hand but not reloaded yet is never replaced.
+            var taken = root["tiles"] is System.Text.Json.Nodes.JsonObject tiles ? tiles.Select(tile => tile.Key) : [];
+            var id = TileGallery.UniqueId(item.TileId, taken);
+            ConfigJson.SetTile(root, id, definition);
+            ConfigJson.SetDisplay(root, t.Key, Place(t.Layout, id));
+        }));
+    }
+
+    /// <summary>The layout the display shows and the key its edits are saved under, or (null, why it cannot be edited).</summary>
+    ((DisplayLayout Layout, string Key)? Target, ConfigError? Refused) Editable(string displayId)
+    {
+        var (display, refused) = EditTarget(displayId);
+        if (display is null) return (null, refused);
+        var cfg = config();
+        return ((DisplayResolver.Resolve(cfg, displayId, display.IsPrimary), DisplayResolver.EditKey(cfg, displayId, display.IsPrimary)), null);
+    }
+
+    static string LayoutOf(string displayId, string key) => $"the layout of display '{displayId}' under \"{key}\"";
+
+    /// <summary>The display to edit, or (null, why not).</summary>
+    (TaskbarInfo? Display, ConfigError? Refused) EditTarget(string displayId)
+    {
+        if (_disposed) return (null, new ConfigError("Taskbar Tiles is shutting down."));
+        if (writer is null) return (null, new ConfigError("This host cannot save config.json."));
+        var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
+        return display is null ? (null, new ConfigError($"Display '{displayId}' is no longer connected.")) : (display, null);
+    }
+
+    /// <summary>After a save: logs what was saved and rebuilds the bars, or returns why nothing was saved.</summary>
+    ConfigError? Saved(string what, ConfigError? error)
+    {
+        if (error is not null) return error;
+        logFor("host").Info($"Saved {what}");
+        ui.Post(Sync); // not inline: the request usually comes from a handler of a view this rebuilds
+        return null;
+    }
+
     void Sync()
     {
         if (_disposed) return;
         var cfg = config();
         var displays = taskbars.Current.GroupBy(d => d.DisplayId).Select(g => g.First()).ToList();
-        var layouts = displays.ToDictionary(d => d.DisplayId,
-            d => DisplayResolver.VisibleTileIds(DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary)));
+        var layouts = displays.ToDictionary(d => d.DisplayId, d => DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary));
 
-        SyncRuntimes(cfg, layouts.Values.SelectMany(ids => ids).ToHashSet(StringComparer.Ordinal));
+        SyncRuntimes(cfg, layouts.Values.SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal));
 
         foreach (var gone in _bars.Keys.Except(layouts.Keys).ToList())
         {
@@ -73,8 +242,11 @@ public sealed class HostController(
             try
             {
                 if (!_bars.TryGetValue(info.DisplayId, out var bar))
+                {
                     _bars[info.DisplayId] = bar = createBar(info.DisplayId);
-                bar.SetTiles(layouts[info.DisplayId].Select(id => _runtimes[id].Runtime).ToList());
+                    if (Editing) bar.SetEditing(true);
+                }
+                bar.SetSlots(BarSlots(layouts[info.DisplayId]));
                 bar.Apply(info);
             }
             catch (Exception ex)
@@ -82,6 +254,25 @@ public sealed class HostController(
                 logFor("host").Error($"Updating bar for display '{info.DisplayId}' failed", ex);
             }
         }
+    }
+
+    /// <summary>Config slots as the bar shows them; an empty stack shows nothing but keeps its index.</summary>
+    IReadOnlyList<BarSlot> BarSlots(DisplayLayout layout)
+    {
+        var slots = new List<BarSlot>();
+        for (var i = 0; i < layout.Slots.Count; i++)
+        {
+            switch (layout.Slots[i])
+            {
+                case TileSlot t when _runtimes.TryGetValue(t.TileId, out var entry):
+                    slots.Add(new BarSlot(i, [entry.Runtime], t.Pin, null));
+                    break;
+                case StackSlot s when s.TileIds.Count > 0 && s.TileIds.All(_runtimes.ContainsKey):
+                    slots.Add(new BarSlot(i, s.TileIds.Select(id => _runtimes[id].Runtime).ToList(), false, s.Rotate));
+                    break;
+            }
+        }
+        return slots;
     }
 
     void SyncRuntimes(HostConfig cfg, HashSet<string> wanted)

@@ -15,7 +15,8 @@ public class SampleScriptsTests
         File.WriteAllText(source.File("b.ps1"), "2");
         var target = Path.Combine(data.Path, "scripts");
 
-        Assert.True(SampleScripts.InstallIfAbsent(source.Path, target, new CollectingLog()));
+        var log = new CollectingLog();
+        Assert.True(SampleScripts.InstallIfAbsent(source.Path, target, log), string.Join("|", log.Snapshot()));
 
         Assert.Equal("1", File.ReadAllText(Path.Combine(target, "a.ps1")));
         Assert.Equal("2", File.ReadAllText(Path.Combine(target, "b.ps1")));
@@ -43,11 +44,12 @@ public class SampleScriptsTests
         Directory.CreateDirectory(target);
         File.WriteAllText(Path.Combine(target, "mine.ps1"), "mine");
 
-        Assert.False(SampleScripts.InstallIfAbsent(source.Path, target, new CollectingLog()));
+        var log = new CollectingLog();
+        Assert.False(SampleScripts.InstallIfAbsent(source.Path, target, log), string.Join("|", log.Snapshot()));
 
         Assert.Equal("mine", File.ReadAllText(Path.Combine(target, "mine.ps1")));
         Assert.Single(Directory.GetFileSystemEntries(target));
-        Assert.Single(Directory.GetFileSystemEntries(data.Path));
+        Assert.True(Directory.GetFileSystemEntries(data.Path).Length == 1, string.Join("|", log.Snapshot()));
     }
 
     [Fact]
@@ -64,9 +66,10 @@ public class SampleScriptsTests
         using (new FileStream(source.File("b.ps1"), FileMode.Open, FileAccess.Read, FileShare.None)) // unreadable: the copy fails halfway
             installed = SampleScripts.InstallIfAbsent(source.Path, target, log);
 
-        Assert.False(installed);
+        Assert.False(installed, string.Join("|", log.Snapshot()));
         Assert.Empty(Directory.GetFileSystemEntries(data.Path));
-        Assert.True(SampleScripts.InstallIfAbsent(source.Path, target, new CollectingLog()));
+        var retryLog = new CollectingLog();
+        Assert.True(SampleScripts.InstallIfAbsent(source.Path, target, retryLog), string.Join("|", retryLog.Snapshot()));
         Assert.Equal("2", File.ReadAllText(Path.Combine(target, "b.ps1")));
     }
 

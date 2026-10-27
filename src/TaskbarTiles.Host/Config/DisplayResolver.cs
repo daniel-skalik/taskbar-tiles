@@ -13,15 +13,24 @@ public static class DisplayResolver
         return config.Displays.TryGetValue(FallbackKey, out var any) ? any : DisplayLayout.Empty;
     }
 
-    /// <summary>Tiles shown in milestone 1: plain slots plus the first item of each stack.</summary>
-    public static IReadOnlyList<string> VisibleTileIds(DisplayLayout layout) =>
+    /// <summary>
+    /// The "displays" key edit mode writes for this display: the device id when it has its own entry;
+    /// otherwise "primary" on the primary display (that key only ever applies to the primary display);
+    /// otherwise the device id, so editing one display never changes the other displays that share "*".
+    /// </summary>
+    public static string EditKey(HostConfig config, string displayId, bool isPrimary) =>
+        isPrimary && !config.Displays.ContainsKey(displayId) ? PrimaryKey : displayId;
+
+    /// <summary>Every tile the layout places, stack members included, each once, in order of appearance.</summary>
+    public static IReadOnlyList<string> PlacedTileIds(DisplayLayout layout) =>
         layout.Slots
-            .Select(s => s switch
+            .SelectMany(s => s switch
             {
-                TileSlot t => t.TileId,
-                StackSlot { TileIds.Count: > 0 } st => st.TileIds[0],
-                _ => null,
+                TileSlot t => [t.TileId],
+                StackSlot st => st.TileIds,
+                _ => (IReadOnlyList<string>)[],
             })
-            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
             .ToList();
+
 }
