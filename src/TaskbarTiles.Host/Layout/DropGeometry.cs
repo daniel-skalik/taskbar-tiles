@@ -36,14 +36,15 @@ public static class DropGeometry
     }
 
     /// <summary>
-    /// The layout drop for a spot, given the config indexes of the slots: into a slot, before the slot after a gap, after
-    /// the last slot for the gap behind it, or (null, After) to append when the bar shows no slot.
+    /// The layout drop for a spot, given the config indexes of the slots: into a slot, before the slot after a gap, or
+    /// (null, After) to append at the end of the layout when the spot is past the last shown slot (or the bar shows none),
+    /// so a drop never lands before slots that overflowed into the » popup.
     /// </summary>
     public static (int? Target, DropPosition Position) ToDrop(DropSpot spot, IReadOnlyList<int> slotIndexes)
     {
         if (spot.Index >= 0 && spot.Index < slotIndexes.Count)
             return (slotIndexes[spot.Index], spot.Into ? DropPosition.Into : DropPosition.Before);
-        return slotIndexes.Count > 0 ? (slotIndexes[^1], DropPosition.After) : (null, DropPosition.After);
+        return (null, DropPosition.After);
     }
 
     /// <summary>

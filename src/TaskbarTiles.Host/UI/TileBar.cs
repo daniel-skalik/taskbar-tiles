@@ -448,8 +448,9 @@ public sealed class TileBar : Window, ITileBarView
         && rect.Contains((int)Math.Floor(screen.X), (int)Math.Floor(screen.Y));
 
     /// <summary>
-    /// Where a slot released at the screen point lands on this bar: before, into or after one of its shown slots, or
-    /// (null, After) to append when it shows none. <paramref name="dragged"/> is the slot itself when the drag started here.
+    /// Where a slot released at the screen point lands on this bar: before or into one of its shown slots, or
+    /// (null, After) to append at the end of the layout when released past the last shown slot or when it shows none.
+    /// <paramref name="dragged"/> is the slot itself when the drag started here.
     /// </summary>
     internal (int? Target, DropPosition Position) DropAt(Point screen, SlotView? dragged)
     {

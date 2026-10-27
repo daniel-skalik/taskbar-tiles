@@ -34,8 +34,8 @@ public class DropGeometryTests
     }
 
     [Fact]
-    public void The_gap_after_the_last_slot_drops_after_it() =>
-        Assert.Equal(((int?)5, DropPosition.After), DropGeometry.ToDrop(new DropSpot(2, false), [2, 5]));
+    public void Past_the_last_shown_slot_appends_to_the_end_of_the_layout() =>
+        Assert.Equal(((int?)null, DropPosition.After), DropGeometry.ToDrop(new DropSpot(2, false), [2, 5]));
 
     [Fact]
     public void A_bar_without_slots_appends() =>

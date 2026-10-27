@@ -306,7 +306,18 @@ public class HostControllerLayoutTests
         var f = new Fixture(Config);
 
         Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "MAIN", 1, DropPosition.After));
-        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "MAIN", null, DropPosition.After)); // nothing to drop by
+
+        Assert.Equal(1, f.Writer.Saves);
+        Assert.Equal(new[] { "b", "c", "a" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+    }
+
+    [Fact]
+    public void Dropping_on_the_same_display_without_a_target_moves_the_slot_to_the_end()
+    {
+        var f = new Fixture(Config);
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "MAIN", null, DropPosition.After));
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 1, "MAIN", null, DropPosition.After)); // already last: nothing to save
 
         Assert.Equal(1, f.Writer.Saves);
         Assert.Equal(new[] { "b", "c", "a" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));

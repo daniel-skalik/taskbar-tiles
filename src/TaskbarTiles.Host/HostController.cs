@@ -136,7 +136,9 @@ public sealed class HostController(
     public ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position)
     {
         if (fromDisplayId == toDisplayId)
-            return target is { } to ? EditLayout(fromDisplayId, l => LayoutEdits.Drop(l, fromIndex, to, position)) : null;
+            return EditLayout(fromDisplayId, l => target is { } to
+                ? LayoutEdits.Drop(l, fromIndex, to, position)
+                : LayoutEdits.Drop(l, fromIndex, l.Slots.Count - 1, DropPosition.After)); // no target: to the end
 
         var (source, refused) = Editable(fromDisplayId);
         if (source is not { } s) return refused;
