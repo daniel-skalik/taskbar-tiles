@@ -366,6 +366,7 @@ public sealed class TileBar : Window, ITileBarView
     {
         if (Gallery() is not { } items) return;
         var target = view.Slot.Index;
+        var clicked = view.Slot.Members[0].TileId;
         var choices = StackChoicesFor(view);
         var panel = PanelHeader("Create a stack", choices.Count + items.Count == 0
             ? "Nothing to stack with: add another tile first."
@@ -374,7 +375,7 @@ public sealed class TileBar : Window, ITileBarView
         {
             panel.Children.Add(Section("On this display"));
             panel.Children.Add(Buttons(choices.Select(c => (c.Label, c.TileId,
-                (Action)(() => Edit(l => LayoutEdits.StackInto(l, c.SlotIndex, target)))))));
+                (Action)(() => Edit(l => StackPlainTiles(l, c.TileId, clicked)))))));
         }
         if (items.Count > 0)
         {
@@ -382,7 +383,20 @@ public sealed class TileBar : Window, ITileBarView
             panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
                 (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target)))))));
         }
-        FlyoutWindow.ShowPanel(view, panel, _light ?? false, _log);
+        // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
+        FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
+    }
+
+    /// <summary>
+    /// Stacks plain tile <paramref name="chosen"/> into plain tile <paramref name="clicked"/>, found by id when the pick is
+    /// made: the layout may have changed while the panel was open. Unchanged when either is no longer a plain tile here.
+    /// </summary>
+    static DisplayLayout StackPlainTiles(DisplayLayout layout, string chosen, string clicked)
+    {
+        var slots = layout.Slots.ToList();
+        var from = slots.FindIndex(s => s is TileSlot t && t.TileId == chosen);
+        var target = slots.FindIndex(s => s is TileSlot t && t.TileId == clicked);
+        return from < 0 || target < 0 ? layout : LayoutEdits.StackInto(layout, from, target);
     }
 
     IReadOnlyList<GalleryItem>? Gallery()
