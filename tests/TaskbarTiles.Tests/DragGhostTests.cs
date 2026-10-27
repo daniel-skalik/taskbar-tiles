@@ -1,5 +1,8 @@
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using TaskbarTiles.Host.Layout;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.UI;
@@ -41,4 +44,37 @@ public class DragGhostTests
         Assert.Contains(Enumerable.Range(0, pixels.Length / 4), i => pixels[i * 4 + 3] != 0); // not a blank render
         view.Detach();
     });
+
+    [Fact]
+    public void Snapshot_of_a_later_or_slid_slot_is_not_shifted() => Sta.Run(() =>
+    {
+        var commands = new TileCommands(@"C:\nowhere\config.json", @"C:\nowhere\logs", _ => { }, new CollectingLog());
+        SlotView Make(string id, int width) => new(new BarSlot(0, [new TileRuntime(id, "fake", width, () => new FakeConnector(),
+            JsonDocument.Parse("{}").RootElement.Clone(), new ImmediateDispatcher(), new CollectingLog())], false, null),
+            () => false, commands, new CollectingLog());
+        var first = Make("a", 100);
+        var second = Make("b", 300);
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { first, second } };
+        panel.Measure(new Size(400, 40));
+        panel.Arrange(new Rect(0, 0, 400, 40));
+        second.RenderTransform = new TranslateTransform(37, 0);
+
+        var expected = FirstDrawnColumn(DragGhost.Snapshot(first, 1));
+        var actual = FirstDrawnColumn(DragGhost.Snapshot(second, 1));
+
+        Assert.True(expected >= 0);
+        Assert.Equal(expected, actual); // same tile look, so the picture starts at the same column
+        first.Detach();
+        second.Detach();
+    });
+
+    static int FirstDrawnColumn(BitmapSource bitmap)
+    {
+        var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+        bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+        for (var x = 0; x < bitmap.PixelWidth; x++)
+            for (var y = 0; y < bitmap.PixelHeight; y++)
+                if (pixels[(y * bitmap.PixelWidth + x) * 4 + 3] != 0) return x;
+        return -1;
+    }
 }

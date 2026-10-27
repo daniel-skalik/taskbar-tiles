@@ -46,12 +46,15 @@ public sealed class DragGhost : Window
     {
         var width = Math.Max(1, element.ActualWidth);
         var height = Math.Max(1, element.ActualHeight);
-        // Through a VisualBrush, so the element's offset in its parent does not shift the picture.
+        // A VisualBrush sees the element in its parent's coordinates, offset and render transform included (a slot
+        // further along the bar, or one slid by a drop preview): the viewbox is where the element sits there.
+        var box = new Rect(0, 0, width, height);
+        if (VisualTreeHelper.GetParent(element) is Visual parent) box = element.TransformToVisual(parent).TransformBounds(box);
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
             dc.DrawRectangle(new VisualBrush(element)
             {
-                Viewbox = new Rect(0, 0, width, height),
+                Viewbox = box,
                 ViewboxUnits = BrushMappingMode.Absolute,
             }, null, new Rect(0, 0, width, height));
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width * scale), (int)Math.Ceiling(height * scale),
