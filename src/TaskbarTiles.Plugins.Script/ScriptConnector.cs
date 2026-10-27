@@ -53,7 +53,7 @@ public sealed class ScriptConnector : ITileConnector
         }
 
         _settings = settings;
-        _resolver = new CommandResolver(ctx.ConfigDirectory, _powerShell);
+        _resolver = new CommandResolver(ctx.TileDirectory, _powerShell); // run paths and the working directory: the kind folder
         var token = _cts.Token;
         var startup = settings.Hook("startup");
         var interval = settings.Hook("interval");

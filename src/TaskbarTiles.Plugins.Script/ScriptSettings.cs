@@ -6,7 +6,7 @@ namespace TaskbarTiles.Plugins.Script;
 /// <summary>One entry of settings.hooks. Every is set for "interval" only; Timeout overrides ScriptSettings.DefaultTimeout.</summary>
 public sealed record HookSpec(string Run, TimeSpan? Every = null, TimeSpan? Timeout = null);
 
-/// <summary>The script connector's settings: { "hooks": { "interval": { "every": "30s", "run": "scripts/x.ps1" }, ... } }.</summary>
+/// <summary>The script connector's settings, from tile.json: { "hooks": { "interval": { "every": "30s", "run": "x.ps1" }, ... } }.</summary>
 public sealed class ScriptSettings
 {
     /// <summary>Longest a hook script may run unless its "timeout" says otherwise. Click, action and popup hooks are also bounded by the host's 10 s.</summary>
@@ -48,7 +48,7 @@ public sealed class ScriptSettings
             || !settings.TryGetProperty("hooks", out var hooksEl)
             || hooksEl.ValueKind != JsonValueKind.Object)
         {
-            errors.Add("settings.hooks must be an object, e.g. { \"interval\": { \"every\": \"30s\", \"run\": \"scripts/status.ps1\" } }.");
+            errors.Add("settings.hooks must be an object, e.g. { \"interval\": { \"every\": \"30s\", \"run\": \"status.ps1\" } }.");
             return new(hooks, errors);
         }
 

@@ -4,11 +4,12 @@ using TaskbarTiles.Contracts;
 namespace TaskbarTiles.Host.Runtime;
 
 /// <summary>What one connector instance sees. Bound to that instance's generation, so a replaced connector's calls are dropped.</summary>
-sealed class TileContext(TileRuntime runtime, int generation, JsonElement settings, ITileLog log, string configDirectory) : ITileContext
+sealed class TileContext(TileRuntime runtime, int generation, JsonElement settings, ITileLog log, string configDirectory, string tileDirectory) : ITileContext
 {
     public string TileId => runtime.TileId;
     public JsonElement Settings => settings;
     public string ConfigDirectory => configDirectory;
+    public string TileDirectory => tileDirectory;
     public ITileLog Log => log;
     public event EventHandler? Resumed;
 

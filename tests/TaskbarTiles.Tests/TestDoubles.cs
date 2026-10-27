@@ -137,7 +137,7 @@ public static class ScriptFiles
     }
 }
 
-public sealed class TestTileContext(string tileId = "t1", string settingsJson = "{}", string? configDirectory = null) : ITileContext
+public sealed class TestTileContext(string tileId = "t1", string settingsJson = "{}", string? configDirectory = null, string? tileDirectory = null) : ITileContext
 {
     readonly List<TileState> _updates = [];
     readonly List<(string Message, string Details)> _errors = [];
@@ -145,6 +145,7 @@ public sealed class TestTileContext(string tileId = "t1", string settingsJson = 
     public string TileId => tileId;
     public System.Text.Json.JsonElement Settings { get; } = System.Text.Json.JsonDocument.Parse(settingsJson).RootElement.Clone();
     public string ConfigDirectory { get; } = configDirectory ?? System.IO.Path.GetTempPath();
+    public string TileDirectory => tileDirectory ?? ConfigDirectory;
     public CollectingLog Logged { get; } = new();
     public ITileLog Log => Logged;
     public event EventHandler? Resumed;

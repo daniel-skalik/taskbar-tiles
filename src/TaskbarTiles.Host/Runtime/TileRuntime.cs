@@ -38,6 +38,9 @@ public sealed record TileRuntimeOptions
 
     /// <summary>Handed to connectors as ITileContext.ConfigDirectory.</summary>
     public string ConfigDirectory { get; init; } = "";
+
+    /// <summary>The tile's kind folder, handed to connectors as ITileContext.TileDirectory. Empty: ConfigDirectory.</summary>
+    public string TileDirectory { get; init; } = "";
 }
 
 /// <summary>
@@ -114,6 +117,9 @@ public sealed class TileRuntime : IAsyncDisposable
     public string ConnectorId { get; }
     public double Width { get; }
 
+    /// <summary>The tile's kind folder ("Show tile folder"); ConfigDirectory when the options name none.</summary>
+    public string TileDirectory => _options.TileDirectory.Length > 0 ? _options.TileDirectory : _options.ConfigDirectory;
+
     /// <summary>Read on the UI thread.</summary>
     public TileState State { get; private set; } = Initial;
 
@@ -167,7 +173,7 @@ public sealed class TileRuntime : IAsyncDisposable
             // The connector's constructor is plugin code: keep it off the caller (UI) thread.
             var connector = await Task.Run(_createConnector).ConfigureAwait(false);
             var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-            var context = new TileContext(this, generation, _settings, _log, _options.ConfigDirectory);
+            var context = new TileContext(this, generation, _settings, _log, _options.ConfigDirectory, TileDirectory);
             instance = new Instance(generation, connector, context, cts);
         }
         catch (Exception ex)

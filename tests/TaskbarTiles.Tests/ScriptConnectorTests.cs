@@ -82,6 +82,22 @@ public class ScriptConnectorTests
     }
 
     [Fact]
+    public async Task Run_paths_and_the_working_directory_resolve_against_the_tile_folder()
+    {
+        var runner = new FakeRunner();
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "click": "ping.ps1" } }""",
+            configDirectory: @"C:\data", tileDirectory: @"C:\data\tiles\ping");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+
+        await c.OnActionAsync(TileActions.Click, CancellationToken.None);
+
+        var call = Assert.Single(runner.Calls);
+        Assert.Contains("\"C:\\data\\tiles\\ping\\ping.ps1\"", call.Command.Arguments);
+        Assert.Equal(@"C:\data\tiles\ping", call.Command.WorkingDirectory);
+    }
+
+    [Fact]
     public async Task Startup_runs_before_the_first_interval_run()
     {
         var runner = new FakeRunner();
