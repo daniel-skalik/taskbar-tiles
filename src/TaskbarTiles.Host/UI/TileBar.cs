@@ -455,7 +455,7 @@ public sealed class TileBar : Window, ITileBarView
     internal (int? Target, DropPosition Position) DropAt(Point screen, SlotView? dragged)
     {
         var (candidates, spot) = SpotAt(screen, dragged);
-        return DropGeometry.ToDrop(spot, candidates.Select(v => v.Slot.Index).ToList());
+        return DropGeometry.ToDrop(spot, candidates.Select(v => v.Slot.Index).ToList(), IsLastShown(dragged) ? dragged!.Slot.Index : null);
     }
 
     /// <summary>
@@ -525,8 +525,17 @@ public sealed class TileBar : Window, ITileBarView
         var candidates = _views.Where(v => ReferenceEquals(v.Parent, _panel) && !ReferenceEquals(v, dragged)).ToList();
         // Layout offsets, not rendered positions: render transforms must not move the drop spots.
         var spans = candidates.Select(v => new SlotSpan(VisualTreeHelper.GetOffset(v).X, v.ActualWidth)).ToList();
-        return (candidates, DropGeometry.SpotAt(spans, _panel.PointFromScreen(screen).X));
+        var x = _panel.PointFromScreen(screen).X;
+        // The dragged slot last on this bar: its own place is not a drop target, only the space past it is.
+        return (candidates, IsLastShown(dragged)
+            ? DropGeometry.SpotAt(spans, x, VisualTreeHelper.GetOffset(dragged!).X + dragged!.ActualWidth)
+            : DropGeometry.SpotAt(spans, x));
     }
+
+    /// <summary>True when <paramref name="dragged"/> is shown on this bar (not in the » popup) after every other shown slot.</summary>
+    bool IsLastShown(SlotView? dragged) =>
+        dragged is not null && ReferenceEquals(dragged.Parent, _panel)
+        && _panel.Children.OfType<SlotView>().LastOrDefault() is { } last && ReferenceEquals(last, dragged);
 
     void SetDropTarget(SlotView? target)
     {

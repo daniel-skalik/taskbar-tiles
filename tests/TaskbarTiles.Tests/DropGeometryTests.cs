@@ -37,6 +37,55 @@ public class DropGeometryTests
     public void Past_the_last_shown_slot_appends_to_the_end_of_the_layout() =>
         Assert.Equal(((int?)null, DropPosition.After), DropGeometry.ToDrop(new DropSpot(2, false), [2, 5]));
 
+    // The dragged slot is the last one shown: candidates TwoSlots (config 0 and 1), the dragged slot at config 2 spans 212..312.
+    const double OwnRight = 312;
+    static readonly int[] Indexes = [0, 1];
+
+    static (int? Target, DropPosition Position) DropLast(double x, IReadOnlyList<SlotSpan>? candidates = null, IReadOnlyList<int>? indexes = null)
+    {
+        candidates ??= TwoSlots;
+        indexes ??= Indexes;
+        return DropGeometry.ToDrop(DropGeometry.SpotAt(candidates, x, OwnRight), indexes, own: 2);
+    }
+
+    [Fact]
+    public void Releasing_the_last_shown_slot_over_itself_does_not_move_it() =>
+        Assert.Equal(((int?)2, DropPosition.Before), DropLast(260)); // Drop treats target == from as unchanged
+
+    [Fact]
+    public void Releasing_over_the_right_part_of_the_previous_tile_does_not_move_it() =>
+        Assert.Equal(((int?)2, DropPosition.Before), DropLast(195));
+
+    [Fact]
+    public void Releasing_past_the_last_shown_slot_moves_it_to_the_end_and_opens_a_gap()
+    {
+        var spot = DropGeometry.SpotAt(TwoSlots, 330, OwnRight);
+
+        Assert.Equal(((int?)null, DropPosition.After), DropGeometry.ToDrop(spot, Indexes, own: 2));
+        Assert.True(DropGeometry.OpensGap(spot, 2)); // the dragged slot is third among the shown slots
+        Assert.All(DropGeometry.Shifts(3, 2, spot, 8), shift => Assert.Equal(0, shift)); // only », + and Done slide
+    }
+
+    [Fact]
+    public void Releasing_the_only_shown_slot_over_itself_does_not_move_it_and_past_it_moves_it_to_the_end()
+    {
+        Assert.Equal(((int?)2, DropPosition.Before), DropLast(40, [], []));
+        Assert.Equal(((int?)null, DropPosition.After), DropLast(330, [], []));
+    }
+
+    [Fact]
+    public void Over_its_own_place_no_gap_opens() =>
+        Assert.False(DropGeometry.OpensGap(DropGeometry.SpotAt(TwoSlots, 260, OwnRight), 2));
+
+    [Fact]
+    public void A_middle_slot_released_over_itself_does_not_move()
+    {
+        // dragged slot between the two shown candidates: no own-right-edge rule; its place is the gap at its own index
+        var spot = DropGeometry.SpotAt(TwoSlots, 103);
+        Assert.False(DropGeometry.OpensGap(spot, 1));
+        Assert.Equal(((int?)5, DropPosition.Before), DropGeometry.ToDrop(spot, [2, 5])); // before the slot after it: same place
+    }
+
     [Fact]
     public void A_bar_without_slots_appends() =>
         Assert.Equal(((int?)null, DropPosition.After), DropGeometry.ToDrop(new DropSpot(0, false), []));

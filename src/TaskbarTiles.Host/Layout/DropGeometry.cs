@@ -36,14 +36,29 @@ public static class DropGeometry
     }
 
     /// <summary>
+    /// SpotAt for a bar whose dragged slot is the last one shown. <paramref name="slots"/> are the other shown slots (the
+    /// dragged one left out) and <paramref name="ownRight"/> is the dragged slot's right edge. Past the last other slot,
+    /// up to that edge, is the dragged slot's own place: spot index slots.Count. Beyond it (», + and Done) is the end of
+    /// the layout: slots.Count + 1.
+    /// </summary>
+    public static DropSpot SpotAt(IReadOnlyList<SlotSpan> slots, double x, double ownRight)
+    {
+        var spot = SpotAt(slots, x);
+        return spot.Index == slots.Count && x >= ownRight ? new DropSpot(slots.Count + 1, false) : spot;
+    }
+
+    /// <summary>
     /// The layout drop for a spot, given the config indexes of the slots: into a slot, before the slot after a gap, or
     /// (null, After) to append at the end of the layout when the spot is past the last shown slot (or the bar shows none),
-    /// so a drop never lands before slots that overflowed into the » popup.
+    /// so a drop never lands before slots that overflowed into the » popup. <paramref name="own"/> is the dragged slot's
+    /// config index when it is the last one shown: its own place (spot index = slot count) drops it onto itself, which
+    /// changes nothing.
     /// </summary>
-    public static (int? Target, DropPosition Position) ToDrop(DropSpot spot, IReadOnlyList<int> slotIndexes)
+    public static (int? Target, DropPosition Position) ToDrop(DropSpot spot, IReadOnlyList<int> slotIndexes, int? own = null)
     {
         if (spot.Index >= 0 && spot.Index < slotIndexes.Count)
             return (slotIndexes[spot.Index], spot.Into ? DropPosition.Into : DropPosition.Before);
+        if (own is { } self && spot.Index == slotIndexes.Count) return (self, DropPosition.Before);
         return (null, DropPosition.After);
     }
 
