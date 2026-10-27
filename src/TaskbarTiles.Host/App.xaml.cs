@@ -18,7 +18,9 @@ public partial class App : Application
     TaskbarTracker? _tracker;
     HostController? _host;
     TileCommands? _commands;
+    KindStore? _kinds;
     readonly TileBarRegistry _bars = new();
+    readonly HashSet<string> _dllNotices = new(StringComparer.OrdinalIgnoreCase); // kinds the restart notice already named
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -44,16 +46,17 @@ public partial class App : Application
             TaskScheduler.UnobservedTaskException += (_, a) => { log.Error("Unobserved task exception", a.Exception); a.SetObserved(); };
 
             var catalog = new PluginLoader(log).LoadFrom([AppPaths.PluginsDir]);
-            var kinds = new KindLoader(log).Load(AppPaths.TilesDir);
+            var kinds = _kinds = new KindStore(AppPaths.TilesDir, log);
+            kinds.Load();
             SampleScripts.InstallIfAbsent(AppPaths.SampleScriptsDir, AppPaths.ScriptsDir, log);
-            _config = new ConfigStore(AppPaths.ConfigFile, log, cfg => KindValidation.Check(cfg, kinds));
+            _config = new ConfigStore(AppPaths.ConfigFile, log, cfg => KindValidation.Check(cfg, kinds.Current));
             _config.Load();
             _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, RevealInExplorer, log);
 
             var ui = new WpfUiDispatcher(Dispatcher);
             _tracker = new TaskbarTracker(Dispatcher);
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
-                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config, () => kinds);
+                name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config, () => kinds.Current);
 
             _config.Changed += (_, _) => ui.Post(() =>
             {
@@ -62,10 +65,12 @@ public partial class App : Application
             });
             _config.ReloadFailed += (_, error) => ui.Post(() => ShowConfigNotice(error, atStartup: false));
             _config.StartWatching();
+            kinds.Changed += (_, table) => ui.Post(() => OnKindsChanged(table));
+            kinds.StartWatching();
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
             _host.Start();
             if (_config.LastError is { } startupError) ShowConfigNotice(startupError, atStartup: true);
-            log.Info($"Started with {catalog.Connectors.Count} built-in connector(s) and {kinds.Kinds.Count} tile kind(s): {string.Join(", ", kinds.Kinds.Keys)}");
+            log.Info($"Started with {catalog.Connectors.Count} built-in connector(s) and {kinds.Current.Kinds.Count} tile kind(s): {string.Join(", ", kinds.Current.Kinds.Keys)}");
         }
         catch (Exception ex)
         {
@@ -82,16 +87,30 @@ public partial class App : Application
         using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\""));
     }
 
-    void ShowConfigNotice(ConfigError error, bool atStartup)
+    void ShowConfigNotice(ConfigError error, bool atStartup) =>
+        ShowNotice(ConfigNotice.Title, ConfigNotice.Body(error, atStartup), () => _commands?.OpenConfig());
+
+    void ShowNotice(string title, string body, Action onClick)
     {
         var log = FileLog.For(AppPaths.LogsDir, "host");
         try
         {
             var light = _tracker?.Current.FirstOrDefault(t => t.IsPrimary)?.IsLightTheme ?? false;
-            NotificationWindow.Show(ConfigNotice.Title, ConfigNotice.Body(error, atStartup), light,
-                () => _commands?.OpenConfig(), log);
+            NotificationWindow.Show(title, body, light, onClick, log);
         }
-        catch (Exception ex) { log.Error("Could not show the config notice", ex); }
+        catch (Exception ex) { log.Error($"Could not show the notice \"{title}\"", ex); }
+    }
+
+    // UI thread, after something in tiles\ changed.
+    void OnKindsChanged(KindTable table)
+    {
+        _config?.Recheck();     // a config rejected for a missing kind may apply now; one naming a removed kind is rejected
+        _host?.ConfigChanged(); // restarts the tiles of kinds whose tile.json or scripts changed; new kinds reach the picker
+        var fresh = table.DllsChanged.Where(_dllNotices.Add).ToList();
+        if (fresh.Count == 0) return;
+        // Queued, so it shows after the CloseOpen that a Recheck which fixed the config has queued.
+        Dispatcher.BeginInvoke(() => ShowNotice(ConfigNotice.DllsChangedTitle, ConfigNotice.DllsChangedBody(fresh),
+            () => RevealInExplorer(Path.Combine(AppPaths.TilesDir, fresh[0]))));
     }
 
     ITileBarView CreateBar(string displayId)
@@ -120,6 +139,7 @@ public partial class App : Application
             catch (AggregateException) { }
         }
         _tracker?.Dispose();
+        _kinds?.Dispose();
         _config?.Dispose();
         _singleInstance?.Dispose();
         base.OnExit(e);

@@ -177,8 +177,15 @@ public sealed class ConfigStore(string path, ITileLog log, Func<HostConfig, Conf
         }
     }
 
-    // Runs on a thread-pool timer. Nothing may escape: an unhandled exception would kill the host.
-    void Reload()
+    /// <summary>
+    /// Validates the file again, e.g. after the kind table changed: a config rejected for a missing kind may apply now, and
+    /// one in use may now name a kind that is gone (then the last good config stays). Raises Changed or ReloadFailed, on the
+    /// calling thread, only when the outcome changed. Never throws.
+    /// </summary>
+    public void Recheck() => Reload(recheck: true);
+
+    // Runs on a thread-pool timer (or from Recheck). Nothing may escape: an unhandled exception would kill the host.
+    void Reload(bool recheck = false)
     {
         lock (_reloadGate)
         {
@@ -193,9 +200,11 @@ public sealed class ConfigStore(string path, ITileLog log, Func<HostConfig, Conf
                 }
 
                 // Our own save, or a save without changes: Current already reflects this text.
-                if (LastError is null && text == _appliedText) return;
+                if (!recheck && LastError is null && text == _appliedText) return;
 
                 var result = Parse(text);
+                if (result.Success && recheck && LastError is null && text == _appliedText) return; // still the config in use
+                if (!result.Success && recheck && result.Error == LastError) return; // the same problem was already reported
                 if (result.Success)
                 {
                     Current = result.Config!;

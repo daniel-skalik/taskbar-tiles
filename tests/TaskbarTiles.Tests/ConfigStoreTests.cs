@@ -38,6 +38,33 @@ public class ConfigStoreTests
     }
 
     [Fact]
+    public void Recheck_applies_a_config_once_its_kind_exists_and_reports_each_outcome_once()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("config.json"), """{ "tiles": { "a": { "kind": "ping" } } }""");
+        var kinds = new HashSet<string>();
+        using var store = new ConfigStore(dir.File("config.json"), new CollectingLog(),
+            cfg => cfg.Tiles.Values.All(t => kinds.Contains(t.Kind)) ? null : new ConfigError("missing kind"));
+        store.Load();
+        var changed = 0;
+        var failed = 0;
+        store.Changed += (_, _) => changed++;
+        store.ReloadFailed += (_, _) => failed++;
+
+        store.Recheck(); // still missing: already reported at load
+        kinds.Add("ping");
+        store.Recheck(); // now valid: applied
+        store.Recheck(); // unchanged: nothing
+        kinds.Clear();
+        store.Recheck(); // the kind is gone: rejected, the last good config stays
+
+        Assert.Equal(1, changed);
+        Assert.Equal(1, failed);
+        Assert.Equal("missing kind", store.LastError!.Message);
+        Assert.Equal("ping", store.Current.Tiles["a"].Kind);
+    }
+
+    [Fact]
     public void Load_rejects_a_config_the_validator_refuses()
     {
         using var dir = new TempDir();
