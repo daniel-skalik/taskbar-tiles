@@ -1,4 +1,5 @@
-# Taskbar Tiles sample: clock and uptime. Hooks: interval, flyout. See docs/script-connectors.md.
+# Taskbar Tiles bundled kind "uptime": clock and uptime. Hooks (tile.json): interval, flyout. See docs/script-connectors.md.
+# Replaced on every install: copy this folder under a new name before changing it.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $now = Get-Date

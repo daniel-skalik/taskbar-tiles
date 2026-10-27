@@ -56,8 +56,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE. The installed app was not changed."
 }
 foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
-        (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.dll'),
-        (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.dll'))) {
+        (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.dll'),
+        (Join-Path $stage 'tiles\media\TaskbarTiles.Plugins.Media.dll'),
+        (Join-Path $stage 'tiles\media\tile.json'),
+        (Join-Path $stage 'tiles\ping\tile.json'),
+        (Join-Path $stage 'tiles\uptime\tile.json'))) {
     if (-not (Test-Path -LiteralPath $required)) {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
         throw "Publish output is missing $required. The installed app was not changed."

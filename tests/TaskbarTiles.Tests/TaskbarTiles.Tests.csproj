@@ -24,6 +24,10 @@
     <PluginProject Include="..\TaskbarTiles.Tests.SamplePlugin\TaskbarTiles.Tests.SamplePlugin.csproj" />
     <!-- Also laid out like the host's plugins folder so the loader test can discover it. -->
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
+    <!-- The bundled kinds, laid out as in the app (media plugin in tiles\media\), for BundledKindsTests. -->
+    <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" Kind="media" />
+    <!-- tiles\**\* itself arrives through the Host reference: its None items with CopyToOutputDirectory are copied here too. -->
   </ItemGroup>
   <Import Project="..\..\build\CopyPlugins.targets" />
 </Project>

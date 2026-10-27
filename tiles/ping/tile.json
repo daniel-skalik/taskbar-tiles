@@ -1,0 +1,13 @@
+{
+  "name": "Ping a host",
+  "description": "Pings a host every 15 s",
+  "connector": "script",
+  "settings": {
+    "host": "1.1.1.1",
+    "hooks": {
+      "interval":    { "every": "15s", "run": "ping.ps1" },
+      "flyout":      { "run": "ping.ps1" },
+      "action:ping": { "run": "ping.ps1" }
+    }
+  }
+}

@@ -10,12 +10,6 @@ public static class AppPaths
     public static string ConfigFile => Path.Combine(DataDir, "config.json");
     public static string LogsDir => Path.Combine(DataDir, "logs");
 
-    /// <summary>The user's scripts; "run" paths such as scripts/x.ps1 resolve against DataDir.</summary>
-    public static string ScriptsDir => Path.Combine(DataDir, "scripts");
-
-    /// <summary>Sample scripts shipped next to the exe.</summary>
-    public static string SampleScriptsDir => Path.Combine(AppContext.BaseDirectory, "scripts");
-
     /// <summary>One folder per tile kind (tile.json, scripts, DLLs); the folder name is the kind's id.</summary>
     public static string TilesDir => Path.Combine(DataDir, "tiles");
 

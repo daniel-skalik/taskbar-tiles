@@ -48,7 +48,6 @@ public partial class App : Application
             var catalog = new PluginLoader(log).LoadFrom([AppPaths.PluginsDir]);
             var kinds = _kinds = new KindStore(AppPaths.TilesDir, log);
             kinds.Load();
-            SampleScripts.InstallIfAbsent(AppPaths.SampleScriptsDir, AppPaths.ScriptsDir, log);
             _config = new ConfigStore(AppPaths.ConfigFile, log, cfg => KindValidation.Check(cfg, kinds.Current));
             _config.Load();
             _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, RevealInExplorer, log);
