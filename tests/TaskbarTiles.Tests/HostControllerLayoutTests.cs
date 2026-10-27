@@ -266,6 +266,29 @@ public class HostControllerLayoutTests
     }
 
     [Fact]
+    public void Moving_a_tile_to_a_display_that_inherits_the_star_entry_and_shows_it_does_not_fork_that_display()
+    {
+        var f = new Fixture(Config.Replace("{ \"stack\": [\"b\", \"c\"], \"rotate\": \"8s\" }", "\"c\""), ("MAIN", true), ("SECOND", false));
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 1, "SECOND", null, DropPosition.After)); // SECOND shows c through "*"
+
+        Assert.Equal(1, f.Writer.Saves);
+        Assert.False(f.Displays.TryGetProperty("SECOND", out _));
+        Assert.Equal(new[] { "c" }, f.Bars["SECOND"].Tiles.Select(t => t.TileId));
+        Assert.Equal(new[] { "a" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+    }
+
+    [Fact]
+    public void Two_displays_that_save_under_one_key_refuse_a_move_between_them()
+    {
+        var f = new Fixture(Config, ("MAIN", true), ("primary", false)); // MAIN edits "primary"; so does the display named that
+
+        Assert.NotNull(f.Host.MoveToDisplay("MAIN", 0, "primary", null, DropPosition.After));
+
+        Assert.Equal(0, f.Writer.Saves);
+    }
+
+    [Fact]
     public void A_display_without_tiles_accepts_a_move()
     {
         var f = new Fixture(Config.Replace("\"*\": { \"slots\": [\"c\"] }", "\"*\": { \"slots\": [] }"), ("MAIN", true), ("SECOND", false));

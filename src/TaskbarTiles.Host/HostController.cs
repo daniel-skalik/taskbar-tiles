@@ -144,13 +144,16 @@ public sealed class HostController(
         if (destination is not { } d) return refusedTarget;
         if (s.Layout.Slots.ElementAtOrDefault(fromIndex) is not { } slot) return null; // a stale index: nothing to move
 
+        if (s.Key == d.Key) return new ConfigError($"Displays '{fromDisplayId}' and '{toDisplayId}' are both saved under \"{s.Key}\"; a move between them cannot be saved.");
+
         var newSource = LayoutEdits.Remove(s.Layout, fromIndex);
         var newTarget = LayoutEdits.DropIncoming(d.Layout, slot, target, position);
+        var targetChanged = !LayoutEdits.SameSlots(d.Layout, newTarget); // else a display inheriting "*" would be forked into its own entry
         return Saved($"a move from display '{fromDisplayId}' (\"{s.Key}\") to display '{toDisplayId}' (\"{d.Key}\")",
             writer!.Save(root =>
             {
                 ConfigJson.SetDisplay(root, s.Key, newSource);
-                ConfigJson.SetDisplay(root, d.Key, newTarget);
+                if (targetChanged) ConfigJson.SetDisplay(root, d.Key, newTarget);
             }));
     }
 
