@@ -46,17 +46,60 @@ function Get-Name($s) { if ($s.name) { [string]$s.name } else { Split-Path ([str
 $items = @($sessions | ForEach-Object { [pscustomobject]@{ Name = Get-Name $_; State = Get-State $_ } } |
     Sort-Object { Get-Rank $_.State }, Name)
 
+# The Claude desktop app's own logo, read from its installed package; looking the package up is slow, so its path is
+# cached in %TEMP%. Null when the app is not installed from its package: the tile then keeps its glyph icon.
+function Find-Logo {
+    $cache = Join-Path ([IO.Path]::GetTempPath()) 'TaskbarTiles-claude-logo.txt'
+    $path = if (Test-Path $cache) { Get-Content $cache -Raw -ErrorAction SilentlyContinue } else { $null }
+    if ($path) { $path = $path.Trim() }
+    if ($path -and (Test-Path $path)) { return $path }
+    try { $package = Get-AppxPackage -Name Claude -ErrorAction Stop | Select-Object -First 1 } catch { return $null }
+    if (-not $package) { return $null }
+    $path = Join-Path $package.InstallLocation 'assets\Square44x44Logo.targetsize-64_altform-unplated.png'
+    if (-not (Test-Path $path)) { return $null }
+    Set-Content $cache $path -ErrorAction SilentlyContinue
+    return $path
+}
+
+# The logo as base64 PNG, with a status dot in the bottom-right corner when $dotColor (#RRGGBB) is given.
+function Get-LogoImage([string]$dotColor) {
+    $path = Find-Logo
+    if (-not $path) { return $null }
+    if (-not $dotColor) { return [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }
+    Add-Type -AssemblyName System.Drawing
+    $logo = [System.Drawing.Image]::FromFile($path)
+    try {
+        $size = $logo.Width
+        $bitmap = New-Object System.Drawing.Bitmap $size, $size
+        $g = [System.Drawing.Graphics]::FromImage($bitmap)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.DrawImage($logo, 0, 0, $size, $size)
+        $d = [int]($size * 0.42); $x = $size - $d; $ring = [Math]::Max(2, [int]($size / 16))
+        $g.FillEllipse([System.Drawing.Brushes]::Black, $x - $ring, $x - $ring, $d + $ring, $d + $ring) # dark ring keeps the dot apart from the logo
+        $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.ColorTranslator]::FromHtml($dotColor))
+        $g.FillEllipse($brush, $x, $x, $d - $ring, $d - $ring)
+        $g.Dispose(); $brush.Dispose()
+        $stream = New-Object System.IO.MemoryStream
+        $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bitmap.Dispose()
+        return [Convert]::ToBase64String($stream.ToArray())
+    } finally { $logo.Dispose() }
+}
+
 if ($env:TILE_HOOK -eq 'flyout') {
     $rows = @($items | ForEach-Object {
         $color = switch ($_.State) { 'working' { 'accent' } 'blocked' { 'warn' } default { 'neutral' } }
         @{ text = $_.Name; value = $_.State; icon = @{ glyph = 'info'; color = $color } }
     })
-    @{
+    $popup = @{
         title    = 'Claude sessions'
         subtitle = if ($items.Count) { "$($items.Count) running" } else { 'No sessions' }
         rows     = $rows
         actions  = @(@{ id = 'open'; label = 'Open Claude'; primary = $true })
-    } | ConvertTo-Json -Depth 5 -Compress
+    }
+    $image = Get-LogoImage ''
+    if ($image) { $popup.image = $image }
+    $popup | ConvertTo-Json -Depth 5 -Compress
     exit 0
 }
 
@@ -79,6 +122,10 @@ if (-not $items.Count) {
         elseif ($working.Count) { @{ glyph = 'sync'; color = 'accent' } }
         else { @{ glyph = 'check'; color = 'ok' } }
 }
+# The app's logo replaces the glyph when it can be found; the dot carries the state the glyph showed.
+$dot = if ($blocked.Count) { '#F2A33A' } elseif ($working.Count) { '#4C8DF6' } else { '' }
+$image = Get-LogoImage $dot
+if ($image) { $state.image = $image }
 $active = @($blocked + $working | ForEach-Object { "$($_.Name) ($($_.State))" })
 $state.tooltip = if ($active.Count) { $active -join "`n" } else { 'No session is working. Click for details.' }
 $state | ConvertTo-Json -Depth 5 -Compress
