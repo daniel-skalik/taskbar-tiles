@@ -8,7 +8,7 @@ Script tiles are described in [script-connectors.md](script-connectors.md).
 
 Double-click `install.cmd` in the repository. On success its window closes and the app starts; on failure it stays open so you can read the error. (From a terminal: `install.cmd`, or `powershell -ExecutionPolicy Bypass -File tools\install.ps1`.)
 
-It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds `tiles\uptime`, `tiles\ping`, `tiles\media` and `tiles\claude` with the new copies, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
+It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds `tiles\uptime`, `tiles\ping`, `tiles\media`, `tiles\claude` and `tiles\battery` with the new copies, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
 
 ## Tiles and displays
 
@@ -47,6 +47,7 @@ tiles\
   ping\    tile.json, ping.ps1                bundled: replaced on install
   media\   tile.json, TaskbarTiles.Plugins.Media.dll   bundled: replaced on install
   claude\  tile.json, claude.ps1              bundled: replaced on install
+  battery\ tile.json, TaskbarTiles.Plugins.Battery.dll  bundled: replaced on install
   meeting\ tile.json, urgent.ps1              yours: never touched
 ```
 
@@ -75,6 +76,10 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 - **Edits apply by themselves:** saving `tile.json` or a script (`.ps1`, `.psm1`, `.py`, `.cmd` or `.bat` directly in the kind folder) restarts only the tiles of that kind. Files a script writes into its own folder (logs, caches) do not restart it.
 - **Mistakes:** a `tile.json` that is not valid JSON or lacks `name` or `connector`, a DLL that does not load, two DLLs declaring the same connector id, or a `connector` no DLL in the folder declares makes the kind broken: its tiles show the error (naming the file, and the line for JSON errors), it is written to `logs\host.log`, and every other kind keeps working. `config.json` is rejected only for its own mistakes: a tile naming a kind with no folder in `tiles\` (or a folder without `tile.json`), `hooks` in a tile's settings, a tile without `kind`, or the old form `{ "connector": … }` (tiles from before tile folders: rewrite them as `{ "kind": "<folder>" }`).
 - A folder in `tiles\` without `tile.json` is not a kind.
+
+### Device batteries
+
+The bundled `battery` kind shows the lowest battery of your wireless devices on the tile and every device in its popup, with charging and asleep states. It reads Bluetooth devices from Windows (the level shown in Settings › Bluetooth & devices) and Logitech devices on a Bolt or Unifying receiver, or connected directly, over Logitech's HID++ protocol (alongside Logi Options+). Setting `"interval"` (default `"60s"`, `10s` to `1h`) is how often it reads; right-click → **Refresh now** reads at once. A Logitech device that falls asleep keeps its last level, marked "asleep". Other vendors' receivers (Razer, Corsair, …) only report through their own apps and are not shown.
 
 ## Stacks
 

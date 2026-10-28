@@ -17,6 +17,8 @@
     <!-- Build order only; CopyPlugins.targets copies each one: media to tiles\media\, script to plugins\<AssemblyName>\. -->
     <ProjectReference Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" Kind="media" />
+    <ProjectReference Include="..\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" Kind="battery" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>

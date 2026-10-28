@@ -1,0 +1,6 @@
+{
+  "name": "Device batteries",
+  "description": "Battery of your mouse, keyboard and headphones",
+  "connector": "battery",
+  "settings": { "interval": "60s" }
+}
