@@ -129,7 +129,7 @@ public class BundledKindsTests
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
         Assert.Empty(outcome.Warnings);
         Assert.Equal("Claude", outcome.Value!.Title);
-        Assert.Equal("1 working · 2 idle · 1 blocked", outcome.Value.Subtitle);
+        Assert.Equal("1 blocked · 1 working · 2 idle", outcome.Value.Subtitle);
         Assert.Equal("warning", outcome.Value.Icon!.Glyph);
         Assert.Equal("Generator (blocked)\nWidget (working)", outcome.Value.Tooltip);
     }

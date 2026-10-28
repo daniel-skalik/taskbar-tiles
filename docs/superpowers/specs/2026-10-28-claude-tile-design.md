@@ -20,7 +20,7 @@ Rejected: reading `~/.claude/sessions/*.json` (undocumented, stale files stay be
 Bundled script kind `tiles\claude\` (`tile.json`, `claude.ps1`), replaced on install like `uptime` and `ping`.
 
 - `interval` every 5 s prints the tile:
-  - title `Claude`; subtitle the counts, e.g. `2 working · 4 idle · 1 blocked` (zero counts left out);
+  - title `Claude`; subtitle the counts, most urgent first, e.g. `1 blocked · 2 working · 4 idle` (zero counts left out; the tile cuts long text at the end);
   - icon `warning`/`warn` when any session is blocked, else `sync`/`accent` when any is busy, else `check`/`ok`;
   - no sessions: subtitle `No sessions`, icon `check`/`neutral`;
   - tooltip: names of working and blocked sessions.

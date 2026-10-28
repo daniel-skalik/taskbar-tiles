@@ -64,10 +64,10 @@ if ($env:TILE_HOOK -eq 'flyout') {
 $working = @($items | Where-Object State -eq 'working')
 $blocked = @($items | Where-Object State -eq 'blocked')
 $idle = $items.Count - $working.Count - $blocked.Count
-$parts = @()
+$parts = @() # most urgent first: the tile cuts the subtitle off at its end
+if ($blocked.Count) { $parts += "$($blocked.Count) blocked" }
 if ($working.Count) { $parts += "$($working.Count) working" }
 if ($idle) { $parts += "$idle idle" }
-if ($blocked.Count) { $parts += "$($blocked.Count) blocked" }
 
 $state = @{ title = 'Claude' }
 if (-not $items.Count) {
