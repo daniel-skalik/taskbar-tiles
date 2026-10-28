@@ -46,6 +46,21 @@ public class ScriptConnectorIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Scripts_run_with_the_tile_folder_as_working_directory()
+    {
+        using var data = new TempDir();
+        ScriptFiles.Write(_dir, "where.ps1", "@{ title = (Get-Location).Path } | ConvertTo-Json -Compress");
+        var ctx = new TestTileContext("t1", """{ "hooks": { "startup": "where.ps1" } }""", data.Path, _dir.Path);
+        await using var c = new ScriptConnector();
+
+        await c.StartAsync(ctx, CancellationToken.None);
+
+        await Eventually.Holds(() => ctx.Updates.Count == 1, Slow);
+        Assert.Equal(_dir.Path, ctx.Updates[0].Title, ignoreCase: true);
+        Assert.Empty(ctx.Errors);
+    }
+
+    [Fact]
     public async Task Settings_reach_the_script()
     {
         ScriptFiles.Write(_dir, "scripts/label.ps1",

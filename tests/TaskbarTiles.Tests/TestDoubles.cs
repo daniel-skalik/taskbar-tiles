@@ -1,5 +1,6 @@
 using System.IO;
 using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Plugins;
 
 namespace TaskbarTiles.Tests;
 
@@ -137,7 +138,7 @@ public static class ScriptFiles
     }
 }
 
-public sealed class TestTileContext(string tileId = "t1", string settingsJson = "{}", string? configDirectory = null) : ITileContext
+public sealed class TestTileContext(string tileId = "t1", string settingsJson = "{}", string? configDirectory = null, string? tileDirectory = null) : ITileContext
 {
     readonly List<TileState> _updates = [];
     readonly List<(string Message, string Details)> _errors = [];
@@ -145,6 +146,7 @@ public sealed class TestTileContext(string tileId = "t1", string settingsJson = 
     public string TileId => tileId;
     public System.Text.Json.JsonElement Settings { get; } = System.Text.Json.JsonDocument.Parse(settingsJson).RootElement.Clone();
     public string ConfigDirectory { get; } = configDirectory ?? System.IO.Path.GetTempPath();
+    public string TileDirectory => tileDirectory ?? ConfigDirectory;
     public CollectingLog Logged { get; } = new();
     public ITileLog Log => Logged;
     public event EventHandler? Resumed;
@@ -155,4 +157,31 @@ public sealed class TestTileContext(string tileId = "t1", string settingsJson = 
     public void Update(TileState state) { lock (_updates) _updates.Add(state); }
     public void ReportError(string message, string? details = null) { lock (_errors) _errors.Add((message, details ?? "")); }
     public void RaiseResumed() => Resumed?.Invoke(this, EventArgs.Empty);
+}
+
+/// <summary>Kind tables for tests, under a fake C:\tiles folder.</summary>
+public static class TestKinds
+{
+    public const string TilesDir = @"C:\tiles";
+
+    public static KindTable Of(params TileKind[] kinds) => new(TilesDir,
+        kinds.ToDictionary(k => k.Id, StringComparer.OrdinalIgnoreCase), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    public static TileKind Script(string id, string settingsJson = "{}", string stamp = "1", string? name = null, string description = "") =>
+        new(id, System.IO.Path.Combine(TilesDir, id), name ?? id, description, TileKind.ScriptConnectorId, Json(settingsJson),
+            KindDlls.None, null, stamp, "");
+
+    /// <summary>A kind whose DLL declares connector <paramref name="id"/> as <paramref name="connectorType"/>.</summary>
+    public static TileKind Plugin(string id, Type connectorType, double width = 100, string settingsJson = "{}") =>
+        new(id, System.IO.Path.Combine(TilesDir, id), id, "", id, Json(settingsJson),
+            new KindDlls(new Dictionary<string, ConnectorDescriptor>
+            {
+                [id] = new(id, connectorType, width, System.IO.Path.Combine(TilesDir, id, id + ".dll")),
+            }, null, ""),
+            null, "1", "");
+
+    public static TileKind Broken(string id, string error) =>
+        new(id, System.IO.Path.Combine(TilesDir, id), id, error, "", Json("{}"), KindDlls.None, error, "1", "");
+
+    static System.Text.Json.JsonElement Json(string text) => System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
 }

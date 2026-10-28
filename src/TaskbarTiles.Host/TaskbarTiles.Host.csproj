@@ -14,15 +14,15 @@
     <InternalsVisibleTo Include="TaskbarTiles.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Build order only; each is copied to plugins\<AssemblyName>\ by CopyPlugins.targets. -->
+    <!-- Build order only; CopyPlugins.targets copies each one: media to tiles\media\, script to plugins\<AssemblyName>\. -->
     <ProjectReference Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" ReferenceOutputAssembly="false" />
-    <PluginProject Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" Kind="media" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Sample scripts next to the exe; SampleScripts copies them to %LOCALAPPDATA%\TaskbarTiles\scripts on first run. -->
-    <None Include="..\..\scripts\*.ps1" Link="scripts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The bundled kinds next to the exe (build and publish); install.ps1 copies them to %LOCALAPPDATA%\TaskbarTiles\tiles. -->
+    <None Include="..\..\tiles\**\*" Link="tiles\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="..\..\build\CopyPlugins.targets" />
 </Project>

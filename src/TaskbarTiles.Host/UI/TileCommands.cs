@@ -5,7 +5,7 @@ using TaskbarTiles.Host.Runtime;
 namespace TaskbarTiles.Host.UI;
 
 /// <summary>Commands on one tile, from its context menu or its error popup.</summary>
-public enum TileCommand { Configure, Refresh, ShowLog, Restart }
+public enum TileCommand { ShowFolder, Refresh, ShowLog, Restart }
 
 /// <summary>Commands on the whole app.</summary>
 public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
@@ -41,7 +41,7 @@ public static class TileMenu
         var entries = new List<MenuEntry>();
         if (slot is not null)
         {
-            entries.Add(new("Configure connector…", TileCommand.Configure));
+            entries.Add(new("Show tile folder", TileCommand.ShowFolder));
             entries.Add(new("Refresh now", TileCommand.Refresh));
             entries.Add(new("Show connector log", TileCommand.ShowLog));
             entries.Add(new("Restart tile", TileCommand.Restart));
@@ -124,8 +124,9 @@ public sealed class TileCommands(string configFile, string logsDir, Action<strin
         {
             switch (command)
             {
-                case TileCommand.Configure:
-                    Open(configFile);
+                case TileCommand.ShowFolder:
+                    // The kind folder holds tile.json and the scripts; config.json when the folder is gone.
+                    Open(Directory.Exists(runtime.TileDirectory) ? runtime.TileDirectory : configFile);
                     break;
                 case TileCommand.ShowLog:
                     Open(EnsureExists(LogPathFor(runtime.TileId)));

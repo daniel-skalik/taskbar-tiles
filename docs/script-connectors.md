@@ -1,36 +1,35 @@
 # Script connectors
 
-The built-in `script` connector drives a tile from scripts. You wire scripts to *hooks* in `config.json`; each script prints JSON that becomes the tile or its popup. PowerShell and Python get special handling; anything else runs through `cmd.exe`, so batch files and any program on `PATH` work too.
+The built-in `script` connector drives a tile from scripts. A script tile kind is a folder in `%LOCALAPPDATA%\TaskbarTiles\tiles\` with a `tile.json` whose `"connector"` is `"script"`; its `settings.hooks` wire scripts in that folder to *hooks*, and each script prints JSON that becomes the tile or its popup. PowerShell and Python get special handling; anything else runs through `cmd.exe`, so batch files and any program on `PATH` work too. Tile kinds in general are described in [configuration.md](configuration.md#tile-kinds).
 
 ## Quick start
 
-1. Put a script in `%LOCALAPPDATA%\TaskbarTiles\scripts\`. On first run (only when that folder does not exist yet) Taskbar Tiles copies two samples there: `uptime.ps1` (clock and uptime) and `ping.ps1` (ping a host, with a button and a popup). They are never copied again, so edit or delete them freely.
-2. Add a tile and place it on a display in `%LOCALAPPDATA%\TaskbarTiles\config.json` (right-click a tile → Configure connector… shows it in Explorer):
+Two script kinds come with the app: `tiles\uptime` (clock and uptime) and `tiles\ping` (ping a host, with a button and a popup). Install replaces them, so to change one, copy its folder under a new name first. To make your own:
+
+1. Create a folder, e.g. `%LOCALAPPDATA%\TaskbarTiles\tiles\meeting\`, and put your script in it (`urgent.ps1`).
+2. Next to it, write `tile.json`:
 
 ```jsonc
 {
-  "tiles": {
-    "uptime": { "connector": "script", "settings": { "hooks": {
-                  "interval": { "every": "30s", "run": "scripts/uptime.ps1" },
-                  "flyout":   { "run": "scripts/uptime.ps1" } } } },
-    "ping":   { "connector": "script", "settings": { "host": "1.1.1.1", "hooks": {
-                  "interval":    { "every": "15s", "run": "scripts/ping.ps1" },
-                  "flyout":      { "run": "scripts/ping.ps1" },
-                  "action:ping": { "run": "scripts/ping.ps1" } } } }
-  },
-  "displays": {
-    "primary": { "slots": [ "uptime", "ping" ] }
+  "name": "Next meeting",
+  "description": "Turns urgent five minutes before a meeting",
+  "connector": "script",
+  "settings": {
+    "hooks": {
+      "interval": { "every": "1m", "run": "urgent.ps1" },
+      "flyout":   { "run": "urgent.ps1" }
+    }
   }
 }
 ```
 
-The default `config.json` (written only when none exists) already contains the `uptime` tile.
+3. Save. Within a second the kind appears in the `+` picker (right-click a tile → **Edit layout** → `+`) as "Next meeting". Picking it adds `"meeting": { "kind": "meeting" }` to `config.json` and places it. Saving `tile.json` or the script again restarts the kind's tiles. Right-click a tile → **Show tile folder** selects its folder in Explorer.
 
-3. Save. The file is reloaded automatically. If it does not parse, a notice above the taskbar names the line and column, and the last good config stays active.
+A tile can override the kind's other settings in `config.json`, key by key: `"ping-home": { "kind": "ping", "settings": { "host": "192.168.1.1" } }`. `hooks` stay in `tile.json`.
 
 ## Hooks
 
-`settings.hooks` maps hook names to `{ "run": "...", "timeout": "20s" }` (`interval` also takes `every`; any other key is an error). Except for `interval`, a plain string is short for `{ "run": "..." }`.
+`settings.hooks` in `tile.json` maps hook names to `{ "run": "...", "timeout": "20s" }` (`interval` also takes `every`; any other key is an error). Except for `interval`, a plain string is short for `{ "run": "..." }`.
 
 | Hook | `TILE_HOOK` | When it runs | What it prints |
 |---|---|---|---|
@@ -54,7 +53,7 @@ Each run may take up to `timeout` (default 60 s; any duration above 0 up to `24h
 
 ## `run`
 
-`run` is a script path relative to the config folder (`%LOCALAPPDATA%\TaskbarTiles`), an absolute path, or a command line. The first word is the script; quote it if it contains spaces. Everything after it is passed on as arguments.
+`run` is a script path relative to the kind folder (`%LOCALAPPDATA%\TaskbarTiles\tiles\<kind>`), an absolute path, or a command line. The first word is the script; quote it if it contains spaces. Everything after it is passed on as arguments.
 
 | `run` starts with | Runs as |
 |---|---|
@@ -63,7 +62,7 @@ Each run may take up to `timeout` (default 60 s; any duration above 0 up to `24h
 | any other existing file (`.cmd`, `.bat`, `.exe`, …) | `cmd.exe /d /s /c "<script> <arguments>"` |
 | anything else | the whole line through `cmd.exe /d /s /c` |
 
-Scripts run hidden, with the config folder as the working directory and no input (stdin is closed).
+Scripts run hidden, with the kind folder as the working directory and no input (stdin is closed).
 
 ## Environment
 
@@ -72,9 +71,9 @@ Scripts run hidden, with the config folder as the working directory and no input
 | `TILE_ID` | The tile's id from `config.json`, e.g. `ping` |
 | `TILE_HOOK` | `interval`, `watch`, `click`, `flyout`, `action`, `startup` or `resume` |
 | `TILE_ACTION` | The action id for `action:<id>` hooks (e.g. `ping`); empty otherwise |
-| `TILE_SETTINGS_JSON` | The tile's whole `settings` object as JSON, including `hooks`. Put your own options next to `hooks` (like `"host"` above). |
+| `TILE_SETTINGS_JSON` | The tile's effective settings as JSON: the kind's `settings` from `tile.json` (including `hooks`) with the tile's own `settings` from `config.json` replacing keys of the same name. Put your own options next to `hooks` (like `"host"` in `tiles\ping\tile.json`). |
 
-One script can serve several hooks by looking at `TILE_HOOK`, as both samples do.
+One script can serve several hooks by looking at `TILE_HOOK`, as both bundled kinds do.
 
 ## Tile JSON
 
@@ -124,8 +123,9 @@ Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (
 - A script that cannot start (for example `python` is not installed: the tile says "could not start the script"), times out, exits with a non-zero code, or prints malformed JSON or something that is not a JSON object puts the tile in the error look: a warning icon, "Error", and the message in the subtitle and tooltip. Click the tile to see the script's stderr (or its output if stderr is empty), with **Restart tile** and **Open log** buttons. The next successful run clears the error look, even if that run prints nothing.
 - If a `flyout` (popup) script fails, the popup itself shows "Script error" with the details and the **Restart tile** and **Open log** buttons. The tile is not put in the error look, and the script runs again the next time you open the popup.
 - Unknown fields, values of the wrong type and non-finite numbers are ignored; each one is written to the tile's log as a warning, which helps catch typos such as `tittle`.
-- Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`, an unknown setting inside a hook such as `"timout"`, or `every` on a hook other than `interval`) put the tile in the error look and nothing runs until `config.json` is fixed.
-- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** shows it selected in Explorer.
+- Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`, an unknown setting inside a hook such as `"timout"`, or `every` on a hook other than `interval`) put the tile in the error look and nothing runs until `tile.json` is fixed.
+- A `tile.json` that is not valid JSON or lacks `name` or `connector` shows its error (with the line for JSON errors) on every tile of that kind; other kinds keep working.
+- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** shows it selected in Explorer; **Show tile folder** shows the kind folder with its `tile.json` and scripts.
 - Right-click → **Refresh now** re-runs `interval` (or `startup`). **Restart tile** starts the connector again from scratch.
 
 ## Output size
@@ -136,13 +136,13 @@ Output is capped so a runaway script cannot eat memory. A single line longer tha
 
 Output is read as UTF-8.
 
-- Windows PowerShell 5.1 writes in the console code page. Any script that prints non-ASCII text must start with `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` (the samples do) so the text arrives intact. PowerShell 7 writes UTF-8 already.
+- Windows PowerShell 5.1 writes in the console code page. Any script that prints non-ASCII text must start with `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` (the bundled kinds do) so the text arrives intact. PowerShell 7 writes UTF-8 already.
 - Python is started with `PYTHONIOENCODING=utf-8`.
 - In `ConvertTo-Json`, use `-Compress` and a `-Depth` larger than your nesting (the default depth of 2 cuts off `icon` inside `rows`).
 
 ## More examples
 
-Python (`interval`), `scripts/disk.py`, with `"run": "scripts/disk.py"`:
+Python (`interval`), `tiles\disk\disk.py`, with `"run": "disk.py"` in `tiles\disk\tile.json`:
 
 ```python
 import json, shutil
@@ -156,14 +156,14 @@ print(json.dumps({
 }))
 ```
 
-A command line instead of a script file:
+A command line instead of a script file, as the whole `tiles\hello\tile.json`:
 
 ```jsonc
-"hello": { "connector": "script", "settings": { "hooks": {
-             "startup": "echo {\"title\":\"Hello\",\"icon\":\"info\"}" } } }
+{ "name": "Hello", "connector": "script", "settings": { "hooks": {
+    "startup": "echo {\"title\":\"Hello\",\"icon\":\"info\"}" } } }
 ```
 
-A `watch` script that pushes an update every 5 seconds, `scripts/watch-time.ps1`:
+A `watch` script that pushes an update every 5 seconds, `tiles\clock\watch-time.ps1`, with `"watch": { "run": "watch-time.ps1" }`:
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

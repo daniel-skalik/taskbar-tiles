@@ -34,6 +34,16 @@ public class ConfigNoticeTests
     }
 
     [Fact]
+    public void Dll_change_names_the_kind_folders_and_asks_for_a_restart()
+    {
+        var body = ConfigNotice.DllsChangedBody(["media", "meeting"]);
+
+        Assert.Equal("Restart Taskbar Tiles", ConfigNotice.DllsChangedTitle);
+        Assert.StartsWith(@"The DLLs in tiles\media, tiles\meeting changed while Taskbar Tiles was running.", body);
+        Assert.EndsWith("Click to show the folder in Explorer.", body);
+    }
+
+    [Fact]
     public void Save_failure_says_the_file_is_unchanged()
     {
         var body = ConfigNotice.SaveFailedBody(new ConfigError("config.json has an error, so nothing was saved: Invalid JSON.", 4, 1));

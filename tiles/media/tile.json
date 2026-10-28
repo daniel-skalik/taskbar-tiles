@@ -1,0 +1,6 @@
+{
+  "name": "Media",
+  "description": "Now playing in an app's media controls (Spotify by default)",
+  "connector": "media",
+  "settings": { "app": "Spotify" }
+}

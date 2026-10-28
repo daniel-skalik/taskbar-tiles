@@ -38,15 +38,14 @@ public static class ConfigJson
         display["slots"] = new JsonArray(layout.Slots.Select(ToNode).ToArray());
     }
 
-    /// <summary>Adds or replaces tiles[id] with { "connector": ..., "settings": ... }.</summary>
+    /// <summary>Adds or replaces tiles[id] with { "kind": ... }, plus "settings" when it has any keys.</summary>
     public static void SetTile(JsonObject root, string id, TileConfig tile)
     {
         var tiles = ChildObject(root, "tiles");
-        tiles[id] = new JsonObject
-        {
-            ["connector"] = tile.Connector,
-            ["settings"] = JsonNode.Parse(tile.Settings.GetRawText()),
-        };
+        var node = new JsonObject { ["kind"] = tile.Kind };
+        if (tile.Settings.ValueKind == JsonValueKind.Object && tile.Settings.EnumerateObject().Any())
+            node["settings"] = JsonNode.Parse(tile.Settings.GetRawText());
+        tiles[id] = node;
     }
 
     /// <summary>

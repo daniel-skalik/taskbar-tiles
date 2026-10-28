@@ -16,6 +16,13 @@ public static class ConfigNotice
         return $"{what}. {consequence} Click to show config.json in Explorer.";
     }
 
+    public const string DllsChangedTitle = "Restart Taskbar Tiles";
+
+    /// <summary>A kind's DLLs changed on disk. .NET cannot unload the loaded ones, so they load at the next start.</summary>
+    public static string DllsChangedBody(IReadOnlyList<string> kinds) =>
+        $"The DLLs in {string.Join(", ", kinds.Select(k => $@"tiles\{k}"))} changed while Taskbar Tiles was running. " +
+        "Exit Taskbar Tiles and start it again to load them. Click to show the folder in Explorer.";
+
     public const string SaveFailedTitle = "Layout not saved";
 
     /// <summary>Why an edit-mode or menu change was not written; config.json is left as it was.</summary>

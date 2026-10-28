@@ -1,4 +1,5 @@
-# Taskbar Tiles sample: ping a host. Hooks: interval, flyout, action:ping. See docs/script-connectors.md.
+# Taskbar Tiles bundled kind "ping": ping a host. Hooks (tile.json): interval, flyout, action:ping. See docs/script-connectors.md.
+# Replaced on every install: copy this folder under a new name before changing it.
 # Settings: "host" (default 1.1.1.1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 

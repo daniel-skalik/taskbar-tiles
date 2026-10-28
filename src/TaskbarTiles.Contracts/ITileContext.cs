@@ -15,6 +15,12 @@ public interface ITileContext
     /// </summary>
     string ConfigDirectory { get; }
 
+    /// <summary>
+    /// The tile's kind folder (normally %LOCALAPPDATA%\TaskbarTiles\tiles\&lt;kind&gt;), which holds its tile.json,
+    /// scripts and DLLs. Resolve the tile's own files against it. Hosts that predate tile folders return ConfigDirectory.
+    /// </summary>
+    string TileDirectory => ConfigDirectory;
+
     /// <summary>Thread-safe. Only the latest state is rendered if several arrive quickly.</summary>
     void Update(TileState state);
 

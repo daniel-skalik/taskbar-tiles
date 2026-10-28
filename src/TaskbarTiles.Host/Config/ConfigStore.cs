@@ -15,19 +15,21 @@ public interface IConfigWriter
     ConfigError? Save(Action<JsonObject> edit);
 }
 
-/// <summary>Owns config.json: creates it on first run, parses it, reloads it when it changes on disk, and saves edits.</summary>
-public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDisposable
+/// <summary>
+/// Owns config.json: creates it on first run, parses it, reloads it when it changes on disk, and saves edits.
+/// <paramref name="validate"/> runs after every successful parse (load, reload, save, recheck); a non-null result rejects
+/// the config like a parse error. The app passes the kind check (<see cref="KindValidation"/>).
+/// </summary>
+public sealed class ConfigStore(string path, ITileLog log, Func<HostConfig, ConfigError?>? validate = null) : IConfigWriter, IDisposable
 {
     public const string DefaultJson = """
     {
-      // Each tile is driven by a connector (a plugin). Place tiles on displays under "displays".
-      // Script tiles run the files in the scripts folder next to this file (docs/script-connectors.md in the repo).
+      // Each tile is an instance of a tile kind: a folder in tiles\ next to this file with its tile.json, scripts and DLLs.
+      // "settings" here replaces the kind's settings key by key. Place tiles on displays under "displays".
       // Edit layout (right-click a tile) rewrites this file without comments; the previous file is kept as config.json.bak.
       "tiles": {
-        "spotify": { "connector": "media", "settings": { "app": "Spotify" } },
-        "uptime":  { "connector": "script", "settings": { "hooks": {
-                       "interval": { "every": "30s", "run": "scripts/uptime.ps1" },
-                       "flyout":   { "run": "scripts/uptime.ps1" } } } }
+        "spotify": { "kind": "media" },
+        "uptime":  { "kind": "uptime" }
       },
       "displays": {
         "primary": { "slots": [ { "tile": "spotify", "pin": true }, "uptime" ] },
@@ -77,7 +79,7 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
             return;
         }
 
-        var result = ConfigParser.Parse(text);
+        var result = Parse(text);
         if (result.Success)
         {
             Current = result.Config!;
@@ -117,7 +119,7 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
             try
             {
                 var text = ReadWithRetry();
-                var before = ConfigParser.Parse(text);
+                var before = ConfigParser.Parse(text); // syntax only: a missing kind must not block removing its tile
                 if (!before.Success)
                     return new ConfigError("config.json has an error, so nothing was saved: " + before.Error!.Message,
                         before.Error.Line, before.Error.Column);
@@ -136,7 +138,7 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
                     return new ConfigError($"config.json has a duplicate key ({ex.Message}); remove it, then try again.");
                 }
                 var newText = ConfigJson.Serialize(root);
-                var after = ConfigParser.Parse(newText);
+                var after = Parse(newText);
                 if (!after.Success) return new ConfigError("The change was not saved: " + after.Error);
 
                 WriteAtomically(newText);
@@ -175,8 +177,15 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
         }
     }
 
-    // Runs on a thread-pool timer. Nothing may escape: an unhandled exception would kill the host.
-    void Reload()
+    /// <summary>
+    /// Validates the file again, e.g. after the kind table changed: a config rejected for a missing kind may apply now, and
+    /// one in use may now name a kind that is gone (then the last good config stays). Raises Changed or ReloadFailed, on the
+    /// calling thread, only when the outcome changed. Never throws.
+    /// </summary>
+    public void Recheck() => Reload(recheck: true);
+
+    // Runs on a thread-pool timer (or from Recheck). Nothing may escape: an unhandled exception would kill the host.
+    void Reload(bool recheck = false)
     {
         lock (_reloadGate)
         {
@@ -191,9 +200,11 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
                 }
 
                 // Our own save, or a save without changes: Current already reflects this text.
-                if (LastError is null && text == _appliedText) return;
+                if (!recheck && LastError is null && text == _appliedText) return;
 
-                var result = ConfigParser.Parse(text);
+                var result = Parse(text);
+                if (result.Success && recheck && LastError is null && text == _appliedText) return; // still the config in use
+                if (!result.Success && recheck && result.Error == LastError) return; // the same problem was already reported
                 if (result.Success)
                 {
                     Current = result.Config!;
@@ -214,6 +225,14 @@ public sealed class ConfigStore(string path, ITileLog log) : IConfigWriter, IDis
                 log.Error("Config reload failed", ex);
             }
         }
+    }
+
+    /// <summary>ConfigParser, then the validator.</summary>
+    ConfigParseResult Parse(string text)
+    {
+        var result = ConfigParser.Parse(text);
+        if (!result.Success || validate?.Invoke(result.Config!) is not { } error) return result;
+        return new ConfigParseResult(null, error);
     }
 
     // Editors often hold the file briefly while saving.

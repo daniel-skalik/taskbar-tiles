@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using TaskbarTiles.Host;
 using TaskbarTiles.Host.Config;
@@ -8,7 +9,7 @@ namespace TaskbarTiles.Tests;
 public class HostControllerLayoutTests
 {
     const string Config = """
-    { "tiles": { "a": { "connector": "ghost" }, "b": { "connector": "ghost" }, "c": { "connector": "ghost" } },
+    { "tiles": { "a": { "kind": "ghost" }, "b": { "kind": "ghost" }, "c": { "kind": "ghost" } },
       "displays": {
         "primary": { "slots": [ { "tile": "a", "pin": true }, { "stack": ["b", "c"], "rotate": "8s" } ] },
         "*": { "slots": ["c"] } } }
@@ -42,7 +43,28 @@ public class HostControllerLayoutTests
 
     /// <summary>Config plus a tile defined by hand but not placed on any display.</summary>
     static readonly string WithSpare = Config.Replace(
-        "\"c\": { \"connector\": \"ghost\" } }", "\"c\": { \"connector\": \"ghost\" }, \"spare\": { \"connector\": \"ghost\" } }");
+        "\"c\": { \"kind\": \"ghost\" } }", "\"c\": { \"kind\": \"ghost\" }, \"spare\": { \"kind\": \"ghost\" } }");
+
+    [Fact]
+    public void Removing_a_tile_never_touches_its_kind_folder()
+    {
+        using var tiles = new TempDir();
+        var folder = Directory.CreateDirectory(Path.Combine(tiles.Path, "ghost")).FullName;
+        File.WriteAllText(Path.Combine(folder, "tile.json"), """{ "name": "Ghost", "connector": "script" }""");
+        File.WriteAllText(Path.Combine(folder, "ghost.ps1"), "'{}'");
+        var kinds = new KindLoader(new CollectingLog()).Load(tiles.Path);
+        var writer = new FakeConfigWriter(Config);
+        var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), writer: writer, kinds: () => kinds);
+        host.Start();
+
+        Assert.Null(host.RemoveTile("MAIN", 0, null));
+
+        Assert.False(writer.Current.Tiles.ContainsKey("a")); // the instance is gone (no display places it)
+        Assert.True(File.Exists(Path.Combine(folder, "tile.json")));
+        Assert.True(File.Exists(Path.Combine(folder, "ghost.ps1")));
+    }
 
     [Fact]
     public void A_stack_is_one_slot_and_all_its_members_get_runtimes()
@@ -64,7 +86,7 @@ public class HostControllerLayoutTests
     public void An_empty_stack_shows_nothing_but_later_slots_keep_their_index()
     {
         var f = new Fixture("""
-        { "tiles": { "a": { "connector": "ghost" } }, "displays": { "primary": { "slots": [ { "stack": [] }, "a" ] } } }
+        { "tiles": { "a": { "kind": "ghost" } }, "displays": { "primary": { "slots": [ { "stack": [] }, "a" ] } } }
         """);
 
         var slot = Assert.Single(f.Bars["MAIN"].Slots);

@@ -1,24 +1,30 @@
 <Project>
-  <!-- Copies each @(PluginProject)'s build output to plugins\<AssemblyName>\ next to this project's output. -->
+  <!--
+    Copies each @(PluginProject)'s build output next to this project's output: to plugins\<AssemblyName>\, or to tiles\<Kind>\
+    when the item has Kind metadata (a connector that ships as a tile kind; the kind's tile.json comes from the repo's tiles\).
+    The MSBuild task copies the item's metadata (Kind) onto its TargetOutputs.
+  -->
   <Target Name="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
     <MSBuild Projects="@(PluginProject)" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
       <Output TaskParameter="TargetOutputs" ItemName="_PluginTargetPath" />
     </MSBuild>
     <ItemGroup>
       <_PluginFile Include="%(_PluginTargetPath.RootDir)%(_PluginTargetPath.Directory)**\*.*"
-                   PluginName="%(_PluginTargetPath.Filename)" />
+                   PluginDir="plugins\%(_PluginTargetPath.Filename)" Condition="'%(_PluginTargetPath.Kind)' == ''" />
+      <_PluginFile Include="%(_PluginTargetPath.RootDir)%(_PluginTargetPath.Directory)**\*.*"
+                   PluginDir="tiles\%(_PluginTargetPath.Kind)" Condition="'%(_PluginTargetPath.Kind)' != ''" />
     </ItemGroup>
   </Target>
 
   <Target Name="CopyPluginsToOutput" AfterTargets="Build" DependsOnTargets="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
     <Copy SourceFiles="@(_PluginFile)"
-          DestinationFiles="@(_PluginFile->'$(OutDir)plugins\%(PluginName)\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(_PluginFile->'$(OutDir)%(PluginDir)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyPluginsToPublish" AfterTargets="Publish" DependsOnTargets="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
     <Copy SourceFiles="@(_PluginFile)"
-          DestinationFiles="@(_PluginFile->'$(PublishDir)plugins\%(PluginName)\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(_PluginFile->'$(PublishDir)%(PluginDir)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>

@@ -1,0 +1,11 @@
+{
+  "name": "Clock and uptime",
+  "description": "The time, and how long Windows has been up",
+  "connector": "script",
+  "settings": {
+    "hooks": {
+      "interval": { "every": "30s", "run": "uptime.ps1" },
+      "flyout":   { "run": "uptime.ps1" }
+    }
+  }
+}

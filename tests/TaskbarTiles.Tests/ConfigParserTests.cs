@@ -8,9 +8,9 @@ public class ConfigParserTests
     {
       // comments are allowed
       "tiles": {
-        "spotify": { "connector": "media", "settings": { "app": "Spotify" } },
-        "ci":      { "connector": "script" },
-        "weather": { "connector": "script" },
+        "spotify": { "kind": "media", "settings": { "app": "Spotify" } },
+        "ci":      { "kind": "script" },
+        "weather": { "kind": "script" },
       },
       "displays": {
         "primary": { "slots": [ { "tile": "spotify", "pin": true }, "ci", { "stack": ["weather", "ci"], "rotate": "8s" } ] },
@@ -26,7 +26,7 @@ public class ConfigParserTests
 
         Assert.True(result.Success, result.Error?.ToString());
         var cfg = result.Config!;
-        Assert.Equal("media", cfg.Tiles["spotify"].Connector);
+        Assert.Equal("media", cfg.Tiles["spotify"].Kind);
         Assert.Equal("Spotify", cfg.Tiles["spotify"].Settings.GetProperty("app").GetString());
         Assert.Equal(System.Text.Json.JsonValueKind.Object, cfg.Tiles["ci"].Settings.ValueKind);
 
@@ -42,7 +42,7 @@ public class ConfigParserTests
     [Fact]
     public void Stack_rotate_defaults_to_5_seconds()
     {
-        var result = ConfigParser.Parse("""{ "tiles": { "a": { "connector": "x" } }, "displays": { "primary": { "slots": [ { "stack": ["a"] } ] } } }""");
+        var result = ConfigParser.Parse("""{ "tiles": { "a": { "kind": "x" } }, "displays": { "primary": { "slots": [ { "stack": ["a"] } ] } } }""");
         Assert.Equal(TimeSpan.FromSeconds(5), Assert.IsType<StackSlot>(result.Config!.Displays["primary"].Slots[0]).Rotate);
     }
 
@@ -65,11 +65,39 @@ public class ConfigParserTests
     }
 
     [Fact]
-    public void Tile_without_connector_is_an_error()
+    public void Tile_without_kind_is_an_error()
     {
         var result = ConfigParser.Parse("""{ "tiles": { "a": { } } }""");
         Assert.False(result.Success);
-        Assert.Contains("connector", result.Error!.Message);
+        Assert.Equal("Tile 'a' needs a \"kind\": the name of its folder in tiles\\.", result.Error!.Message);
+    }
+
+    [Fact]
+    public void The_old_connector_form_is_an_error_that_shows_the_new_form()
+    {
+        var result = ConfigParser.Parse("""{ "tiles": { "x": { "connector": "script", "settings": { "hooks": {} } } } }""");
+
+        Assert.False(result.Success);
+        Assert.Equal("Tile 'x' uses \"connector\"; tiles now name a kind: \"kind\": \"<folder>\"", result.Error!.Message);
+    }
+
+    [Fact]
+    public void Hooks_in_instance_settings_are_an_error()
+    {
+        var result = ConfigParser.Parse("""{ "tiles": { "x": { "kind": "ping", "settings": { "host": "a", "hooks": {} } } } }""");
+
+        Assert.False(result.Success);
+        Assert.Equal(@"hooks belong in tiles\ping\tile.json", result.Error!.Message);
+    }
+
+    [Fact]
+    public void Instance_settings_are_optional()
+    {
+        var result = ConfigParser.Parse("""{ "tiles": { "ping-dns": { "kind": "ping" } } }""");
+
+        Assert.True(result.Success, result.Error?.ToString());
+        Assert.Equal("ping", result.Config!.Tiles["ping-dns"].Kind);
+        Assert.Equal("{}", result.Config.Tiles["ping-dns"].Settings.GetRawText());
     }
 
     [Theory]
@@ -81,7 +109,7 @@ public class ConfigParserTests
     [InlineData("\"61m\"")]
     public void Non_string_invalid_or_out_of_range_rotate_is_a_config_error(string rotateJson)
     {
-        var json = "{ \"tiles\": { \"a\": { \"connector\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": " + rotateJson + " } ] } } }";
+        var json = "{ \"tiles\": { \"a\": { \"kind\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": " + rotateJson + " } ] } } }";
 
         var result = ConfigParser.Parse(json);
 
@@ -94,7 +122,7 @@ public class ConfigParserTests
     [InlineData("1h", 3600)]
     public void Rotate_accepts_1s_to_1h(string rotate, int seconds)
     {
-        var json = "{ \"tiles\": { \"a\": { \"connector\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": \"" + rotate + "\" } ] } } }";
+        var json = "{ \"tiles\": { \"a\": { \"kind\": \"x\" } }, \"displays\": { \"primary\": { \"slots\": [ { \"stack\": [\"a\"], \"rotate\": \"" + rotate + "\" } ] } } }";
 
         var result = ConfigParser.Parse(json);
 
@@ -105,7 +133,7 @@ public class ConfigParserTests
     [Fact]
     public void Missing_displays_section_means_no_layouts()
     {
-        var result = ConfigParser.Parse("""{ "tiles": { "a": { "connector": "x" } } }""");
+        var result = ConfigParser.Parse("""{ "tiles": { "a": { "kind": "x" } } }""");
         Assert.True(result.Success);
         Assert.Empty(result.Config!.Displays);
     }

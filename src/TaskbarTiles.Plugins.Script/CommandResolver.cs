@@ -5,10 +5,11 @@ public sealed record ScriptCommand(string FileName, string Arguments, string Wor
 
 /// <summary>
 /// Turns a hook's "run" into a process. The first token is the script (quote it if it has spaces), resolved
-/// against the config folder; .ps1 runs via PowerShell, .py via python, other existing files and plain
-/// command lines via cmd.exe. The rest of the line is passed on unchanged.
+/// against the base folder (the tile's kind folder), which is also the working directory; .ps1 runs via
+/// PowerShell, .py via python, other existing files and plain command lines via cmd.exe. The rest of the
+/// line is passed on unchanged.
 /// </summary>
-public sealed class CommandResolver(string configDirectory, string powerShell, string python = "python")
+public sealed class CommandResolver(string baseDirectory, string powerShell, string python = "python")
 {
     const string Shell = "cmd.exe";
 
@@ -19,24 +20,24 @@ public sealed class CommandResolver(string configDirectory, string powerShell, s
         string path;
         try
         {
-            path = Path.IsPathFullyQualified(first) ? first : Path.GetFullPath(Path.Combine(configDirectory, RelativePart(first)));
+            path = Path.IsPathFullyQualified(first) ? first : Path.GetFullPath(Path.Combine(baseDirectory, RelativePart(first)));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return new(Shell, $"/d /s /c \"{line}\"", configDirectory); // the first token is no path at all
+            return new(Shell, $"/d /s /c \"{line}\"", baseDirectory); // the first token is no path at all
         }
         var tail = rest.Length == 0 ? "" : " " + rest;
 
         return Path.GetExtension(first).ToLowerInvariant() switch
         {
-            ".ps1" => new(powerShell, $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {Quote(path)}{tail}", configDirectory),
-            ".py" => new(python, $"-u {Quote(path)}{tail}", configDirectory),
-            _ when File.Exists(path) => new(Shell, $"/d /s /c \"{Quote(path)}{tail}\"", configDirectory),
-            _ => new(Shell, $"/d /s /c \"{line}\"", configDirectory),
+            ".ps1" => new(powerShell, $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {Quote(path)}{tail}", baseDirectory),
+            ".py" => new(python, $"-u {Quote(path)}{tail}", baseDirectory),
+            _ when File.Exists(path) => new(Shell, $"/d /s /c \"{Quote(path)}{tail}\"", baseDirectory),
+            _ => new(Shell, $"/d /s /c \"{line}\"", baseDirectory),
         };
     }
 
-    /// <summary>Drops a drive ("C:x") and leading separators so a rooted but not fully qualified path stays under the config folder.</summary>
+    /// <summary>Drops a drive ("C:x") and leading separators so a rooted but not fully qualified path stays under the base folder.</summary>
     static string RelativePart(string path)
     {
         if (path.Length >= 2 && path[1] == ':') path = path[2..];

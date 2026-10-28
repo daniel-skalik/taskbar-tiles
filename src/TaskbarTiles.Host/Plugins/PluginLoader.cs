@@ -13,11 +13,12 @@ public sealed class ConnectorCatalog(IReadOnlyDictionary<string, ConnectorDescri
     public IReadOnlyDictionary<string, ConnectorDescriptor> Connectors => connectors;
 
     /// <summary>Runs the plugin's constructor; its exception propagates unwrapped.</summary>
-    public ITileConnector? Create(string id) =>
-        connectors.TryGetValue(id, out var d)
-            ? (ITileConnector)Activator.CreateInstance(d.Type,
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DoNotWrapExceptions, binder: null, args: null, culture: null)!
-            : null;
+    public ITileConnector? Create(string id) => connectors.TryGetValue(id, out var d) ? Instantiate(d) : null;
+
+    /// <summary>Runs the plugin's constructor; its exception propagates unwrapped.</summary>
+    public static ITileConnector Instantiate(ConnectorDescriptor d) =>
+        (ITileConnector)Activator.CreateInstance(d.Type,
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DoNotWrapExceptions, binder: null, args: null, culture: null)!;
 }
 
 /// <summary>Loads plugins laid out as &lt;root&gt;\&lt;Name&gt;\&lt;Name&gt;.dll. Earlier roots win on duplicate ids.</summary>
@@ -42,25 +43,15 @@ public sealed class PluginLoader(ITileLog log)
             try
             {
                 var assembly = new PluginLoadContext(main).LoadFromAssemblyPath(main);
-                foreach (var type in assembly.GetExportedTypes())
+                foreach (var connector in Connectors(assembly, main, log))
                 {
-                    if (type.IsAbstract || !typeof(ITileConnector).IsAssignableFrom(type)) continue;
-                    var attr = type.GetCustomAttribute<TileConnectorAttribute>();
-                    if (attr is null) continue;
-
-                    if (map.TryGetValue(attr.Id, out var existing))
+                    if (map.TryGetValue(connector.Id, out var existing))
                     {
-                        log.Warn($"Connector '{attr.Id}' in {main} ignored; already provided by {existing.SourcePath}.");
+                        log.Warn($"Connector '{connector.Id}' in {main} ignored; already provided by {existing.SourcePath}.");
                         continue;
                     }
-                    var width = attr.Width;
-                    if (!double.IsFinite(width) || width <= 0)
-                    {
-                        log.Warn($"Connector '{attr.Id}' in {main} declares invalid width {width}; using {DefaultTileWidth}.");
-                        width = DefaultTileWidth;
-                    }
-                    map[attr.Id] = new ConnectorDescriptor(attr.Id, type, width, main);
-                    log.Info($"Loaded connector '{attr.Id}' from {main}");
+                    map[connector.Id] = connector;
+                    log.Info($"Loaded connector '{connector.Id}' from {main}");
                 }
             }
             catch (Exception ex)
@@ -70,5 +61,24 @@ public sealed class PluginLoader(ITileLog log)
         }
 
         return new ConnectorCatalog(map);
+    }
+
+    /// <summary>The [TileConnector] types an assembly exports; an invalid width is logged and replaced by the default.</summary>
+    internal static IEnumerable<ConnectorDescriptor> Connectors(Assembly assembly, string path, ITileLog log)
+    {
+        foreach (var type in assembly.GetExportedTypes())
+        {
+            if (type.IsAbstract || !typeof(ITileConnector).IsAssignableFrom(type)) continue;
+            var attr = type.GetCustomAttribute<TileConnectorAttribute>();
+            if (attr is null) continue;
+
+            var width = attr.Width;
+            if (!double.IsFinite(width) || width <= 0)
+            {
+                log.Warn($"Connector '{attr.Id}' in {path} declares invalid width {width}; using {DefaultTileWidth}.");
+                width = DefaultTileWidth;
+            }
+            yield return new ConnectorDescriptor(attr.Id, type, width, path);
+        }
     }
 }

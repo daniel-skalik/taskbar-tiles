@@ -30,9 +30,9 @@ public class TileRuntimeRestartTests
     }
 
     static TileRuntime Create(Func<ITileConnector> factory, IUiDispatcher? ui = null, BackoffSchedule? backoff = null,
-        CollectingLog? log = null, string configDirectory = "") =>
+        CollectingLog? log = null, string configDirectory = "", string tileDirectory = "") =>
         new("tile1", "fake", 132, factory, NoSettings, ui ?? new ImmediateDispatcher(), log ?? new CollectingLog(),
-            new TileRuntimeOptions { Backoff = backoff ?? Never, ConfigDirectory = configDirectory });
+            new TileRuntimeOptions { Backoff = backoff ?? Never, ConfigDirectory = configDirectory, TileDirectory = tileDirectory });
 
     [Fact]
     public async Task Reported_error_shows_error_look_and_details_without_restart()
@@ -275,6 +275,23 @@ public class TileRuntimeRestartTests
         await rt.StartAsync();
 
         Assert.Equal(@"C:\cfg", c.Context!.ConfigDirectory);
+    }
+
+    [Fact]
+    public async Task Context_exposes_the_tile_directory_or_falls_back_to_the_config_directory()
+    {
+        var withFolder = new FakeConnector();
+        var without = new FakeConnector();
+        var a = Create(() => withFolder, configDirectory: @"C:\cfg", tileDirectory: @"C:\cfg\tiles\ping");
+        var b = Create(() => without, configDirectory: @"C:\cfg");
+
+        await a.StartAsync();
+        await b.StartAsync();
+
+        Assert.Equal(@"C:\cfg\tiles\ping", withFolder.Context!.TileDirectory);
+        Assert.Equal(@"C:\cfg\tiles\ping", a.TileDirectory);
+        Assert.Equal(@"C:\cfg", without.Context!.TileDirectory);
+        Assert.Equal(@"C:\cfg", b.TileDirectory);
     }
 
     [Fact]
