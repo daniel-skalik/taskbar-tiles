@@ -16,7 +16,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "claude", "media", "ping", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "battery", "claude", "media", "ping", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -26,6 +26,7 @@ public class BundledKindsTests
             else Assert.Equal(kind.Connector, kind.Plugin!.Id);
         }
         Assert.Equal("media", kinds.Kinds["media"].Plugin!.Id);
+        Assert.Equal("battery", kinds.Kinds["battery"].Plugin!.Id);
     }
 
     [Fact]

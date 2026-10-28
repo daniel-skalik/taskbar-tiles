@@ -12,6 +12,15 @@ public class ThemeTests
     [InlineData("previous", "")]
     [InlineData("next", "")]
     [InlineData("warning", "")]
+    [InlineData("mouse", "\uE962")]
+    [InlineData("keyboard", "\uE765")]
+    [InlineData("headphones", "\uE7F6")]
+    [InlineData("battery-0", "\uE850")]
+    [InlineData("battery-9", "\uE859")]
+    [InlineData("Battery-10", "\uE83F")]
+    [InlineData("battery-charging-0", "\uE85A")]
+    [InlineData("battery-charging-9", "\uE83E")]
+    [InlineData("battery-charging-10", "\uEA93")]
     public void Known_glyphs_map_to_segoe_fluent_codepoints(string name, string expected) =>
         Assert.Equal(expected, Theme.Glyph(name));
 

@@ -114,7 +114,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 
 ## Glyphs and colors
 
-Glyph names: `play`, `pause`, `previous`, `next`, `check`, `cancel`, `warning`, `refresh`, `music`, `info`, `sync`, `cloud`, `clock`. Names are case-insensitive. An unknown name shows `info`.
+Glyph names: `play`, `pause`, `previous`, `next`, `check`, `cancel`, `warning`, `refresh`, `music`, `info`, `sync`, `cloud`, `clock`, `mouse`, `keyboard`, `headphones`, `battery-0` to `battery-10` and `battery-charging-0` to `battery-charging-10` (the battery filled to tenths). Names are case-insensitive. An unknown name shows `info`.
 
 Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (green), `warn` (amber), `bad` (red). An unknown name is `neutral`.
 

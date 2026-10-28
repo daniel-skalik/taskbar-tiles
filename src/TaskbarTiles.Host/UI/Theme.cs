@@ -14,7 +14,23 @@ public static class Theme
         ["play"] = "", ["pause"] = "", ["previous"] = "", ["next"] = "",
         ["check"] = "", ["cancel"] = "", ["warning"] = "", ["refresh"] = "",
         ["music"] = "", ["info"] = "", ["sync"] = "", ["cloud"] = "", ["clock"] = "",
+        ["mouse"] = "\uE962", ["keyboard"] = "\uE765", ["headphones"] = "\uE7F6",
     };
+
+    // battery-0..battery-10 and battery-charging-0..battery-charging-10 (tenths of full). Segoe keeps 10 out of sequence.
+    static readonly string[] BatteryGlyphs =
+        ["\uE850", "\uE851", "\uE852", "\uE853", "\uE854", "\uE855", "\uE856", "\uE857", "\uE858", "\uE859", "\uE83F"];
+    static readonly string[] ChargingGlyphs =
+        ["\uE85A", "\uE85B", "\uE85C", "\uE85D", "\uE85E", "\uE85F", "\uE860", "\uE861", "\uE862", "\uE83E", "\uEA93"];
+
+    static Theme()
+    {
+        for (var i = 0; i <= 10; i++)
+        {
+            Glyphs[$"battery-{i}"] = BatteryGlyphs[i];
+            Glyphs[$"battery-charging-{i}"] = ChargingGlyphs[i];
+        }
+    }
 
     public static string Glyph(string name) => Glyphs.TryGetValue(name, out var g) ? g : Glyphs["info"];
 
