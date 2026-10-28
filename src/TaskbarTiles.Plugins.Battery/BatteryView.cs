@@ -60,7 +60,7 @@ public static class BatteryView
     };
 
     static string Amount(DeviceBattery d) =>
-        d.Percent is { } p ? $"{p} %" : d.Level is { } level ? level.ToString() : "?";
+        d.Percent is { } p ? $"{p} %" : d.Level is { } level ? level.ToString() : "Unknown";
 
     /// <summary>"45 %", "45 %, charging", "low", "45 %, asleep".</summary>
     public static string Value(DeviceBattery d)

@@ -12,14 +12,23 @@ public interface IHidppTransport : IDisposable
     /// <summary>Stable while the collection stays plugged in; devices are cached under it.</summary>
     string Path { get; }
 
+    /// <summary>The handle stopped working (the receiver was unplugged); a new one must be opened.</summary>
+    bool IsDead { get; }
+
     Task<byte[]?> RequestAsync(byte device, byte feature, byte function, byte[] args, CancellationToken ct);
 }
 
+/// <summary>A HID++ interface found on the system: its long-report collection, and its short one when there is one.</summary>
+public sealed record HidppPort(string Path, string? ShortPath = null);
+
 /// <summary>
-/// Reads batteries over HID++ 2.0 from Logitech receivers and devices. Feature indices, names and types are cached per
-/// transport path and device index; a device that stops answering keeps its last reading, marked asleep.
+/// Reads batteries over HID++ 2.0 from Logitech receivers and devices. Interfaces stay open between reads; a dead one is
+/// reopened. Feature indices, names and types are cached per interface path and device index; a device that stops
+/// answering keeps its last reading, marked asleep.
 /// </summary>
-public sealed class LogitechSource(Func<IReadOnlyList<IHidppTransport>> findTransports) : IBatterySource, IDisposable
+public sealed class LogitechSource(
+    Func<CancellationToken, Task<IReadOnlyList<HidppPort>>> findPorts,
+    Func<HidppPort, IHidppTransport?> open) : IBatterySource, IDisposable
 {
     public const byte DirectDevice = 0xFF;
     const ushort Root = 0x0000, DeviceName = 0x0005, BatteryStatus = 0x1000, UnifiedBattery = 0x1004;
@@ -40,19 +49,31 @@ public sealed class LogitechSource(Func<IReadOnlyList<IHidppTransport>> findTran
 
     public async Task<IReadOnlyList<DeviceBattery>> ReadAsync(CancellationToken ct)
     {
-        Refresh();
+        await RefreshAsync(ct);
         var result = new List<DeviceBattery>();
         foreach (var transport in _transports.Values)
-            foreach (var device in await DevicesAsync(transport, ct))
-                if (await ReadDeviceAsync(transport, device, ct) is { } reading) result.Add(reading);
+        {
+            try
+            {
+                foreach (var device in await DevicesAsync(transport, ct))
+                    if (await ReadDeviceAsync(transport, device, ct) is { } reading) result.Add(reading);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                // One misbehaving interface must not hide the others' devices; it is retried next time.
+            }
+        }
         return result;
     }
 
-    /// <summary>Opens new collections, forgets unplugged ones (and their devices).</summary>
-    void Refresh()
+    /// <summary>
+    /// Opens interfaces not open yet, reopens dead ones (a receiver plugged back in keeps its path, and its devices'
+    /// cache), and closes and forgets unplugged ones.
+    /// </summary>
+    async Task RefreshAsync(CancellationToken ct)
     {
-        var found = findTransports();
-        var paths = found.Select(t => t.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ports = await findPorts(ct);
+        var paths = ports.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var gone in _transports.Keys.Where(p => !paths.Contains(p)).ToList())
         {
             _transports[gone].Dispose();
@@ -60,10 +81,15 @@ public sealed class LogitechSource(Func<IReadOnlyList<IHidppTransport>> findTran
             foreach (var key in _known.Keys.Where(k => string.Equals(k.Path, gone, StringComparison.OrdinalIgnoreCase)).ToList())
                 _known.Remove(key);
         }
-        foreach (var t in found)
+        foreach (var port in ports)
         {
-            if (_transports.ContainsKey(t.Path)) t.Dispose(); // already open
-            else _transports[t.Path] = t;
+            if (_transports.TryGetValue(port.Path, out var current))
+            {
+                if (!current.IsDead) continue;
+                current.Dispose();
+                _transports.Remove(port.Path);
+            }
+            if (open(port) is { } opened) _transports[port.Path] = opened;
         }
     }
 
@@ -149,9 +175,9 @@ public sealed class LogitechSource(Func<IReadOnlyList<IHidppTransport>> findTran
         if (k.Status is { } b)
         {
             if (await t.RequestAsync(device, b, 0, [], ct) is not { } s) return null;
-            // [percent, next level, status (0 discharging, 1 recharging, 2 almost full, 3 full, ...)]
+            // [percent, next level, status (0 discharging, 1 recharging, 2 almost full, 3 full, 4 slow recharge, ...)]
             return new DeviceBattery(id, k.Name, k.Type, s[0] == 0 && s[2] == 3 ? 100 : Math.Min((int)s[0], 100),
-                Charging: s[2] is 1 or 2);
+                Charging: s[2] is 1 or 2 or 4);
         }
         return null;
     }

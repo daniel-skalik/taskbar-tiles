@@ -29,9 +29,14 @@ public sealed class BluetoothSource : IBatterySource
         var result = new List<DeviceBattery>();
         foreach (var (container, percent) in byContainer)
         {
-            var info = await DeviceInformation.CreateFromIdAsync(container,
-                ["System.Devices.CategoryIds", "System.Devices.Connected"], DeviceInformationKind.DeviceContainer).AsTask(ct);
-            if (info.Properties.TryGetValue("System.Devices.Connected", out var connected) && connected is false) continue;
+            DeviceInformation info;
+            try
+            {
+                info = await DeviceInformation.CreateFromIdAsync(container,
+                    ["System.Devices.CategoryIds", "System.Devices.Connected"], DeviceInformationKind.DeviceContainer).AsTask(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { continue; } // removed since the first query
+            if (!info.Properties.TryGetValue("System.Devices.Connected", out var connected) || connected is not true) continue;
             var categories = info.Properties.TryGetValue("System.Devices.CategoryIds", out var c) ? c as string[] ?? [] : [];
             result.Add(new DeviceBattery($"bluetooth:{container}", info.Name, TypeFrom(categories), Math.Min(percent, 100)));
         }

@@ -15,43 +15,45 @@ public sealed class HidTransport : IHidppTransport
 {
     const byte LongReport = 0x11, ShortReport = 0x10, SoftwareId = 0x0A;
     const ushort VendorPage = 0xFF00, ShortUsage = 0x0001, LongUsage = 0x0002;
-    const string LogitechVid = "VID_046D";
     static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(1500);
 
     readonly FileStream _long;
     readonly FileStream? _short;
     readonly Channel<byte[]> _reports = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
     readonly SemaphoreSlim _gate = new(1, 1);
+    volatile bool _dead;
 
     HidTransport(string path, FileStream longStream, FileStream? shortStream)
     {
         Path = path;
         _long = longStream;
         _short = shortStream;
-        _ = PumpAsync(_long, 20);
-        if (_short is not null) _ = PumpAsync(_short, 7);
+        _ = PumpAsync(_long, 20, endsTransport: true);
+        if (_short is not null) _ = PumpAsync(_short, 7, endsTransport: false);
     }
 
     public string Path { get; }
 
-    /// <summary>Every Logitech HID++ interface that can be opened now.</summary>
-    public static IReadOnlyList<IHidppTransport> FindAll()
+    public bool IsDead => _dead;
+
+    /// <summary>Every Logitech HID++ interface present now (USB receivers and devices, and Bluetooth devices).</summary>
+    public static async Task<IReadOnlyList<HidppPort>> FindAsync(CancellationToken ct)
     {
-        var shortPaths = Paths(ShortUsage).ToDictionary(InterfaceKey, p => p, StringComparer.OrdinalIgnoreCase);
-        var found = new List<IHidppTransport>();
-        foreach (var path in Paths(LongUsage))
-        {
-            if (Open(path) is not { } longStream) continue;
-            var shortStream = shortPaths.TryGetValue(InterfaceKey(path), out var s) ? Open(s) : null;
-            found.Add(new HidTransport(path, longStream, shortStream));
-        }
-        return found;
+        var shortPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in await PathsAsync(ShortUsage, ct)) shortPaths.TryAdd(InterfaceKey(path), path);
+        return (await PathsAsync(LongUsage, ct))
+            .Select(path => new HidppPort(path, shortPaths.GetValueOrDefault(InterfaceKey(path))))
+            .ToList();
     }
 
-    static IEnumerable<string> Paths(ushort usage) =>
-        DeviceInformation.FindAllAsync(HidDevice.GetDeviceSelector(VendorPage, usage)).AsTask().GetAwaiter().GetResult()
+    static async Task<IEnumerable<string>> PathsAsync(ushort usage, CancellationToken ct) =>
+        (await DeviceInformation.FindAllAsync(HidDevice.GetDeviceSelector(VendorPage, usage)).AsTask(ct))
             .Select(i => i.Id)
-            .Where(id => id.Contains(LogitechVid, StringComparison.OrdinalIgnoreCase));
+            .Where(IsLogitech);
+
+    /// <summary>Logitech's vendor id in a USB path (VID_046D) or a Bluetooth LE one (VID&amp;02046d).</summary>
+    public static bool IsLogitech(string path) =>
+        path.Contains("VID_046D", StringComparison.OrdinalIgnoreCase) || path.Contains("VID&02046D", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The part of a collection path both collections of one interface share: \\?\HID#VID_046D&amp;PID_C548&amp;MI_02&amp;Col02#9&amp;1584edf3&amp;0&amp;0001#{…}
@@ -66,7 +68,14 @@ public sealed class HidTransport : IHidppTransport
         return string.Join('&', hardware) + "#" + string.Join('&', instance.Take(Math.Max(1, instance.Length - 1)));
     }
 
-    static FileStream? Open(string path)
+    /// <summary>Opens the interface; null when its long collection cannot be opened.</summary>
+    public static IHidppTransport? Open(HidppPort port)
+    {
+        if (OpenStream(port.Path) is not { } longStream) return null;
+        return new HidTransport(port.Path, longStream, port.ShortPath is { } s ? OpenStream(s) : null);
+    }
+
+    static FileStream? OpenStream(string path)
     {
         const uint ReadWrite = 0xC0000000, ShareReadWrite = 3, OpenExisting = 3, Overlapped = 0x40000000;
         var handle = CreateFile(path, ReadWrite, ShareReadWrite, IntPtr.Zero, OpenExisting, Overlapped, IntPtr.Zero);
@@ -74,8 +83,8 @@ public sealed class HidTransport : IHidppTransport
         return new FileStream(handle, FileAccess.ReadWrite, 0, isAsync: true);
     }
 
-    /// <summary>Reads reports until the stream is disposed or the device is unplugged.</summary>
-    async Task PumpAsync(FileStream stream, int length)
+    /// <summary>Reads reports until the stream is disposed or the device is unplugged; the long one ending kills the transport.</summary>
+    async Task PumpAsync(FileStream stream, int length, bool endsTransport)
     {
         try
         {
@@ -87,6 +96,7 @@ public sealed class HidTransport : IHidppTransport
             }
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException) { }
+        if (endsTransport) _dead = true;
     }
 
     public async Task<byte[]?> RequestAsync(byte device, byte feature, byte function, byte[] args, CancellationToken ct)
@@ -101,19 +111,22 @@ public sealed class HidTransport : IHidppTransport
         await _gate.WaitAsync(ct);
         try
         {
-            while (_reports.Reader.TryRead(out _)) { } // notifications that arrived between requests
+            while (_reports.Reader.TryRead(out _)) { } // notifications, and late answers to requests that timed out
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(Timeout);
             await _long.WriteAsync(request, timeout.Token);
             while (true)
             {
-                byte[] r;
-                try { r = await _reports.Reader.ReadAsync(timeout.Token); }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; } // timed out
+                var r = await _reports.Reader.ReadAsync(timeout.Token);
                 if (Match(request, r) is { } answer) return answer.Length == 0 ? null : answer;
             }
         }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException) { return null; } // unplugged; the next scan drops it
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; } // timed out
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or ChannelClosedException)
+        {
+            _dead = true; // unplugged: the next read opens it again
+            return null;
+        }
         finally { _gate.Release(); }
     }
 
@@ -121,7 +134,8 @@ public sealed class HidTransport : IHidppTransport
     public static byte[]? Match(byte[] request, byte[] r)
     {
         if (r.Length < 7 || r[1] != request[1]) return null;
-        if (r[0] == ShortReport && r[2] == 0x8F && r[3] == request[2]) return []; // HID++ 1.0 error
+        if (r[0] == ShortReport) // HID++ 1.0 error: [0x10, device, 0x8F, feature, function|sw, code, 0]
+            return r[2] == 0x8F && r[3] == request[2] && r[4] == request[3] ? [] : null;
         if (r[0] != LongReport || r.Length < 20) return null;
         if (r[2] == 0xFF && r[3] == request[2] && r[4] == request[3]) return []; // HID++ 2.0 error
         return r[2] == request[2] && r[3] == request[3] ? r[4..] : null;
@@ -129,6 +143,7 @@ public sealed class HidTransport : IHidppTransport
 
     public void Dispose()
     {
+        _dead = true;
         _long.Dispose();
         _short?.Dispose();
         _reports.Writer.TryComplete();

@@ -79,7 +79,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 
 ### Device batteries
 
-The bundled `battery` kind shows the lowest battery of your wireless devices on the tile and every device in its popup, with charging and asleep states. It reads Bluetooth devices from Windows (the level shown in Settings › Bluetooth & devices) and Logitech devices on a Bolt or Unifying receiver, or connected directly, over Logitech's HID++ protocol (alongside Logi Options+). Setting `"interval"` (default `"60s"`, `10s` to `1h`) is how often it reads; right-click → **Refresh now** reads at once. A Logitech device that falls asleep keeps its last level, marked "asleep". Other vendors' receivers (Razer, Corsair, …) only report through their own apps and are not shown.
+The bundled `battery` kind shows the lowest battery of your wireless devices on the tile and every device in its popup, with charging and asleep states. It reads Bluetooth devices from Windows (the level shown in Settings › Bluetooth & devices) and Logitech devices on a Bolt or Unifying receiver, or connected directly over USB or Bluetooth, over Logitech's HID++ protocol (alongside Logi Options+). Setting `"interval"` (default `"60s"`, `10s` to `1h`) is how often it reads; right-click → **Refresh now** reads at once. A Logitech device that falls asleep keeps its last level, marked "asleep". Other vendors' receivers (Razer, Corsair, …) only report through their own apps and are not shown.
 
 ## Stacks
 

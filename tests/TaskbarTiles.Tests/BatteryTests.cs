@@ -102,6 +102,37 @@ public class BatteryConnectorTests
         Assert.Equal("logi", merged.Single(d => d.Name == "MX Master 3S").Id);
     }
 
+    [Fact]
+    public void An_awake_reading_beats_an_asleep_one_and_one_sources_twins_both_stay()
+    {
+        var merged = BatteryConnector.Merge([
+            [new DeviceBattery("bt", "MX Master 3S", DeviceType.Mouse, 70), new DeviceBattery("h1", "Buds", DeviceType.Headphones, 80),
+             new DeviceBattery("h2", "Buds", DeviceType.Headphones, 30)],
+            [new DeviceBattery("logi", "MX Master 3S", DeviceType.Mouse, 75, Asleep: true)],
+        ]);
+
+        Assert.Equal("bt", merged.Single(d => d.Name == "MX Master 3S").Id);
+        Assert.Equal(2, merged.Count(d => d.Name == "Buds"));
+    }
+
+    [Fact]
+    public async Task Disposing_twice_or_before_start_finishes_is_safe()
+    {
+        var release = new TaskCompletionSource();
+        var connector = new BatteryConnector([new Source("Slow", () => { release.Task.Wait(); return []; })]);
+        var ctx = new Context();
+        var start = Task.Run(() => connector.StartAsync(ctx, CancellationToken.None));
+        await Task.Delay(50);
+
+        var dispose = connector.DisposeAsync().AsTask();
+        release.SetResult();
+        await start;
+        await dispose;
+        await connector.DisposeAsync();
+
+        Assert.True(start.IsCompletedSuccessfully);
+    }
+
     sealed class Source(string name, Func<IReadOnlyList<DeviceBattery>> read) : IBatterySource
     {
         public string Name => name;
@@ -184,6 +215,7 @@ public class HidppTests
         public Dictionary<(byte Device, byte Feature, byte Function, int Arg), byte[]> Answers { get; } = [];
         public string Path => path;
         public bool Disposed { get; private set; }
+        public bool IsDead { get; set; }
         public int Requests { get; private set; }
 
         public Task<byte[]?> RequestAsync(byte device, byte feature, byte function, byte[] args, CancellationToken ct)
@@ -221,6 +253,14 @@ public class HidppTests
 
     static async Task<IReadOnlyList<DeviceBattery>> Read(LogitechSource source) => await source.ReadAsync(CancellationToken.None);
 
+    /// <summary>A source over fixed transports; each opens once.</summary>
+    static LogitechSource Logi(params FakeTransport[] transports) => Logi(() => transports);
+
+    /// <summary>A source whose scan finds the transports <paramref name="present"/> returns at that moment.</summary>
+    static LogitechSource Logi(Func<IReadOnlyList<FakeTransport>> present) => new(
+        _ => Task.FromResult<IReadOnlyList<HidppPort>>(present().Select(t => new HidppPort(t.Path)).ToList()),
+        port => present().First(t => t.Path == port.Path));
+
     [Fact]
     public async Task A_receiver_lists_its_paired_devices()
     {
@@ -228,7 +268,7 @@ public class HidppTests
         receiver.Status(1, 45, 4, 0, 0);
         receiver.Status(2, 75, 8, 0, 0);
 
-        var devices = await Read(new LogitechSource(() => [receiver]));
+        var devices = await Read(Logi(receiver));
 
         Assert.Equal(new[] { ("MX Keys S", DeviceType.Keyboard, 45), ("MX Master 3S", DeviceType.Mouse, 75) },
             devices.Select(d => (d.Name, d.Type, d.Percent ?? -1)));
@@ -241,7 +281,7 @@ public class HidppTests
         var device = new FakeTransport("direct").WithDevice(LogitechSource.DirectDevice, "G Pro", 3);
         device.Status(LogitechSource.DirectDevice, 60, 4, 1, 1);
 
-        var reading = Assert.Single(await Read(new LogitechSource(() => [device])));
+        var reading = Assert.Single(await Read(Logi(device)));
 
         Assert.Equal("G Pro", reading.Name);
         Assert.True(reading.Charging);
@@ -253,7 +293,7 @@ public class HidppTests
         var receiver = new FakeTransport().WithDevice(1, "Logitech Wireless Mouse M720", 3);
         receiver.Status(1, 10, 2, 0, 0);
 
-        Assert.Equal("Logitech Wireless Mouse M720", Assert.Single(await Read(new LogitechSource(() => [receiver]))).Name);
+        Assert.Equal("Logitech Wireless Mouse M720", Assert.Single(await Read(Logi(receiver))).Name);
     }
 
     [Fact]
@@ -262,7 +302,7 @@ public class HidppTests
         var receiver = new FakeTransport().WithDevice(1, "K400", 0, percentFlag: 0);
         receiver.Status(1, 0, 2, 0, 0);
 
-        var reading = Assert.Single(await Read(new LogitechSource(() => [receiver])));
+        var reading = Assert.Single(await Read(Logi(receiver)));
 
         Assert.Null(reading.Percent);
         Assert.Equal(BatteryLevel.Low, reading.Level);
@@ -274,7 +314,7 @@ public class HidppTests
         var receiver = new FakeTransport().WithDevice(1, "M705", 3, battery: 0x1000);
         receiver.Status(1, 30, 20, 1);
 
-        var reading = Assert.Single(await Read(new LogitechSource(() => [receiver])));
+        var reading = Assert.Single(await Read(Logi(receiver)));
 
         Assert.Equal(30, reading.Percent);
         Assert.True(reading.Charging);
@@ -285,7 +325,7 @@ public class HidppTests
     {
         var receiver = new FakeTransport().WithDevice(1, "MX Keys S", 0);
         receiver.Status(1, 45, 4, 0, 0);
-        var source = new LogitechSource(() => [receiver]);
+        var source = Logi(receiver);
         await Read(source);
 
         receiver.Answers.Clear(); // asleep: every request now fails
@@ -301,7 +341,7 @@ public class HidppTests
         var receiver = new FakeTransport();
         receiver.Answers[(1, 0, 1, -1)] = [4, 5, 0x5A]; // answers, but has no battery feature
 
-        Assert.Empty(await Read(new LogitechSource(() => [receiver])));
+        Assert.Empty(await Read(Logi(receiver)));
     }
 
     [Fact]
@@ -309,7 +349,7 @@ public class HidppTests
     {
         var receiver = new FakeTransport().WithDevice(1, "MX Keys S", 0);
         receiver.Status(1, 45, 4, 0, 0);
-        var source = new LogitechSource(() => [receiver]);
+        var source = Logi(receiver);
         await Read(source);
         var first = receiver.Requests;
 
@@ -319,23 +359,54 @@ public class HidppTests
     }
 
     [Fact]
-    public async Task An_unplugged_receiver_is_closed_and_a_reopened_one_is_not_kept_twice()
+    public async Task An_open_receiver_is_kept_a_dead_one_reopened_and_an_unplugged_one_closed()
     {
         var receiver = new FakeTransport().WithDevice(1, "MX Keys S", 0);
         receiver.Status(1, 45, 4, 0, 0);
-        var again = new FakeTransport();
-        IReadOnlyList<IHidppTransport> present = [receiver];
-        var source = new LogitechSource(() => present);
-        await Read(source);
+        var replugged = new FakeTransport().WithDevice(1, "MX Keys S", 0);
+        replugged.Status(1, 40, 4, 0, 0);
+        IReadOnlyList<FakeTransport> present = [receiver];
+        var opened = 0;
+        var source = new LogitechSource(
+            _ => Task.FromResult<IReadOnlyList<HidppPort>>(present.Select(t => new HidppPort(t.Path)).ToList()),
+            port => { opened++; return present.First(t => t.Path == port.Path); });
 
-        present = [again]; // same path, opened again by the next scan
         await Read(source);
-        Assert.True(again.Disposed);
-        Assert.False(receiver.Disposed);
+        await Read(source);
+        Assert.Equal(1, opened); // still open: not opened again
+
+        receiver.IsDead = true; // unplugged and plugged back in between two reads: same path
+        present = [replugged];
+        var reading = Assert.Single(await Read(source));
+        Assert.True(receiver.Disposed);
+        Assert.Equal(40, reading.Percent);
+        Assert.False(reading.Asleep);
 
         present = [];
         Assert.Empty(await Read(source));
-        Assert.True(receiver.Disposed);
+        Assert.True(replugged.Disposed);
+    }
+
+    [Fact]
+    public async Task A_failing_receiver_does_not_hide_another_ones_devices()
+    {
+        var broken = new ThrowingTransport();
+        var receiver = new FakeTransport("second").WithDevice(1, "MX Keys S", 0);
+        receiver.Status(1, 45, 4, 0, 0);
+        var source = new LogitechSource(
+            _ => Task.FromResult<IReadOnlyList<HidppPort>>([new HidppPort(broken.Path), new HidppPort(receiver.Path)]),
+            port => port.Path == broken.Path ? broken : receiver);
+
+        Assert.Equal("MX Keys S", Assert.Single(await Read(source)).Name);
+    }
+
+    sealed class ThrowingTransport : IHidppTransport
+    {
+        public string Path => "broken";
+        public bool IsDead => false;
+        public Task<byte[]?> RequestAsync(byte device, byte feature, byte function, byte[] args, CancellationToken ct) =>
+            throw new InvalidOperationException("driver hiccup");
+        public void Dispose() { }
     }
 }
 
@@ -360,5 +431,13 @@ public class HidTransportTests
         Assert.Empty(HidTransport.Match(request, Long(0x11, 1, 0xFF, 8, 0x1A, 5))!); // HID++ 2.0 error
         Assert.Empty(HidTransport.Match(request, [0x10, 1, 0x8F, 8, 0x1A, 9, 0])!);  // HID++ 1.0 error on the short collection
         Assert.Null(HidTransport.Match(request, [0x10, 1, 0x41, 4, 0, 0, 0]));       // a connection notification
+        Assert.Null(HidTransport.Match(request, [0x10, 1, 0x8F, 8, 0x1F, 9, 0]));    // an error for another program's request
     }
+
+    [Theory]
+    [InlineData(@"\\?\HID#VID_046D&PID_C548&MI_02&Col02#9&1584edf3&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}", true)]
+    [InlineData(@"\\?\HID#{00001812-0000-1000-8000-00805f9b34fb}_Dev_VID&02046d_PID&b034_REV&0007#a&1&0#{4d1e55b2}", true)]
+    [InlineData(@"\\?\HID#VID_1532&PID_0084&MI_02#8&1#{4d1e55b2}", false)]
+    public void Logitech_paths_are_recognized_over_usb_and_bluetooth(string path, bool logitech) =>
+        Assert.Equal(logitech, HidTransport.IsLogitech(path));
 }
