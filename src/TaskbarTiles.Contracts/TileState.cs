@@ -2,7 +2,8 @@ namespace TaskbarTiles.Contracts;
 
 public enum TileColor { Neutral, Accent, Ok, Warn, Bad }
 
-/// <summary>Glyph names: play, pause, previous, next, check, cancel, warning, refresh, music, info, sync, cloud, clock.</summary>
+/// <summary>Glyph names: play, pause, previous, next, check, cancel, warning, refresh, music, info, sync, cloud, clock,
+/// mouse, keyboard, headphones, battery-0..battery-10, battery-charging-0..battery-charging-10.</summary>
 public sealed record TileIcon(string Glyph, TileColor Color = TileColor.Neutral);
 
 public sealed record TileButton(string Id, string Glyph, string? Tooltip = null, bool Enabled = true);
