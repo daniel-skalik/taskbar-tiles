@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TaskbarTiles.Host.Plugins;
 
 namespace TaskbarTiles.Tests;
 
@@ -24,6 +25,21 @@ public class TileKindTests
 
         Assert.Equal("""{"opts":{"a":5}}""", kind.SettingsFor(Json("""{ "opts": { "a": 5 } }""")).GetRawText());
     }
+
+    [Fact]
+    public void Tile_json_width_is_optional()
+    {
+        Assert.Null(TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json").Width);
+        Assert.Equal(268, TileJson.Parse("""{ "name": "A", "connector": "script", "width": 268 }""", "t.json").Width);
+    }
+
+    [Theory]
+    [InlineData("\"wide\"")]
+    [InlineData("10")]
+    [InlineData("1000")]
+    public void Tile_json_width_outside_the_range_breaks_the_kind(string width) =>
+        Assert.Equal("t.json: \"width\" must be a number from 48 to 640.",
+            TileJson.Parse($$"""{ "name": "A", "connector": "script", "width": {{width}} }""", "t.json").Error);
 
     [Fact]
     public void No_instance_settings_means_the_kinds_settings() =>

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.IO;
 using TaskbarTiles.Host.Plugins;
 using TaskbarTiles.Plugins.Script;
@@ -15,7 +16,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "media", "ping", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "claude", "media", "ping", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -98,5 +99,72 @@ public class BundledKindsTests
         Assert.Empty(outcome.Warnings);
         Assert.Equal(4, outcome.Value!.Rows.Count);
         Assert.Equal("ping", Assert.Single(outcome.Value.Actions).Id);
+    }
+
+    const string AgentsSample = """
+        [
+          { "id": "a8", "cwd": "D:\\s1", "kind": "background", "name": "Generator", "state": "blocked" },
+          { "pid": 1, "cwd": "D:\\tiles", "kind": "interactive", "name": "Widget", "status": "busy" },
+          { "pid": 2, "cwd": "D:\\s1", "kind": "interactive", "name": "Bundles", "status": "idle" },
+          { "pid": 3, "cwd": "D:\\burner", "kind": "interactive", "status": "idle" }
+        ]
+        """;
+
+    /// <summary>Runs claude.ps1 with "claude" set to a stub that prints <paramref name="agentsJson"/> (or fails when null).</summary>
+    static async Task<ScriptResult> RunClaude(string hook, string? agentsJson)
+    {
+        using var stub = new TempDir();
+        File.WriteAllText(stub.File("agents.json"), agentsJson ?? "");
+        File.WriteAllText(stub.File("claude.cmd"), agentsJson is null ? "@exit /b 3\r\n" : "@type \"%~dp0agents.json\"\r\n");
+        var settings = JsonSerializer.Serialize(new { claude = stub.File("claude.cmd") });
+        return await RunBundled("claude", "claude.ps1", hook, settings);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_counts_sessions_and_warns_when_one_is_blocked()
+    {
+        var outcome = HookResults.ForTile("interval", await RunClaude("interval", AgentsSample), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("Claude", outcome.Value!.Title);
+        Assert.Equal("1 blocked · 1 working · 2 idle", outcome.Value.Subtitle);
+        Assert.Equal("warning", outcome.Value.Icon!.Glyph);
+        Assert.Equal("Generator (blocked)\nWidget (working)", outcome.Value.Tooltip);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_with_no_sessions_says_so()
+    {
+        var outcome = HookResults.ForTile("interval", await RunClaude("interval", "[]"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal("No sessions", outcome.Value!.Subtitle);
+        Assert.Equal("check", outcome.Value.Icon!.Glyph);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_popup_lists_blocked_then_working_then_idle_sessions()
+    {
+        var outcome = HookResults.ForFlyout("flyout", await RunClaude("flyout", AgentsSample), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal(new[] { "Generator", "Widget", "Bundles", "burner" }, outcome.Value!.Rows.Select(r => r.Text)); // unnamed: folder name
+        Assert.Equal(new[] { "blocked", "working", "idle", "idle" }, outcome.Value.Rows.Select(r => r.Value));
+        Assert.Equal("open", Assert.Single(outcome.Value.Actions).Id);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_failing_puts_the_tile_in_the_error_look()
+    {
+        var outcome = HookResults.ForTile("interval", await RunClaude("interval", null), TimeSpan.FromSeconds(30));
+
+        Assert.True(outcome.Failed);
+        Assert.Contains("exited with code 3", outcome.ErrorDetails);
     }
 }

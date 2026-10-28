@@ -17,7 +17,8 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// <summary>
 /// One folder under tiles\: a tile kind. Id is the folder name. Error is set when the kind is broken (bad tile.json, a DLL
 /// that does not load, a connector nobody in the folder declares); its tiles then show that error and other kinds keep
-/// working. Stamp changes when tile.json or a script in the folder changes; DllStamp when a DLL on disk does.
+/// working. Stamp changes when tile.json or a script in the folder changes; DllStamp when a DLL on disk does. Width is
+/// tile.json's "width", which replaces the connector's width when set.
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -29,7 +30,8 @@ public sealed record TileKind(
     KindDlls Dlls,
     string? Error,
     string Stamp,
-    string DllStamp)
+    string DllStamp,
+    double? Width = null)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -70,8 +72,12 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 }
 
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
-public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error)
+public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
+    double? Width = null)
 {
+    /// <summary>The range "width" accepts, in device-independent pixels.</summary>
+    public const double MinWidth = 48, MaxWidth = 640;
+
     static readonly JsonDocumentOptions Options = new()
     {
         CommentHandling = JsonCommentHandling.Skip,
@@ -118,7 +124,15 @@ public sealed record TileJson(string Name, string Description, string Connector,
             else if (s.ValueKind == JsonValueKind.Object) settings = s.Clone();
             else return Broken($"{shownPath}: \"settings\" must be an object.");
 
-            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null);
+            double? width = null;
+            if (root.TryGetProperty("width", out var w))
+            {
+                if (w.ValueKind != JsonValueKind.Number || w.GetDouble() is < MinWidth or > MaxWidth)
+                    return Broken($"{shownPath}: \"width\" must be a number from {MinWidth} to {MaxWidth}.");
+                width = w.GetDouble();
+            }
+
+            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width);
         }
     }
 

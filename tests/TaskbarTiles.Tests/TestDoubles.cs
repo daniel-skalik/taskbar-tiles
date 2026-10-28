@@ -167,9 +167,10 @@ public static class TestKinds
     public static KindTable Of(params TileKind[] kinds) => new(TilesDir,
         kinds.ToDictionary(k => k.Id, StringComparer.OrdinalIgnoreCase), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
-    public static TileKind Script(string id, string settingsJson = "{}", string stamp = "1", string? name = null, string description = "") =>
+    public static TileKind Script(string id, string settingsJson = "{}", string stamp = "1", string? name = null, string description = "",
+        double? width = null) =>
         new(id, System.IO.Path.Combine(TilesDir, id), name ?? id, description, TileKind.ScriptConnectorId, Json(settingsJson),
-            KindDlls.None, null, stamp, "");
+            KindDlls.None, null, stamp, "", width);
 
     /// <summary>A kind whose DLL declares connector <paramref name="id"/> as <paramref name="connectorType"/>.</summary>
     public static TileKind Plugin(string id, Type connectorType, double width = 100, string settingsJson = "{}") =>

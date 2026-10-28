@@ -330,10 +330,10 @@ public sealed class HostController(
         // The runtime calls Create on the thread pool (plugin constructors are plugin code) and again for every restart.
         // A throwing constructor shows the error look and is retried with backoff.
         if (kind.Plugin is { } plugin)
-            return new(plugin.Id, plugin.Width, () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint);
+            return new(plugin.Id, kind.Width ?? plugin.Width, () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint);
 
         var connectorId = kind.Connector; // "script": built into the app
-        var width = catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth;
+        var width = kind.Width ?? (catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth);
         return new(connectorId, width, () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId), settings,
             kind.Directory, fingerprint);
     }
