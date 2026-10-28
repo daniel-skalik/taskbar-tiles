@@ -1,0 +1,12 @@
+{
+  "name": "Claude sessions",
+  "description": "Which Claude Code sessions are working, idle or blocked",
+  "connector": "script",
+  "settings": {
+    "hooks": {
+      "interval":    { "every": "5s", "run": "claude.ps1" },
+      "flyout":      { "run": "claude.ps1" },
+      "action:open": { "run": "claude.ps1" }
+    }
+  }
+}

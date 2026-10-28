@@ -8,7 +8,7 @@ Script tiles are described in [script-connectors.md](script-connectors.md).
 
 Double-click `install.cmd` in the repository. On success its window closes and the app starts; on failure it stays open so you can read the error. (From a terminal: `install.cmd`, or `powershell -ExecutionPolicy Bypass -File tools\install.ps1`.)
 
-It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds `tiles\uptime`, `tiles\ping` and `tiles\media` with the new copies, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
+It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds `tiles\uptime`, `tiles\ping`, `tiles\media` and `tiles\claude` with the new copies, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
 
 ## Tiles and displays
 
@@ -46,6 +46,7 @@ tiles\
   uptime\  tile.json, uptime.ps1              bundled: replaced on install
   ping\    tile.json, ping.ps1                bundled: replaced on install
   media\   tile.json, TaskbarTiles.Plugins.Media.dll   bundled: replaced on install
+  claude\  tile.json, claude.ps1              bundled: replaced on install
   meeting\ tile.json, urgent.ps1              yours: never touched
 ```
 
