@@ -177,6 +177,22 @@ public class HostControllerTests
     }
 
     [Fact]
+    public async Task A_kinds_width_replaces_the_connectors()
+    {
+        var kinds = TestKinds.Of(TestKinds.Script("wide", width: 268), TestKinds.Script("plain"));
+        var cfg = Parse("""{ "tiles": { "w": { "kind": "wide" }, "p": { "kind": "plain" } }, "displays": { "primary": { "slots": ["w", "p"] } } }""");
+        var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
+        var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
+            _ => new CollectingLog(), id => new FakeBar(id), configDirectory: @"C:\cfg", kinds: () => kinds);
+
+        host.Start();
+
+        Assert.Equal(268, host.Runtimes["w"].Width);
+        Assert.Equal(PluginLoader.DefaultTileWidth, host.Runtimes["p"].Width);
+        await host.DisposeAsync();
+    }
+
+    [Fact]
     public async Task Connectors_are_built_off_the_calling_thread_and_get_effective_settings_and_folders()
     {
         var kinds = TestKinds.Of(TestKinds.Plugin("cap", typeof(CapturingConnector), settingsJson: """{ "a": 1, "b": 2 }"""));

@@ -17,7 +17,7 @@ Rejected: reading `~/.claude/sessions/*.json` (undocumented, stale files stay be
 
 ## Kind
 
-Bundled script kind `tiles\claude\` (`tile.json`, `claude.ps1`), replaced on install like `uptime` and `ping`.
+Bundled script kind `tiles\claude\` (`tile.json`, `claude.ps1`), replaced on install like `uptime` and `ping`. It is 268 wide like the media tile: `tile.json` gains an optional `"width"` (48 to 640) that replaces the connector's width.
 
 - `interval` every 5 s prints the tile:
   - title `Claude`; subtitle the counts, most urgent first, e.g. `1 blocked · 2 working · 4 idle` (zero counts left out; the tile cuts long text at the end);

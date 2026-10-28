@@ -57,6 +57,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
   "name": "Ping a host",                    // shown in the + / stack picker (required)
   "description": "Pings a host every 15 s", // subtitle in the picker
   "connector": "script",                    // "script", or a connector id declared by a DLL in this folder (required)
+  "width": 132,                             // tile width, 48 to 640 (default: the connector's; 132 for scripts, 268 for media)
   "settings": {                             // defaults for every tile of this kind
     "host": "1.1.1.1",
     "hooks": {

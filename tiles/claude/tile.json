@@ -2,6 +2,7 @@
   "name": "Claude sessions",
   "description": "Which Claude Code sessions are working, idle or blocked",
   "connector": "script",
+  "width": 268,
   "settings": {
     "hooks": {
       "interval":    { "every": "5s", "run": "claude.ps1" },
