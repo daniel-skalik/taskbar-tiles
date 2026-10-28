@@ -4,7 +4,7 @@ The built-in `script` connector drives a tile from scripts. A script tile kind i
 
 ## Quick start
 
-Three script kinds come with the app: `tiles\uptime` (clock and uptime), `tiles\ping` (ping a host, with a button and a popup) and `tiles\claude` (which Claude Code sessions are working, idle or blocked, from `claude agents --json`; its popup lists them, and **Open Claude** brings the desktop app forward; set `"claude"` to the path of `claude.exe` when it is neither on `PATH` nor in `%USERPROFILE%\.local\bin`). Install replaces them, so to change one, copy its folder under a new name first. To make your own:
+Three script kinds come with the app: `tiles\uptime` (clock and uptime), `tiles\ping` (ping a host, with a button and a popup) and `tiles\claude` (which Claude Code sessions are working, idle or blocked, from `claude agents --json`, under the Claude app's logo with a status dot; its popup lists them, and **Open Claude** brings the desktop app forward; set `"claude"` to the path of `claude.exe` when it is neither on `PATH` nor in `%USERPROFILE%\.local\bin`). Install replaces them, so to change one, copy its folder under a new name first. To make your own:
 
 1. Create a folder, e.g. `%LOCALAPPDATA%\TaskbarTiles\tiles\meeting\`, and put your script in it (`urgent.ps1`).
 2. Next to it, write `tile.json`:

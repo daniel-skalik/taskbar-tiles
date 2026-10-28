@@ -23,7 +23,8 @@ Bundled script kind `tiles\claude\` (`tile.json`, `claude.ps1`), replaced on ins
   - title `Claude`; subtitle the counts, most urgent first, e.g. `1 blocked · 2 working · 4 idle` (zero counts left out; the tile cuts long text at the end);
   - icon `warning`/`warn` when any session is blocked, else `sync`/`accent` when any is busy, else `check`/`ok`;
   - no sessions: subtitle `No sessions`, icon `check`/`neutral`;
-  - tooltip: names of working and blocked sessions.
+  - tooltip: names of working and blocked sessions;
+  - image: the Claude desktop app's logo from its installed package (`assets\Square44x44Logo.targetsize-64_altform-unplated.png`, path cached in `%TEMP%`), with a status dot drawn on it (amber blocked, blue working, none otherwise); the popup shows the logo without a dot. Without the package the glyph icon above shows.
 - `flyout` prints the popup: title `Claude sessions`, one row per session (name, state shown as `working`/`idle`/`blocked`/the raw value, dot `accent`/`neutral`/`warn`/`neutral`), blocked then working then the rest; primary action `open`, label `Open Claude`.
 - `action:open` brings the Claude desktop app to the front: the Start-menu app named `Claude` is launched through `shell:AppsFolder\<AppID>`, which focuses a running instance. Prints nothing.
 
