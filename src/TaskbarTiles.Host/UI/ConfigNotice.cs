@@ -24,6 +24,7 @@ public static class ConfigNotice
         "Exit Taskbar Tiles and start it again to load them. Click to show the folder in Explorer.";
 
     public const string SaveFailedTitle = "Layout not saved";
+    public const string SettingsNotSavedTitle = "Settings not saved";
 
     /// <summary>Why an edit-mode or menu change was not written; config.json is left as it was.</summary>
     public static string SaveFailedBody(ConfigError error) =>

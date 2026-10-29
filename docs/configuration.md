@@ -66,6 +66,9 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
   "connector": "script",                    // "script", or a connector id declared by a DLL in this folder (required)
   "width": 132,                             // tile width, 48 to 640 (default: the connector's; 132 for scripts, 268 for media)
   "compact": true,                          // false: its tiles never shrink to an icon when space runs out (default true)
+  "fields": [                               // inputs of the tile's Settings… dialog (optional, see "Tile settings")
+    { "key": "host", "label": "Host", "type": "text", "help": "Name or IP address to ping." }
+  ],
   "settings": {                             // defaults for every tile of this kind
     "host": "1.1.1.1",
     "hooks": {
@@ -83,6 +86,17 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 - **Edits apply by themselves:** saving `tile.json` or a script (`.ps1`, `.psm1`, `.py`, `.cmd` or `.bat` directly in the kind folder) restarts only the tiles of that kind. Files a script writes into its own folder (logs, caches) do not restart it.
 - **Mistakes:** a `tile.json` that is not valid JSON or lacks `name` or `connector`, a DLL that does not load, two DLLs declaring the same connector id, or a `connector` no DLL in the folder declares makes the kind broken: its tiles show the error (naming the file, and the line for JSON errors), it is written to `logs\host.log`, and every other kind keeps working. `config.json` is rejected only for its own mistakes: a tile naming a kind with no folder in `tiles\` (or a folder without `tile.json`), `hooks` in a tile's settings, a tile without `kind`, or the old form `{ "connector": … }` (tiles from before tile folders: rewrite them as `{ "kind": "<folder>" }`).
 - A folder in `tiles\` without `tile.json` is not a kind.
+
+### Tile settings
+
+Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) and `battery` (Read every) do.
+
+- Each field edits one top-level settings key; its default is the kind's `settings` value for that key.
+  - `"key"`, `"label"` and `"type"` are required; `"help"` is shown under the input.
+  - Types: `text`; `number` (optional `"min"`/`"max"` numbers); `toggle` (true or false); `choice` (`"choices": ["a", "b"]`); `duration` (written like `"60s"`, optional `"min"`/`"max"` such as `"10s"` and `"1h"`).
+  - A field may not edit `hooks`, and each key appears once. A list with a mistake makes the kind broken, with the message naming the field.
+- The dialog opens above the tile. A text, number or duration box holds the tile's own value; empty means the kind's default, shown dim behind it. A value that does not fit shows why under its field, and **Save** stays off. **Reset to defaults** empties every box. Esc or a click elsewhere closes it without saving.
+- **Save** writes `tiles.<id>.settings` in `config.json`, the same way edit mode saves (see "Saving rewrites config.json"). A value equal to the default, or empty, removes its key, so the tile follows the kind's default again; other keys stay. The tile restarts with the new settings.
 
 ### Device batteries
 

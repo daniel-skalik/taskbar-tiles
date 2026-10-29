@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Layout;
@@ -67,7 +68,22 @@ public interface ILayoutEditor
     /// </summary>
     ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position,
         BarSide fromSide = BarSide.Left, BarSide toSide = BarSide.Left);
+
+    /// <summary>What the settings dialog shows for the tile; null when its kind declares no fields (or is missing or broken).</summary>
+    TileSettingsForm? SettingsFor(string tileId);
+
+    /// <summary>
+    /// Saves the dialog's values (null: use the default) into tiles[tileId].settings (<see cref="ConfigJson.SetTileSettings"/>);
+    /// the tile restarts with them. Returns null when saved, otherwise why nothing was saved.
+    /// </summary>
+    ConfigError? SaveSettings(string tileId, IReadOnlyDictionary<string, JsonNode?> values);
 }
+
+/// <summary>
+/// The settings dialog's content for one tile: its kind's name and fields, the kind's settings (the defaults) and the
+/// tile's own settings from config.json.
+/// </summary>
+public sealed record TileSettingsForm(string TileId, string KindName, IReadOnlyList<TileField> Fields, JsonElement Defaults, JsonElement Own);
 
 /// <summary>
 /// Keeps runtimes and bars in sync with config, the tile kinds and connected displays.
@@ -197,6 +213,21 @@ public sealed class HostController(
     }
 
     KindTable Kinds() => kinds?.Invoke() ?? KindTable.Empty;
+
+    public TileSettingsForm? SettingsFor(string tileId)
+    {
+        if (!config().Tiles.TryGetValue(tileId, out var tile)) return null;
+        if (Kinds().Find(tile.Kind) is not { Error: null, Fields: { Count: > 0 } fields } kind) return null;
+        return new TileSettingsForm(tileId, kind.Name, fields, kind.Settings, tile.Settings);
+    }
+
+    public ConfigError? SaveSettings(string tileId, IReadOnlyDictionary<string, JsonNode?> values)
+    {
+        if (_disposed) return new ConfigError("Taskbar Tiles is shutting down.");
+        if (writer is null) return new ConfigError("This host cannot save config.json.");
+        if (SettingsFor(tileId) is not { } form) return new ConfigError($"Tile '{tileId}' has no settings to save.");
+        return Saved($"the settings of tile '{tileId}'", writer.Save(root => ConfigJson.SetTileSettings(root, tileId, values, form.Defaults)));
+    }
 
     public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null, BarSide side = BarSide.Left)
     {

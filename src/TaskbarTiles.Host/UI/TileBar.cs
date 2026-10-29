@@ -245,8 +245,9 @@ public sealed class TileBar : Window, ITileBarView
 
     void FillSlotMenu(ContextMenu menu, SlotView view)
     {
-        var state = new SlotMenuState(IsStack: view.Slot.IsStack, RotationPaused: view.Rotation?.Paused == true);
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
+        var state = new SlotMenuState(IsStack: view.Slot.IsStack, RotationPaused: view.Rotation?.Paused == true,
+            HasSettings: SettingsFor(view.Slot.Members[member].TileId) is not null);
         menu.Items.Clear();
         foreach (var entry in TileMenu.Entries(state, _editing, Side)) menu.Items.Add(Item(entry, view, member));
     }
@@ -268,7 +269,12 @@ public sealed class TileBar : Window, ITileBarView
         if (entry.IsSeparator) return new Separator();
         // Tile titles may hold "_", which a menu header would take as an access key marker.
         var item = new MenuItem { Header = entry.Header.Replace("_", "__"), IsEnabled = entry.Enabled };
-        if (entry.Tile is { } command && view is not null)
+        if (entry.Tile == TileCommand.Settings && view is not null)
+        {
+            var tileId = view.Slot.Members[member].TileId;
+            item.Click += (_, _) => ShowSettings(view, tileId);
+        }
+        else if (entry.Tile is { } command && view is not null)
         {
             var runtime = view.Slot.Members[member];
             item.Click += async (_, _) => await _commands.ExecuteAsync(runtime, command); // never throws
@@ -405,6 +411,39 @@ public sealed class TileBar : Window, ITileBarView
             _ => false,
         });
         return from < 0 || target < 0 ? layout : LayoutEdits.StackInto(layout, from, target);
+    }
+
+    TileSettingsForm? SettingsFor(string tileId)
+    {
+        try { return _editor.SettingsFor(tileId); }
+        catch (Exception ex)
+        {
+            _log.Error($"Could not read the settings of tile '{tileId}'", ex);
+            return null;
+        }
+    }
+
+    /// <summary>"Settings…": the tile's fields in the popup frame above it; Save writes them and closes it.</summary>
+    void ShowSettings(SlotView view, string tileId)
+    {
+        if (SettingsFor(tileId) is not { } form) return;
+        var panel = SettingsPanel.Build(form, values =>
+        {
+            ConfigError? error;
+            try { error = _editor.SaveSettings(tileId, values); }
+            catch (Exception ex)
+            {
+                _log.Error($"Saving the settings of tile '{tileId}' failed", ex);
+                error = new ConfigError("The settings could not be saved: " + ex.Message);
+            }
+            if (error is null) return true;
+            _log.Warn($"Settings not saved: {error}");
+            try { NotificationWindow.Show(ConfigNotice.SettingsNotSavedTitle, ConfigNotice.SaveFailedBody(error), _light ?? false, _commands.OpenConfig, _log); }
+            catch (Exception ex) { _log.Error("Could not show the save notice", ex); }
+            return false;
+        }, FlyoutWindow.CloseOpen);
+        // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
+        FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
     }
 
     IReadOnlyList<GalleryItem>? Gallery()

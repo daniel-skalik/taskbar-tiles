@@ -3,5 +3,8 @@
   "description": "Now playing in an app's media controls (Spotify by default)",
   "connector": "media",
   "compact": false,
+  "fields": [
+    { "key": "app", "label": "App", "type": "text", "help": "The app whose media controls the tile follows, matched by name (for example Spotify or Chrome)." }
+  ],
   "settings": { "app": "Spotify" }
 }

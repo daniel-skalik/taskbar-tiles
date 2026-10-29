@@ -64,6 +64,27 @@ public static class ConfigJson
     }
 
     /// <summary>
+    /// The settings dialog's save: sets tiles[id].settings[key] for each value, or removes the key when the value is null
+    /// (empty input) or equals <paramref name="defaults"/>[key], so the tile follows the kind's default again. Other keys
+    /// of the tile and of its settings stay; settings left empty are removed. Throws InvalidOperationException when the
+    /// tile is not defined.
+    /// </summary>
+    public static void SetTileSettings(JsonObject root, string id, IReadOnlyDictionary<string, JsonNode?> values, JsonElement defaults)
+    {
+        if (root["tiles"] is not JsonObject tiles || tiles[id] is not JsonObject tile)
+            throw new InvalidOperationException($"Tile '{id}' is not defined in config.json any more.");
+        var settings = tile["settings"] as JsonObject ?? new JsonObject();
+        foreach (var (key, value) in values)
+        {
+            var fallback = defaults.ValueKind == JsonValueKind.Object && defaults.TryGetProperty(key, out var d) ? JsonNode.Parse(d.GetRawText()) : null;
+            if (value is null || (fallback is not null && JsonNode.DeepEquals(value, fallback))) settings.Remove(key);
+            else settings[key] = value.DeepClone();
+        }
+        if (settings.Count > 0) tile["settings"] = settings;
+        else tile.Remove("settings");
+    }
+
+    /// <summary>
     /// Deletes tiles[id] for every candidate no display entry places (including "*" and entries of displays not connected
     /// now). Call it after the layout change, with the ids that change took off a display. Placement is read with
     /// ConfigParser, so every slot form counts; a tree that does not parse is left alone (saving refuses it anyway).
