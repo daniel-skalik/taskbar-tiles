@@ -112,6 +112,45 @@ public static class SettingsPanel
                     stack.Children.Add(combo);
                     break;
                 }
+                case FieldType.Pick:
+                {
+                    // Nothing saved yet (the default) shows every value ticked; the first change saves the ticked list.
+                    var picks = new StackPanel();
+                    var boxes = new List<CheckBox>();
+                    var saved = own is { ValueKind: JsonValueKind.Array } list
+                        ? list.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToHashSet(StringComparer.CurrentCultureIgnoreCase)
+                        : null;
+                    var isDefault = saved is null;
+                    var setting = false;
+                    foreach (var choice in field.Choices ?? [])
+                    {
+                        var box = new CheckBox { Content = choice, IsChecked = saved?.Contains(choice) ?? true, Margin = new Thickness(0, 2, 0, 2) };
+                        box.SetResourceReference(Control.ForegroundProperty, "TileForeground");
+                        RoutedEventHandler changed = (_, _) =>
+                        {
+                            if (setting) return;
+                            isDefault = false;
+                            Changed?.Invoke();
+                        };
+                        box.Checked += changed;
+                        box.Unchecked += changed;
+                        boxes.Add(box);
+                        picks.Children.Add(box);
+                    }
+                    if (boxes.Count == 0) picks.Children.Add(FlyoutWindow.Text("Nothing to choose from yet.", 12, FontWeights.Normal, "TileDim"));
+                    Input = () => isDefault ? "" : new JsonArray(boxes.Where(b => b.IsChecked == true)
+                        .Select(b => (JsonNode?)JsonValue.Create((string)b.Content)).ToArray()).ToJsonString();
+                    _set = _ =>
+                    {
+                        setting = true;
+                        foreach (var box in boxes) box.IsChecked = true;
+                        setting = false;
+                        isDefault = true;
+                        Changed?.Invoke();
+                    };
+                    stack.Children.Add(picks);
+                    break;
+                }
                 default:
                 {
                     var box = new TextBox { Text = current, Padding = new Thickness(6, 4, 6, 4), BorderThickness = new Thickness(1) };
@@ -169,7 +208,7 @@ public static class SettingsPanel
             return error is null;
         }
 
-        /// <summary>Back to the kind's default: an empty box, or the default's state for a toggle and a choice.</summary>
+        /// <summary>Back to the kind's default: an empty box, the default's state for a toggle and a choice, every pick ticked.</summary>
         public void Reset() => _set(Field.Type is FieldType.Toggle or FieldType.Choice ? _default : "");
     }
 }

@@ -89,18 +89,18 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 
 ### Tile settings
 
-Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) and `battery` (Read every) do.
+Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) and `battery` (Read every, Devices) do.
 
 - Each field edits one top-level settings key; its default is the kind's `settings` value for that key.
   - `"key"`, `"label"` and `"type"` are required; `"help"` is shown under the input.
-  - Types: `text`; `number` (optional `"min"`/`"max"` numbers); `toggle` (true or false); `choice` (`"choices": ["a", "b"]`); `duration` (written like `"60s"`, optional `"min"`/`"max"` such as `"10s"` and `"1h"`).
+  - Types: `text`; `number` (optional `"min"`/`"max"` numbers); `toggle` (true or false); `choice` (`"choices": ["a", "b"]`); `duration` (written like `"60s"`, optional `"min"`/`"max"` such as `"10s"` and `"1h"`); `pick` (a checkbox per value, saved as a list of the ticked ones; the values are the running tile's own, e.g. its devices, any fixed `"choices"`, and those saved earlier; with nothing saved every box is ticked).
   - A field may not edit `hooks`, and each key appears once. A list with a mistake makes the kind broken, with the message naming the field.
 - The dialog opens above the tile. A text, number or duration box holds the tile's own value; empty means the kind's default, shown dim behind it. A value that does not fit shows why under its field, and **Save** stays off. **Reset to defaults** empties every box. Esc or a click elsewhere closes it without saving.
 - **Save** writes `tiles.<id>.settings` in `config.json`, the same way edit mode saves (see "Saving rewrites config.json"). A value equal to the default, or empty, removes its key, so the tile follows the kind's default again; other keys stay. The tile restarts with the new settings.
 
 ### Device batteries
 
-The bundled `battery` kind shows the lowest battery of your wireless devices on the tile and every device in its popup, with charging and asleep states. It reads Bluetooth devices from Windows (the level shown in Settings › Bluetooth & devices) and Logitech devices on a Bolt or Unifying receiver, or connected directly over USB or Bluetooth, over Logitech's HID++ protocol (alongside Logi Options+). Setting `"interval"` (default `"60s"`, `10s` to `1h`) is how often it reads; right-click → **Refresh now** reads at once. A Logitech device that falls asleep keeps its last level, marked "asleep". Other vendors' receivers (Razer, Corsair, …) only report through their own apps and are not shown.
+The bundled `battery` kind shows the lowest battery of your wireless devices on the tile and every device in its popup, with charging and asleep states. It reads Bluetooth devices from Windows (the level shown in Settings › Bluetooth & devices) and Logitech devices on a Bolt or Unifying receiver, or connected directly over USB or Bluetooth, over Logitech's HID++ protocol (alongside Logi Options+). Setting `"interval"` (default `"60s"`, `10s` to `1h`) is how often it reads. Setting `"show"` lists the device names to show (e.g. `["MX Master 3S", "WH-1000XM5"]`, ignoring case); others, and devices connected later, are hidden. Without it every device shows. **Settings…** → Devices ticks them from the devices the tile has seen since it started; right-click → **Refresh now** reads at once. A Logitech device that falls asleep keeps its last level, marked "asleep". Other vendors' receivers (Razer, Corsair, …) only report through their own apps and are not shown.
 
 ## Stacks
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -9,6 +10,8 @@ using System.Windows.Threading;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Layout;
+using TaskbarTiles.Host.Plugins;
+using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.Taskbar;
 using static TaskbarTiles.Host.Taskbar.NativeMethods;
 
@@ -271,8 +274,8 @@ public sealed class TileBar : Window, ITileBarView
         var item = new MenuItem { Header = entry.Header.Replace("_", "__"), IsEnabled = entry.Enabled };
         if (entry.Tile == TileCommand.Settings && view is not null)
         {
-            var tileId = view.Slot.Members[member].TileId;
-            item.Click += (_, _) => ShowSettings(view, tileId);
+            var runtime = view.Slot.Members[member];
+            item.Click += (_, _) => ShowSettings(view, runtime);
         }
         else if (entry.Tile is { } command && view is not null)
         {
@@ -424,9 +427,17 @@ public sealed class TileBar : Window, ITileBarView
     }
 
     /// <summary>"Settings…": the tile's fields in the popup frame above it; Save writes them and closes it.</summary>
-    void ShowSettings(SlotView view, string tileId)
+    async void ShowSettings(SlotView view, TileRuntime runtime)
     {
+        var tileId = runtime.TileId;
         if (SettingsFor(tileId) is not { } form) return;
+        // A pick field offers what the running tile knows (e.g. its devices) plus what is saved.
+        var fields = new List<TileField>();
+        foreach (var field in form.Fields)
+            fields.Add(field.Type == FieldType.Pick
+                ? field with { Choices = TileFields.PickChoices(field, await runtime.GetChoicesAsync(field.Key), OwnValue(form, field.Key)) }
+                : field);
+        form = form with { Fields = fields };
         var panel = SettingsPanel.Build(form, values =>
         {
             ConfigError? error;
@@ -445,6 +456,9 @@ public sealed class TileBar : Window, ITileBarView
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
         FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
     }
+
+    static JsonElement? OwnValue(TileSettingsForm form, string key) =>
+        form.Own.ValueKind == JsonValueKind.Object && form.Own.TryGetProperty(key, out var value) ? value : null;
 
     IReadOnlyList<GalleryItem>? Gallery()
     {

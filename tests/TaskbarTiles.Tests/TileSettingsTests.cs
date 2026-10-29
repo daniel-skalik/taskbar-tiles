@@ -1,9 +1,11 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TaskbarTiles.Contracts;
 using TaskbarTiles.Host;
 using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Plugins;
+using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.UI;
 
 namespace TaskbarTiles.Tests;
@@ -40,7 +42,8 @@ public class TileSettingsTests
     [InlineData("""[ { "key": "hooks", "label": "A", "type": "text" } ]""", "t.json: field 1 cannot edit \"hooks\".")]
     [InlineData("""[ { "key": "a", "label": "A", "type": "text" }, { "key": "a", "label": "B", "type": "text" } ]""", "t.json: field 2 repeats the key \"a\".")]
     [InlineData("""[ { "key": "a", "type": "text" } ]""", "t.json: field 1 needs a \"label\".")]
-    [InlineData("""[ { "key": "a", "label": "A", "type": "color" } ]""", "t.json: field 1 needs a \"type\": text, number, toggle, choice or duration.")]
+    [InlineData("""[ { "key": "a", "label": "A", "type": "color" } ]""", "t.json: field 1 needs a \"type\": text, number, toggle, choice, duration or pick.")]
+    [InlineData("""[ { "key": "a", "label": "A", "type": "pick", "choices": "x" } ]""", "t.json: field 1 has \"choices\" that are not a list of strings.")]
     [InlineData("""[ { "key": "a", "label": "A", "type": "number", "min": "1" } ]""", "t.json: field 1 has a \"min\" that is not a number.")]
     [InlineData("""[ { "key": "a", "label": "A", "type": "duration", "max": "soon" } ]""", "t.json: field 1 has a \"max\" that is not a duration such as \"1h\".")]
     [InlineData("""[ { "key": "a", "label": "A", "type": "choice", "choices": [] } ]""", "t.json: field 1 needs \"choices\": a list of strings.")]
@@ -183,13 +186,68 @@ public class TileSettingsTests
 
         Assert.Equal(new[] { "host" }, kinds.Kinds["ping"].Fields!.Select(f => f.Key));
         Assert.Equal(new[] { "app" }, kinds.Kinds["media"].Fields!.Select(f => f.Key));
-        Assert.Equal(new[] { "interval" }, kinds.Kinds["battery"].Fields!.Select(f => f.Key));
+        Assert.Equal(new[] { "interval", "show" }, kinds.Kinds["battery"].Fields!.Select(f => f.Key));
         Assert.Empty(kinds.Kinds["uptime"].Fields!);
         foreach (var kind in kinds.Kinds.Values)
-            foreach (var field in kind.Fields!)
+            foreach (var field in kind.Fields!.Where(f => f.Type != FieldType.Pick)) // a pick's default is "all"
             {
                 Assert.True(kind.Settings.TryGetProperty(field.Key, out var value), $"{kind.Id}: no default for {field.Key}");
                 Assert.Null(TileFields.Check(field, TileFields.Display(value)).Error);
             }
+    }
+
+    static readonly TileField Devices = new("show", "Devices", FieldType.Pick, Choices: ["Keyboard"]);
+
+    [Fact]
+    public void A_pick_parses_with_or_without_fixed_choices()
+    {
+        var (fields, error) = Parse("""[ { "key": "show", "label": "Devices", "type": "pick" }, { "key": "b", "label": "B", "type": "pick", "choices": ["x"] } ]""");
+
+        Assert.Null(error);
+        Assert.Equal((FieldType.Pick, 0), (fields[0].Type, fields[0].Choices!.Count));
+        Assert.Equal(new[] { "x" }, fields[1].Choices);
+    }
+
+    [Fact]
+    public void A_pick_saves_the_ticked_list()
+    {
+        Assert.Equal("""["Mouse","Buds"]""", TileFields.Check(Devices, """["Mouse","Buds"]""").Value!.ToJsonString());
+        Assert.Equal("[]", TileFields.Check(Devices, "[]").Value!.ToJsonString()); // nothing ticked is a choice too
+        Assert.Equal((null, null), TileFields.Check(Devices, ""));
+        Assert.NotNull(TileFields.Check(Devices, "Mouse").Error);
+        Assert.NotNull(TileFields.Check(Devices, "[1]").Error);
+    }
+
+    [Fact]
+    public void A_pick_offers_live_then_fixed_then_saved_values_once()
+    {
+        var choices = TileFields.PickChoices(Devices, ["Mouse", "keyboard", " "], Json("""["Old headset", "mouse"]"""));
+
+        Assert.Equal(new[] { "Mouse", "keyboard", "Old headset" }, choices);
+        Assert.Equal(new[] { "Keyboard" }, TileFields.PickChoices(Devices, [], null));
+    }
+
+    sealed class Choosing(Func<string, IReadOnlyList<string>> choices) : ITileConnector, ITileChoices
+    {
+        public Task StartAsync(ITileContext ctx, CancellationToken ct) => Task.CompletedTask;
+        public Task OnActionAsync(string actionId, CancellationToken ct) => Task.CompletedTask;
+        public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => Task.FromResult<FlyoutState?>(null);
+        public Task<IReadOnlyList<string>> GetChoicesAsync(string key, CancellationToken ct) => Task.FromResult(choices(key));
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    static async Task<TileRuntime> Running(ITileConnector connector)
+    {
+        var runtime = new TileRuntime("t", "fake", 132, () => connector, Json("{}"), new ImmediateDispatcher(), new CollectingLog());
+        await runtime.StartAsync();
+        return runtime;
+    }
+
+    [Fact]
+    public async Task The_runtime_asks_the_connector_for_choices_and_never_throws()
+    {
+        Assert.Equal(new[] { "Mouse" }, await (await Running(new Choosing(k => k == "show" ? ["Mouse", ""] : []))).GetChoicesAsync("show"));
+        Assert.Empty(await (await Running(new Choosing(_ => throw new InvalidOperationException("boom")))).GetChoicesAsync("show"));
+        Assert.Empty(await (await Running(new FakeConnector())).GetChoicesAsync("show"));
     }
 }

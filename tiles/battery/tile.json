@@ -3,7 +3,8 @@
   "description": "Battery of your mouse, keyboard and headphones",
   "connector": "battery",
   "fields": [
-    { "key": "interval", "label": "Read every", "type": "duration", "min": "10s", "max": "1h", "help": "How often the batteries are read." }
+    { "key": "interval", "label": "Read every", "type": "duration", "min": "10s", "max": "1h", "help": "How often the batteries are read." },
+    { "key": "show", "label": "Devices", "type": "pick", "help": "Only ticked devices show. A device connected later stays hidden until you tick it here." }
   ],
   "settings": { "interval": "60s" }
 }

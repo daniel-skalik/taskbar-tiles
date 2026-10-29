@@ -6,11 +6,14 @@ namespace TaskbarTiles.Plugins.Battery;
 
 /// <summary>
 /// Battery of connected devices: Bluetooth (from Windows) and Logitech receivers and devices (HID++). Shows the lowest on
-/// the tile and every device in the popup. Setting "interval": how often to read, default 60s.
+/// the tile and every device in the popup. Setting "interval": how often to read, default 60s. Setting "show": the
+/// names of the devices to show (others, and devices seen later, are hidden); without it every device shows.
 /// </summary>
 [TileConnector("battery")]
-public sealed class BatteryConnector : ITileConnector
+public sealed class BatteryConnector : ITileConnector, ITileChoices
 {
+    public const string ShowKey = "show";
+
     static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(60);
     static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(10), MaxInterval = TimeSpan.FromHours(1);
 
@@ -21,6 +24,8 @@ public sealed class BatteryConnector : ITileConnector
     volatile bool _disposed;
     ITileContext? _ctx;
     IReadOnlyList<DeviceBattery> _last = [];
+    IReadOnlySet<string>? _show;
+    readonly SortedSet<string> _seen = new(StringComparer.CurrentCultureIgnoreCase);
     Task? _loop;
 
     public BatteryConnector() : this([new BluetoothSource(), new LogitechSource(HidTransport.FindAsync, HidTransport.Open)]) { }
@@ -35,6 +40,7 @@ public sealed class BatteryConnector : ITileConnector
     {
         _ctx = ctx;
         var interval = Interval(ctx.Settings, ctx.Log);
+        _show = Shown(ctx.Settings, ctx.Log);
         ctx.Resumed += OnResumed;
         await RefreshAsync(ct);
         if (!_disposed) _loop = LoopAsync(interval, _stopping);
@@ -53,6 +59,27 @@ public sealed class BatteryConnector : ITileConnector
         }
         log.Warn($"\"interval\" must be a duration such as \"60s\"; using {DefaultInterval.TotalSeconds:0}s.");
         return DefaultInterval;
+    }
+
+    /// <summary>"show" from settings: the device names to show, ignoring case; null (show all) when absent or bad (logged).</summary>
+    public static IReadOnlySet<string>? Shown(JsonElement settings, ITileLog log)
+    {
+        if (settings.ValueKind != JsonValueKind.Object || !settings.TryGetProperty(ShowKey, out var value)) return null;
+        if (value.ValueKind == JsonValueKind.Array && value.EnumerateArray().All(x => x.ValueKind == JsonValueKind.String))
+            return value.EnumerateArray().Select(x => x.GetString()!).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        log.Warn("\"show\" must be a list of device names; showing every device.");
+        return null;
+    }
+
+    /// <summary>The devices "show" lets through, all when it is null.</summary>
+    public static IReadOnlyList<DeviceBattery> Filter(IReadOnlyList<DeviceBattery> devices, IReadOnlySet<string>? show) =>
+        show is null ? devices : devices.Where(d => show.Contains(d.Name)).ToList();
+
+    /// <summary>Every device name seen since the tile started, for the settings dialog's "show" list.</summary>
+    public Task<IReadOnlyList<string>> GetChoicesAsync(string key, CancellationToken ct)
+    {
+        if (key != ShowKey) return Task.FromResult<IReadOnlyList<string>>([]);
+        lock (_seen) return Task.FromResult<IReadOnlyList<string>>(_seen.ToList());
     }
 
     async Task LoopAsync(TimeSpan interval, CancellationToken ct)
@@ -113,7 +140,9 @@ public sealed class BatteryConnector : ITileConnector
                 ctx.ReportError("Could not read batteries", string.Join("\n", errors));
                 return;
             }
-            _last = Merge(readings);
+            var all = Merge(readings);
+            lock (_seen) _seen.UnionWith(all.Select(d => d.Name));
+            _last = Filter(all, _show);
             ctx.Update(BatteryView.Tile(_last));
         }
         finally { _gate.Release(); }

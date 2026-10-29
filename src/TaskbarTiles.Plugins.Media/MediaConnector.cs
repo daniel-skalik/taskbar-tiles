@@ -9,6 +9,7 @@ namespace TaskbarTiles.Plugins.Media;
 /// <summary>
 /// Now-playing tile for one app's Windows media session (Spotify by default).
 /// Ported from SpotifyTaskbar: no Spotify API or login, just the system media controls.
+/// The song's position shows as a thin bar along the tile's bottom edge, moved every second while it plays.
 /// </summary>
 [TileConnector("media", Width = 268)]
 public sealed class MediaConnector : ITileConnector
@@ -23,6 +24,11 @@ public sealed class MediaConnector : ITileConnector
     volatile bool _disposed;
     string? _artKey;
     byte[]? _art;
+    TileState? _shown;
+    readonly CancellationTokenSource _stop = new();
+    Task? _ticker;
+
+    static readonly TimeSpan Tick = TimeSpan.FromSeconds(1);
 
     public async Task StartAsync(ITileContext ctx, CancellationToken ct)
     {
@@ -42,6 +48,51 @@ public sealed class MediaConnector : ITileConnector
             PickSession();
         }
         await PublishAsync();
+        _ticker = TickAsync(_stop.Token);
+    }
+
+    /// <summary>
+    /// How far the song is, 0..1, at <paramref name="now"/>: Windows reports the position as of LastUpdatedTime (Spotify
+    /// only on seeks and track changes), so while playing the time since then is added. Null without a known length.
+    /// </summary>
+    public static double? Progress(TimeSpan start, TimeSpan end, TimeSpan position, DateTimeOffset updated, bool playing, DateTimeOffset now)
+    {
+        var length = end - start;
+        if (length <= TimeSpan.Zero) return null;
+        var at = position - start;
+        if (playing && now > updated) at += now - updated;
+        return Math.Clamp(at / length, 0, 1);
+    }
+
+    static double? Progress(GlobalSystemMediaTransportControlsSession s, bool playing)
+    {
+        var t = s.GetTimelineProperties();
+        return t is null ? null : Progress(t.StartTime, t.EndTime, t.Position, t.LastUpdatedTime, playing, DateTimeOffset.Now);
+    }
+
+    /// <summary>Moves the bar while a song plays; only the progress of the last state changes.</summary>
+    async Task TickAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(Tick);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await _gate.WaitAsync(ct);
+                try
+                {
+                    if (_disposed || _shown is not { Progress: not null } shown || _session is not { } s) continue;
+                    if (s.GetPlaybackInfo()?.PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing) continue;
+                    var progress = Progress(s, playing: true);
+                    if (progress == shown.Progress) continue;
+                    _shown = shown with { Progress = progress };
+                    _ctx?.Update(_shown);
+                }
+                catch (Exception ex) { _ctx?.Log.Warn($"Media position update failed: {ex.Message}"); }
+                finally { _gate.Release(); }
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     public async Task OnActionAsync(string actionId, CancellationToken ct)
@@ -104,6 +155,7 @@ public sealed class MediaConnector : ITileConnector
         {
             _session.MediaPropertiesChanged -= OnMediaChanged;
             _session.PlaybackInfoChanged -= OnPlaybackChanged;
+            _session.TimelinePropertiesChanged -= OnTimelineChanged;
         }
         _session = match;
         _artKey = null;
@@ -111,11 +163,13 @@ public sealed class MediaConnector : ITileConnector
         {
             _session.MediaPropertiesChanged += OnMediaChanged;
             _session.PlaybackInfoChanged += OnPlaybackChanged;
+            _session.TimelinePropertiesChanged += OnTimelineChanged;
         }
     }
 
     void OnMediaChanged(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => SafePublish();
     void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession s, PlaybackInfoChangedEventArgs e) => SafePublish();
+    void OnTimelineChanged(GlobalSystemMediaTransportControlsSession s, TimelinePropertiesChangedEventArgs e) => SafePublish(); // a seek
 
     void SafePublish()
     {
@@ -135,6 +189,7 @@ public sealed class MediaConnector : ITileConnector
             var s = _session;
             if (s is null)
             {
+                _shown = null;
                 ctx.Update(new TileState
                 {
                     Title = _app,
@@ -166,7 +221,7 @@ public sealed class MediaConnector : ITileConnector
             }
 
             if (_disposed) return;
-            ctx.Update(new TileState
+            _shown = new TileState
             {
                 Title = string.IsNullOrEmpty(props.Title) ? _app : props.Title,
                 Subtitle = props.Artist,
@@ -179,7 +234,9 @@ public sealed class MediaConnector : ITileConnector
                     new TileButton("toggle", playing ? "pause" : "play", "Play/Pause", true),
                     new TileButton("next", "next", "Next", playback?.Controls.IsNextEnabled ?? false),
                 ],
-            });
+                Progress = Progress(s, playing),
+            };
+            ctx.Update(_shown);
         }
         catch (Exception ex)
         {
@@ -208,9 +265,12 @@ public sealed class MediaConnector : ITileConnector
 
     static string Format(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
         _disposed = true;
+        _stop.Cancel();
+        if (_ticker is not null) await _ticker;
         lock (_pickLock)
         {
             if (_manager is not null) _manager.SessionsChanged -= OnSessionsChanged;
@@ -220,8 +280,9 @@ public sealed class MediaConnector : ITileConnector
             {
                 s.MediaPropertiesChanged -= OnMediaChanged;
                 s.PlaybackInfoChanged -= OnPlaybackChanged;
+                s.TimelinePropertiesChanged -= OnTimelineChanged;
             }
         }
-        return ValueTask.CompletedTask;
+        _stop.Dispose();
     }
 }
