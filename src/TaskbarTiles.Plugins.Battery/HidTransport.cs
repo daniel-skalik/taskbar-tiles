@@ -13,7 +13,7 @@ namespace TaskbarTiles.Plugins.Battery;
 /// </summary>
 public sealed class HidTransport : IHidppTransport
 {
-    const byte LongReport = 0x11, ShortReport = 0x10, SoftwareId = 0x0A;
+    const byte LongReport = 0x11, ShortReport = 0x10;
     const ushort VendorPage = 0xFF00, ShortUsage = 0x0001, LongUsage = 0x0002;
     static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(1500);
 
@@ -22,6 +22,10 @@ public sealed class HidTransport : IHidppTransport
     readonly Channel<byte[]> _reports = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
     readonly SemaphoreSlim _gate = new(1, 1);
     volatile bool _dead;
+    byte _softwareId; // the last request's; under _gate
+
+    /// <summary>Software ids 1 to 15 in turn; 0 is what devices put on notifications.</summary>
+    public static byte NextSoftwareId(byte current) => (byte)(current % 15 + 1);
 
     HidTransport(string path, FileStream longStream, FileStream? shortStream)
     {
@@ -105,12 +109,15 @@ public sealed class HidTransport : IHidppTransport
         request[0] = LongReport;
         request[1] = device;
         request[2] = feature;
-        request[3] = (byte)((function << 4) | SoftwareId);
         args.AsSpan(0, Math.Min(args.Length, 16)).CopyTo(request.AsSpan(4));
 
         await _gate.WaitAsync(ct);
         try
         {
+            // A new software id per request: a late answer to a request that timed out carries the old id, so it never
+            // passes for this one's (a root GetFeature answer does not say which feature it is for).
+            _softwareId = NextSoftwareId(_softwareId);
+            request[3] = (byte)((function << 4) | _softwareId);
             while (_reports.Reader.TryRead(out _)) { } // notifications, and late answers to requests that timed out
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(Timeout);
