@@ -1,5 +1,6 @@
 using System.IO;
 using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Runtime;
 
 namespace TaskbarTiles.Host.UI;
@@ -11,7 +12,7 @@ public enum TileCommand { ShowFolder, Refresh, ShowLog, Restart }
 public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
 
 /// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
-public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
+public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, MoveToOtherSide, RemoveTile }
 
 /// <summary>
 /// One context-menu line; an entry without a command is a separator.
@@ -34,8 +35,11 @@ public sealed record SlotMenuState(bool IsStack, bool RotationPaused);
 
 public static class TileMenu
 {
-    /// <summary>The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null.</summary>
-    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing)
+    /// <summary>
+    /// The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null. <paramref name="side"/>
+    /// is the bar the slot is on; its menu offers to move the slot to the other side.
+    /// </summary>
+    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing, BarSide side = BarSide.Left)
     {
         var editEntry = editing ? new MenuEntry("Done editing", Bar: BarCommand.DoneEditing) : new MenuEntry("Edit layout", Bar: BarCommand.EditLayout);
         var entries = new List<MenuEntry>();
@@ -60,6 +64,9 @@ public static class TileMenu
             }
             entries.Add(MenuEntry.Separator);
             entries.Add(editEntry);
+            entries.Add(side == BarSide.Right
+                ? new MenuEntry("Move to the left side", Layout: LayoutCommand.MoveToOtherSide)
+                : new MenuEntry("Move to the right side", Layout: LayoutCommand.MoveToOtherSide));
             entries.Add(new("Remove tile", Layout: LayoutCommand.RemoveTile));
             entries.Add(MenuEntry.Separator);
         }

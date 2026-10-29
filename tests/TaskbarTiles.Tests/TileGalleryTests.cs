@@ -24,7 +24,7 @@ public class TileGalleryTests
     {
         var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
             new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => bars is null ? new FakeBar(id) : (bars[id] = new FakeBar(id)), writer: writer, kinds: () => Kinds);
+            _ => new CollectingLog(), FakeBar.Into(bars), writer: writer, kinds: () => Kinds);
         host.Start();
         return host;
     }
@@ -50,7 +50,7 @@ public class TileGalleryTests
     {
         var cfg = Parse("""{ "tiles": { "w": { "kind": "weather" } } }""");
 
-        Assert.Equal("Your tile · weather", TileGallery.Build(cfg, DisplayLayout.Empty, Kinds)[0].Subtitle);
+        Assert.Equal("Your tile · weather", TileGallery.Build(cfg, DisplayEntry.Empty, Kinds)[0].Subtitle);
     }
 
     [Theory]
@@ -70,7 +70,7 @@ public class TileGalleryTests
         Assert.Null(host.AddFromGallery("MAIN", item));
 
         Assert.Equal("""{"kind":"ping"}""", JsonNode.Parse(writer.Json)!["tiles"]!["ping"]!.ToJsonString());
-        Assert.Equal(new TileSlot("ping", false), writer.Current.Displays["primary"].Slots[^1]);
+        Assert.Equal(new TileSlot("ping", false), writer.Current.Displays["primary"].Left.Slots[^1]);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class TileGalleryTests
         Assert.Null(host.AddFromGallery("MAIN", item));
 
         Assert.Equal("""{"kind":"uptime"}""", JsonNode.Parse(writer.Json)!["tiles"]!["uptime-2"]!.ToJsonString());
-        Assert.Equal(new TileSlot("uptime-2", false), writer.Current.Displays["primary"].Slots[^1]);
+        Assert.Equal(new TileSlot("uptime-2", false), writer.Current.Displays["primary"].Left.Slots[^1]);
         Assert.Equal(new[] { "spotify", "uptime-2" }, bars["MAIN"].Tiles.Select(t => t.TileId));
     }
 
@@ -98,7 +98,7 @@ public class TileGalleryTests
         Assert.Null(host.AddFromGallery("MAIN", item));
 
         Assert.Equal(3, writer.Current.Tiles.Count);
-        Assert.Equal(new TileSlot("ci", false), writer.Current.Displays["primary"].Slots[^1]);
+        Assert.Equal(new TileSlot("ci", false), writer.Current.Displays["primary"].Left.Slots[^1]);
         Assert.DoesNotContain(host.GalleryFor("MAIN"), i => i.Title == "ci");
     }
 
@@ -112,7 +112,7 @@ public class TileGalleryTests
         Assert.Null(host.AddFromGallery("MAIN", item, stackWith: 0));
 
         Assert.Equal("uptime", writer.Current.Tiles["uptime-2"].Kind);
-        var slot = Assert.IsType<StackSlot>(Assert.Single(writer.Current.Displays["primary"].Slots));
+        var slot = Assert.IsType<StackSlot>(Assert.Single(writer.Current.Displays["primary"].Left.Slots));
         Assert.Equal(new[] { "spotify", "uptime-2" }, slot.TileIds);
     }
 
@@ -128,7 +128,7 @@ public class TileGalleryTests
 
         Assert.Null(host.AddFromGallery("MAIN", item, stackWith: 0));
 
-        var slots = writer.Current.Displays["primary"].Slots;
+        var slots = writer.Current.Displays["primary"].Left.Slots;
         Assert.Equal(2, slots.Count);
         Assert.Equal(new[] { "spotify", "ci" }, Assert.IsType<StackSlot>(slots[0]).TileIds);
         Assert.Equal(new TileSlot("uptime", false), slots[1]);

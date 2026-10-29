@@ -30,12 +30,27 @@ public static class ConfigJson
 
     public static string Serialize(JsonObject root) => root.ToJsonString(WriteOptions) + Environment.NewLine;
 
-    /// <summary>Sets displays[key].slots, keeping any other keys of that display entry.</summary>
-    public static void SetDisplay(JsonObject root, string key, DisplayLayout layout)
+    /// <summary>
+    /// Sets displays[key].left, and .right when it has slots (removed otherwise), keeping any other keys of that display
+    /// entry. "slots", the old name of "left", is replaced by "left" in its place.
+    /// </summary>
+    public static void SetDisplay(JsonObject root, string key, DisplayEntry entry)
     {
         var displays = ChildObject(root, "displays");
         var display = ChildObject(displays, key);
-        display["slots"] = new JsonArray(layout.Slots.Select(ToNode).ToArray());
+        var left = new JsonArray(entry.Left.Slots.Select(ToNode).ToArray());
+        if (display.ContainsKey("slots") && !display.ContainsKey("left"))
+        {
+            var at = display.IndexOf("slots");
+            display.RemoveAt(at);
+            display.Insert(at, "left", left);
+        }
+        else
+        {
+            display["left"] = left;
+        }
+        if (entry.Right.Slots.Count > 0) display["right"] = new JsonArray(entry.Right.Slots.Select(ToNode).ToArray());
+        else display.Remove("right");
     }
 
     /// <summary>Adds or replaces tiles[id] with { "kind": ... }, plus "settings" when it has any keys.</summary>

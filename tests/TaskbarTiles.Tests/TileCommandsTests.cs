@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.UI;
 
@@ -48,7 +49,7 @@ public class TileCommandsTests
             new[]
             {
                 "Show tile folder", "Refresh now", "Show connector log", "Restart tile", "",
-                "Create stack…", "", "Edit layout", "Remove tile", "",
+                "Create stack…", "", "Edit layout", "Move to the right side", "Remove tile", "",
                 "Show config file", "", "Exit Taskbar Tiles",
             },
             TileMenu.Entries(MiddleTile, editing: false).Select(e => e.Header));
@@ -126,6 +127,14 @@ public class TileCommandsTests
         Assert.True(entries[1].IsSeparator);
         Assert.Equal(BarCommand.OpenConfig, entries[2].Bar);
         Assert.Equal(BarCommand.Exit, entries[4].Bar);
+    }
+
+    [Fact]
+    public void A_tile_on_the_right_side_offers_the_left_side()
+    {
+        var entry = TileMenu.Entries(MiddleTile, editing: false, BarSide.Right).Single(e => e.Layout == LayoutCommand.MoveToOtherSide);
+
+        Assert.Equal("Move to the left side", entry.Header);
     }
 
     [Fact]

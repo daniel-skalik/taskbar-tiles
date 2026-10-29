@@ -29,7 +29,7 @@ public class KindStoreTests
             """);
         var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
             new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), writer: writer, kinds: () => store.Current);
+            _ => new CollectingLog(), FakeBar.Into(), writer: writer, kinds: () => store.Current);
         host.Start();
         var before = host.Runtimes;
         store.StartWatching();

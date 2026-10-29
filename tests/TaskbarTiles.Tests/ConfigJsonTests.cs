@@ -5,6 +5,8 @@ namespace TaskbarTiles.Tests;
 
 public class ConfigJsonTests
 {
+    static DisplayEntry LeftOnly(DisplayLayout layout) => new(layout, DisplayLayout.Empty);
+
     [Theory]
     [InlineData(5, "5s")]
     [InlineData(1.5, "1.5s")]
@@ -30,11 +32,11 @@ public class ConfigJsonTests
         ]);
         var root = ConfigJson.ParseRoot("""{ "tiles": { "a": { "kind": "x" }, "b": { "kind": "x" } } }""");
 
-        ConfigJson.SetDisplay(root, "primary", layout);
+        ConfigJson.SetDisplay(root, "primary", new DisplayEntry(layout, layout));
         var parsed = ConfigParser.Parse(ConfigJson.Serialize(root));
 
         Assert.True(parsed.Success, parsed.Error?.ToString());
-        Assert.True(LayoutEdits.SameSlots(layout, parsed.Config!.Displays["primary"]));
+        Assert.Equal(new DisplayEntry(layout, layout), parsed.Config!.Displays["primary"]);
     }
 
     [Fact]
@@ -74,7 +76,7 @@ public class ConfigJsonTests
         }
         """);
 
-        ConfigJson.SetDisplay(root, "primary", new DisplayLayout([new TileSlot("a", false)]));
+        ConfigJson.SetDisplay(root, "primary", LeftOnly(new DisplayLayout([new TileSlot("a", false)])));
         var text = ConfigJson.Serialize(root);
 
         Assert.DoesNotContain("dropped", text);
@@ -83,7 +85,7 @@ public class ConfigJsonTests
         Assert.True(text.IndexOf("\"custom\"", StringComparison.Ordinal) < text.IndexOf("\"tiles\"", StringComparison.Ordinal));
         Assert.True(text.IndexOf("\"*\"", StringComparison.Ordinal) < text.IndexOf("\"primary\"", StringComparison.Ordinal));
         using var doc = JsonDocument.Parse(text);
-        Assert.Equal("a", doc.RootElement.GetProperty("displays").GetProperty("primary").GetProperty("slots")[0].GetString());
+        Assert.Equal("a", doc.RootElement.GetProperty("displays").GetProperty("primary").GetProperty("left")[0].GetString());
     }
 
     [Fact]
@@ -91,10 +93,10 @@ public class ConfigJsonTests
     {
         var root = ConfigJson.ParseRoot("{}");
 
-        ConfigJson.SetDisplay(root, @"\\?\DISPLAY#DEL41A8#5&2b1c", DisplayLayout.Empty);
+        ConfigJson.SetDisplay(root, @"\\?\DISPLAY#DEL41A8#5&2b1c", DisplayEntry.Empty);
 
         using var doc = JsonDocument.Parse(ConfigJson.Serialize(root));
-        Assert.Equal(0, doc.RootElement.GetProperty("displays").GetProperty(@"\\?\DISPLAY#DEL41A8#5&2b1c").GetProperty("slots").GetArrayLength());
+        Assert.Equal(0, doc.RootElement.GetProperty("displays").GetProperty(@"\\?\DISPLAY#DEL41A8#5&2b1c").GetProperty("left").GetArrayLength());
     }
 
     [Fact]
@@ -130,4 +132,19 @@ public class ConfigJsonTests
     [Fact]
     public void Parse_root_rejects_a_non_object() =>
         Assert.Throws<InvalidOperationException>(() => ConfigJson.ParseRoot("[1]"));
+
+    [Fact]
+    public void Set_display_writes_right_only_with_slots_and_renames_slots_to_left_in_place()
+    {
+        var root = ConfigJson.ParseRoot("""{ "displays": { "primary": { "before": 1, "slots": [], "note": "x" } } }""");
+        var a = new DisplayLayout([new TileSlot("a", false)]);
+
+        ConfigJson.SetDisplay(root, "primary", new DisplayEntry(DisplayLayout.Empty, a));
+        var primary = root["displays"]!["primary"]!.AsObject();
+        Assert.Equal(new[] { "before", "left", "note", "right" }, primary.Select(p => p.Key));
+        Assert.Equal("a", primary["right"]![0]!.GetValue<string>());
+
+        ConfigJson.SetDisplay(root, "primary", LeftOnly(a));
+        Assert.Equal(new[] { "before", "left", "note" }, primary.Select(p => p.Key));
+    }
 }

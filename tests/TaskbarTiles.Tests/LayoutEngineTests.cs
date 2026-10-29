@@ -7,7 +7,7 @@ public class LayoutEngineTests
 {
     const double Gap = 6;
 
-    static LayoutItem Tile(double width = 100, bool pinned = false) => new(width, pinned);
+    static LayoutItem Tile(double width = 100, bool pinned = false, bool canCompact = true) => new(width, pinned, canCompact);
 
     static LayoutResult Run(double available, params LayoutItem[] items) => LayoutEngine.Compute(items, available, Gap);
 
@@ -38,6 +38,16 @@ public class LayoutEngineTests
         var result = Run(200, Tile(), Tile(), Tile());
 
         Assert.Equal(new[] { Full, Compact, Compact }, result.Modes);
+    }
+
+    [Fact]
+    public void Tiles_that_cannot_compact_stay_full_and_overflow_before_pinned_ones()
+    {
+        // 100 + 6 + 40 = 146: the right tile compacts, the one that cannot stays full
+        Assert.Equal(new[] { Full, Compact }, Run(150, Tile(canCompact: false), Tile()).Modes);
+
+        // 268 + 6 + 40(») = 314: both unpinned tiles move into », the pinned one stays
+        Assert.Equal(new[] { Full, Overflow, Overflow }, Run(360, Tile(268, pinned: true), Tile(268, canCompact: false), Tile()).Modes);
     }
 
     [Fact]

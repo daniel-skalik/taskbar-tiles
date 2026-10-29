@@ -76,6 +76,7 @@ public sealed class FakeTaskbarSource : TaskbarTiles.Host.Taskbar.ITaskbarSource
 {
     public IReadOnlyList<TaskbarTiles.Host.Taskbar.TaskbarInfo> Current { get; set; } = [];
     public event EventHandler? Changed;
+    public bool TrackIconEdges { get; set; }
     public void Start() { }
     public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
     public void Dispose() { }
@@ -84,9 +85,22 @@ public sealed class FakeTaskbarSource : TaskbarTiles.Host.Taskbar.ITaskbarSource
         id, primary, new(0, 0, 1000, 48), new(new(8, 0, 500, 48), true), Hidden: false, IsLightTheme: false, DpiScale: 1);
 }
 
-public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
+public sealed class FakeBar(string displayId, TaskbarTiles.Host.Config.BarSide side = TaskbarTiles.Host.Config.BarSide.Left)
+    : TaskbarTiles.Host.ITileBarView
 {
+    /// <summary>A bar factory for HostController that collects left bars in <paramref name="left"/> and right bars in <paramref name="right"/>.</summary>
+    public static Func<string, TaskbarTiles.Host.Config.BarSide, TaskbarTiles.Host.ITileBarView> Into(
+        Dictionary<string, FakeBar>? left = null, Dictionary<string, FakeBar>? right = null) =>
+        (id, side) =>
+        {
+            var bar = new FakeBar(id, side);
+            var into = side == TaskbarTiles.Host.Config.BarSide.Right ? right : left;
+            if (into is not null) into[id] = bar;
+            return bar;
+        };
+
     public string DisplayId { get; } = displayId;
+    public TaskbarTiles.Host.Config.BarSide Side { get; } = side;
     public IReadOnlyList<TaskbarTiles.Host.Layout.BarSlot> Slots { get; private set; } = [];
     /// <summary>Every member of every slot, in order.</summary>
     public IReadOnlyList<TaskbarTiles.Host.Runtime.TileRuntime> Tiles => Slots.SelectMany(s => s.Members).ToList();

@@ -66,12 +66,12 @@ public static class ConfigParser
                 tiles[tile.Name] = BuildTile(tile.Name, tile.Value);
         }
 
-        var displays = new Dictionary<string, DisplayLayout>(StringComparer.Ordinal);
+        var displays = new Dictionary<string, DisplayEntry>(StringComparer.Ordinal);
         if (root.TryGetProperty("displays", out var displaysEl))
         {
             if (displaysEl.ValueKind != JsonValueKind.Object) throw new ConfigException("\"displays\" must be an object.");
             foreach (var display in displaysEl.EnumerateObject())
-                displays[display.Name] = BuildLayout(display.Name, display.Value, tiles);
+                displays[display.Name] = BuildEntry(display.Name, display.Value, tiles);
         }
 
         return new HostConfig(tiles, displays);
@@ -93,11 +93,24 @@ public static class ConfigParser
         return new TileConfig(kind, settings);
     }
 
-    static DisplayLayout BuildLayout(string display, JsonElement el, IReadOnlyDictionary<string, TileConfig> tiles)
+    /// <summary>"left" (or "slots", its name before there were two sides) and "right".</summary>
+    static DisplayEntry BuildEntry(string display, JsonElement el, IReadOnlyDictionary<string, TileConfig> tiles)
     {
         if (el.ValueKind != JsonValueKind.Object) throw new ConfigException($"Display '{display}' must be an object.");
-        if (!el.TryGetProperty("slots", out var slotsEl)) return DisplayLayout.Empty;
-        if (slotsEl.ValueKind != JsonValueKind.Array) throw new ConfigException($"\"slots\" on display '{display}' must be an array.");
+        var hasLeft = el.TryGetProperty("left", out var leftEl);
+        var hasSlots = el.TryGetProperty("slots", out var slotsEl);
+        if (hasLeft && hasSlots)
+            throw new ConfigException($"Display '{display}' has both \"slots\" and \"left\"; \"slots\" is the old name of \"left\", keep one.");
+        var left = hasLeft ? BuildLayout(display, "left", leftEl, tiles)
+            : hasSlots ? BuildLayout(display, "slots", slotsEl, tiles)
+            : DisplayLayout.Empty;
+        var right = el.TryGetProperty("right", out var rightEl) ? BuildLayout(display, "right", rightEl, tiles) : DisplayLayout.Empty;
+        return new DisplayEntry(left, right);
+    }
+
+    static DisplayLayout BuildLayout(string display, string key, JsonElement slotsEl, IReadOnlyDictionary<string, TileConfig> tiles)
+    {
+        if (slotsEl.ValueKind != JsonValueKind.Array) throw new ConfigException($"\"{key}\" on display '{display}' must be an array.");
 
         var slots = new List<Slot>();
         var index = 0;

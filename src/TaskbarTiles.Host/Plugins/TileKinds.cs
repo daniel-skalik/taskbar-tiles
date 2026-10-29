@@ -18,7 +18,8 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// One folder under tiles\: a tile kind. Id is the folder name. Error is set when the kind is broken (bad tile.json, a DLL
 /// that does not load, a connector nobody in the folder declares); its tiles then show that error and other kinds keep
 /// working. Stamp changes when tile.json or a script in the folder changes; DllStamp when a DLL on disk does. Width is
-/// tile.json's "width", which replaces the connector's width when set.
+/// tile.json's "width", which replaces the connector's width when set; Compact is false when tile.json says
+/// "compact": false (its tiles never shrink to an icon).
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -31,7 +32,8 @@ public sealed record TileKind(
     string? Error,
     string Stamp,
     string DllStamp,
-    double? Width = null)
+    double? Width = null,
+    bool Compact = true)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -73,7 +75,7 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
-    double? Width = null)
+    double? Width = null, bool Compact = true)
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -132,7 +134,15 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 width = w.GetDouble();
             }
 
-            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width);
+            var compact = true;
+            if (root.TryGetProperty("compact", out var c))
+            {
+                if (c.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    return Broken($"{shownPath}: \"compact\" must be true or false.");
+                compact = c.GetBoolean();
+            }
+
+            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact);
         }
     }
 

@@ -53,7 +53,7 @@ public partial class App : Application
             _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, RevealInExplorer, log);
 
             var ui = new WpfUiDispatcher(Dispatcher);
-            _tracker = new TaskbarTracker(Dispatcher);
+            _tracker = new TaskbarTracker(Dispatcher, new UiaIconEdgeReader(), message => log.Warn(message));
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
                 name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config, () => kinds.Current);
 
@@ -112,9 +112,9 @@ public partial class App : Application
             () => RevealInExplorer(Path.Combine(AppPaths.TilesDir, fresh[0]))));
     }
 
-    ITileBarView CreateBar(string displayId)
+    ITileBarView CreateBar(string displayId, Config.BarSide side)
     {
-        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!, _bars);
+        var bar = new TileBar(displayId, side, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!, _bars);
         bar.ExitRequested += (_, _) => Shutdown();
         return bar;
     }

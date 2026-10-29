@@ -33,6 +33,18 @@ public class TileKindTests
         Assert.Equal(268, TileJson.Parse("""{ "name": "A", "connector": "script", "width": 268 }""", "t.json").Width);
     }
 
+    [Fact]
+    public void Tile_json_compact_defaults_to_true()
+    {
+        Assert.True(TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json").Compact);
+        Assert.False(TileJson.Parse("""{ "name": "A", "connector": "script", "compact": false }""", "t.json").Compact);
+    }
+
+    [Fact]
+    public void Tile_json_compact_that_is_not_a_boolean_breaks_the_kind() =>
+        Assert.Equal("t.json: \"compact\" must be true or false.",
+            TileJson.Parse("""{ "name": "A", "connector": "script", "compact": "no" }""", "t.json").Error);
+
     [Theory]
     [InlineData("\"wide\"")]
     [InlineData("10")]

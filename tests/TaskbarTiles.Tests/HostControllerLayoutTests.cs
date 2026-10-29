@@ -27,13 +27,14 @@ public class HostControllerLayoutTests
                     : displays.Select(d => FakeTaskbarSource.Display(d.Id, d.Primary)).ToList(),
             };
             Host = new HostController(ConnectorCatalog.Empty, () => Writer.Current, Source, new ImmediateDispatcher(),
-                _ => new CollectingLog(), id => Bars[id] = new FakeBar(id), writer: Writer);
+                _ => new CollectingLog(), FakeBar.Into(Bars, RightBars), writer: Writer);
             Host.Start();
         }
 
         public FakeConfigWriter Writer { get; }
         public FakeTaskbarSource Source { get; }
         public Dictionary<string, FakeBar> Bars { get; } = [];
+        public Dictionary<string, FakeBar> RightBars { get; } = [];
         public HostController Host { get; }
 
         public JsonElement Displays => JsonDocument.Parse(Writer.Json).RootElement.GetProperty("displays");
@@ -56,7 +57,7 @@ public class HostControllerLayoutTests
         var writer = new FakeConfigWriter(Config);
         var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
             new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), writer: writer, kinds: () => kinds);
+            _ => new CollectingLog(), FakeBar.Into(), writer: writer, kinds: () => kinds);
         host.Start();
 
         Assert.Null(host.RemoveTile("MAIN", 0, null));
@@ -93,6 +94,90 @@ public class HostControllerLayoutTests
         Assert.Equal(1, slot.Index);
     }
 
+    /// <summary>Config with tile c on the primary display's right side.</summary>
+    const string BothSides = """
+    { "tiles": { "a": { "kind": "ghost" }, "b": { "kind": "ghost" }, "c": { "kind": "ghost" } },
+      "displays": { "primary": { "left": ["a", "b"], "right": ["c"] }, "*": { "left": ["a", "c"] } } }
+    """;
+
+    static string[] Ids(JsonElement display, string side) =>
+        display.TryGetProperty(side, out var slots) ? slots.EnumerateArray().Select(e => e.GetString()!).ToArray() : [];
+
+    [Fact]
+    public void Each_side_has_its_own_bar()
+    {
+        var f = new Fixture(BothSides);
+
+        Assert.Equal(BarSide.Left, f.Bars["MAIN"].Side);
+        Assert.Equal(new[] { "a", "b" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
+        Assert.Equal(BarSide.Right, f.RightBars["MAIN"].Side);
+        Assert.Equal("c", Assert.Single(f.RightBars["MAIN"].Tiles).TileId);
+        Assert.Equal(0, Assert.Single(f.RightBars["MAIN"].Slots).Index); // indexes count within the side
+    }
+
+    [Fact]
+    public void Moving_a_tile_to_the_other_side_saves_both_sides_in_one_entry()
+    {
+        var f = new Fixture(BothSides);
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 1, "MAIN", null, DropPosition.After, BarSide.Left, BarSide.Right));
+
+        var primary = f.Displays.GetProperty("primary");
+        Assert.Equal(new[] { "a" }, Ids(primary, "left"));
+        Assert.Equal(new[] { "c", "b" }, Ids(primary, "right"));
+        Assert.Equal(new[] { "c", "b" }, f.RightBars["MAIN"].Tiles.Select(t => t.TileId));
+    }
+
+    [Fact]
+    public void Dropping_onto_the_other_side_lands_before_the_target()
+    {
+        var f = new Fixture(BothSides);
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "MAIN", 0, DropPosition.Before, BarSide.Right, BarSide.Left));
+
+        var primary = f.Displays.GetProperty("primary");
+        Assert.Equal(new[] { "c", "a", "b" }, Ids(primary, "left"));
+        Assert.False(primary.TryGetProperty("right", out _)); // an empty right side is not written
+    }
+
+    [Fact]
+    public void A_tile_dropped_on_another_display_is_skipped_when_its_other_side_shows_it()
+    {
+        var f = new Fixture(BothSides, ("MAIN", true), ("SECOND", false));
+
+        Assert.Null(f.Host.MoveToDisplay("MAIN", 0, "SECOND", null, DropPosition.After, BarSide.Left, BarSide.Right));
+
+        Assert.Equal(new[] { "b" }, Ids(f.Displays.GetProperty("primary"), "left")); // a leaves MAIN
+        Assert.False(f.Displays.TryGetProperty("SECOND", out _)); // SECOND already shows a through "*"
+    }
+
+    [Fact]
+    public void Edits_and_removals_change_only_their_own_side()
+    {
+        var f = new Fixture(BothSides);
+
+        Assert.Null(f.Host.EditLayout("MAIN", l => LayoutEdits.Append(l, "a"), BarSide.Right));
+        Assert.Equal(new[] { "c", "a" }, Ids(f.Displays.GetProperty("primary"), "right"));
+
+        Assert.Null(f.Host.RemoveTile("MAIN", 0, null, BarSide.Right));
+        Assert.Equal(new[] { "a", "b" }, Ids(f.Displays.GetProperty("primary"), "left"));
+        Assert.Equal(new[] { "a" }, Ids(f.Displays.GetProperty("primary"), "right"));
+        Assert.Contains("c", f.TileIds); // still placed by "*"
+    }
+
+    [Fact]
+    public void Icon_edges_are_read_only_while_a_display_has_right_side_tiles()
+    {
+        var f = new Fixture(Config);
+        Assert.False(f.Source.TrackIconEdges);
+
+        f.Host.MoveToDisplay("MAIN", 0, "MAIN", null, DropPosition.After, BarSide.Left, BarSide.Right);
+        Assert.True(f.Source.TrackIconEdges);
+
+        f.Host.MoveToDisplay("MAIN", 0, "MAIN", null, DropPosition.After, BarSide.Right, BarSide.Left);
+        Assert.False(f.Source.TrackIconEdges);
+    }
+
     [Fact]
     public void Editing_the_primary_display_writes_primary()
     {
@@ -101,7 +186,7 @@ public class HostControllerLayoutTests
         var error = f.Host.EditLayout("MAIN", l => LayoutEdits.Drop(l, 0, 1, DropPosition.After));
 
         Assert.Null(error);
-        Assert.Equal(JsonValueKind.Object, f.Displays.GetProperty("primary").GetProperty("slots")[0].ValueKind); // the stack now first
+        Assert.Equal(JsonValueKind.Object, f.Displays.GetProperty("primary").GetProperty("left")[0].ValueKind); // the stack now first
         Assert.False(f.Displays.TryGetProperty("MAIN", out _));
         Assert.Equal(new[] { "b", "c", "a" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
     }
@@ -114,7 +199,7 @@ public class HostControllerLayoutTests
         var error = f.Host.EditLayout("SECOND", l => LayoutEdits.Append(l, "a"));
 
         Assert.Null(error);
-        Assert.Equal(new[] { "c", "a" }, f.Displays.GetProperty("SECOND").GetProperty("slots").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { "c", "a" }, f.Displays.GetProperty("SECOND").GetProperty("left").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(new[] { "c" }, f.Displays.GetProperty("*").GetProperty("slots").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(new[] { "c", "a" }, f.Bars["SECOND"].Tiles.Select(t => t.TileId));
         Assert.Equal(new[] { "c" }, f.Bars["THIRD"].Tiles.Select(t => t.TileId));
@@ -128,7 +213,7 @@ public class HostControllerLayoutTests
 
         Assert.Null(f.Host.EditLayout("MAIN", l => LayoutEdits.Append(l, "b")));
 
-        Assert.Equal(new[] { "a", "b" }, f.Displays.GetProperty("MAIN").GetProperty("slots").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { "a", "b" }, f.Displays.GetProperty("MAIN").GetProperty("left").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal(2, f.Displays.GetProperty("primary").GetProperty("slots").GetArrayLength()); // untouched
     }
 
@@ -169,7 +254,7 @@ public class HostControllerLayoutTests
     {
         var cfg = ConfigParser.Parse(Config).Config!;
         var host = new HostController(ConnectorCatalog.Empty, () => cfg, new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] },
-            new ImmediateDispatcher(), _ => new CollectingLog(), id => new FakeBar(id));
+            new ImmediateDispatcher(), _ => new CollectingLog(), FakeBar.Into());
         host.Start();
 
         Assert.NotNull(host.EditLayout("MAIN", l => LayoutEdits.Drop(l, 0, 1, DropPosition.After)));
@@ -256,8 +341,8 @@ public class HostControllerLayoutTests
         Assert.Equal(new[] { "b", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
         Assert.Equal(new[] { "a", "c" }, f.Bars["SECOND"].Tiles.Select(t => t.TileId));
         Assert.True(f.Bars["SECOND"].Slots[0].Pinned); // the pin moves along
-        Assert.Equal(1, f.Displays.GetProperty("primary").GetProperty("slots").GetArrayLength());
-        Assert.Equal(2, f.Displays.GetProperty("SECOND").GetProperty("slots").GetArrayLength());
+        Assert.Equal(1, f.Displays.GetProperty("primary").GetProperty("left").GetArrayLength());
+        Assert.Equal(2, f.Displays.GetProperty("SECOND").GetProperty("left").GetArrayLength());
         Assert.Equal(new[] { "c" }, f.Displays.GetProperty("*").GetProperty("slots").EnumerateArray().Select(e => e.GetString())); // never written
     }
 
@@ -283,7 +368,7 @@ public class HostControllerLayoutTests
         Assert.Equal(1, f.Writer.Saves);
         Assert.Empty(f.Bars["SECOND"].Tiles);
         Assert.Equal(new[] { "a", "b", "c" }, f.Bars["MAIN"].Tiles.Select(t => t.TileId));
-        Assert.Equal(0, f.Displays.GetProperty("SECOND").GetProperty("slots").GetArrayLength());
+        Assert.Equal(0, f.Displays.GetProperty("SECOND").GetProperty("left").GetArrayLength());
         Assert.Contains("c", f.TileIds);
     }
 

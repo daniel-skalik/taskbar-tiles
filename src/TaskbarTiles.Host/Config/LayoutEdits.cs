@@ -84,14 +84,16 @@ public static class LayoutEdits
     }
 
     /// <summary>
-    /// A slot dragged here from another display. Tiles this layout already places are left out (a stack keeps the rest
-    /// and becomes a plain tile with one left; with none left nothing changes). With a <paramref name="target"/> that
-    /// fits it lands before, into or after that slot like <see cref="Drop"/>; otherwise it is appended. A plain tile keeps
-    /// its pin, a stack its rotate.
+    /// A slot dragged here from another bar. Tiles this layout or <paramref name="alsoPlaced"/> (the display's other
+    /// side) already place are left out (a stack keeps the rest and becomes a plain tile with one left; with none left
+    /// nothing changes). With a <paramref name="target"/> that fits it lands before, into or after that slot like
+    /// <see cref="Drop"/>; otherwise it is appended. A plain tile keeps its pin, a stack its rotate.
     /// </summary>
-    public static DisplayLayout DropIncoming(DisplayLayout layout, Slot slot, int? target, DropPosition position)
+    public static DisplayLayout DropIncoming(DisplayLayout layout, Slot slot, int? target, DropPosition position,
+        DisplayLayout? alsoPlaced = null)
     {
-        var placed = DisplayResolver.PlacedTileIds(layout).ToHashSet(StringComparer.Ordinal);
+        var placed = DisplayResolver.PlacedTileIds(layout).Concat(alsoPlaced is null ? [] : DisplayResolver.PlacedTileIds(alsoPlaced))
+            .ToHashSet(StringComparer.Ordinal);
         Slot? incoming = slot switch
         {
             TileSlot t => placed.Contains(t.TileId) ? null : t,
@@ -113,7 +115,7 @@ public static class LayoutEdits
         DisplayResolver.PlacedTileIds(before).Except(DisplayResolver.PlacedTileIds(after), StringComparer.Ordinal).ToList();
 
     /// <summary>True when both layouts hold equal slots in the same order.</summary>
-    public static bool SameSlots(DisplayLayout a, DisplayLayout b) => a.Slots.SequenceEqual(b.Slots);
+    public static bool SameLayout(DisplayLayout a, DisplayLayout b) => a.Slots.SequenceEqual(b.Slots);
 
     static bool Valid(DisplayLayout layout, int index) => index >= 0 && index < layout.Slots.Count;
 

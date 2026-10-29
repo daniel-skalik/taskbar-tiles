@@ -432,6 +432,16 @@ public class HidTransportTests
         Assert.Empty(HidTransport.Match(request, [0x10, 1, 0x8F, 8, 0x1A, 9, 0])!);  // HID++ 1.0 error on the short collection
         Assert.Null(HidTransport.Match(request, [0x10, 1, 0x41, 4, 0, 0, 0]));       // a connection notification
         Assert.Null(HidTransport.Match(request, [0x10, 1, 0x8F, 8, 0x1F, 9, 0]));    // an error for another program's request
+        Assert.Null(HidTransport.Match(request, Long(0x11, 1, 8, 0x19, 45)));       // a late answer to an earlier request
+    }
+
+    [Fact]
+    public void Each_request_gets_the_next_software_id_and_never_zero()
+    {
+        Assert.Equal(1, HidTransport.NextSoftwareId(0));
+        Assert.Equal(2, HidTransport.NextSoftwareId(1));
+        Assert.Equal(1, HidTransport.NextSoftwareId(15));
+        Assert.DoesNotContain(Enumerable.Range(0, 16), i => HidTransport.NextSoftwareId((byte)i) == 0);
     }
 
     [Theory]

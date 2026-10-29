@@ -15,7 +15,7 @@ using static TaskbarTiles.Host.Taskbar.NativeMethods;
 namespace TaskbarTiles.Host.UI;
 
 /// <summary>
-/// One per display: a borderless topmost strip in the free zone. LayoutEngine decides per slot: full, compact, or
+/// Two per display, one per side (<see cref="BarSide"/>): a borderless topmost strip in that side's free zone. LayoutEngine decides per slot: full, compact, or
 /// inside the » overflow popup. Reflows on every free-zone or slot change. In edit mode it shows dashed tiles that can
 /// be dragged, a × on each, and + and Done at the end; every change is saved to config.json right away.
 /// </summary>
@@ -47,6 +47,8 @@ public sealed class TileBar : Window, ITileBarView
     bool _editing;
     IntPtr _menuForeground; // the foreground window before a menu took it for the bar
     IntPtr _previousForeground; // the window that was in front when edit mode activated this bar
+    IntPtr _owner; // this display's taskbar
+    int? _shownLeft; // the bar's left edge on screen, null while hidden
     SlotView? _dragSource;
     SlotView? _dropTarget; // the slot of this bar a drop would stack onto
     TileBar? _hoverBar; // while this bar drags: the bar under the pointer, which shows the drop preview
@@ -56,13 +58,14 @@ public sealed class TileBar : Window, ITileBarView
     Point _dragStart;
     bool _dragging;
 
-    public TileBar(string displayId, ITileLog log, TileCommands commands, ILayoutEditor editor, TileBarRegistry bars)
+    public TileBar(string displayId, BarSide side, ITileLog log, TileCommands commands, ILayoutEditor editor, TileBarRegistry bars)
     {
         _log = log;
         _commands = commands;
         _editor = editor;
         _bars = bars;
         DisplayId = displayId;
+        Side = side;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -118,6 +121,7 @@ public sealed class TileBar : Window, ITileBarView
     }
 
     public string DisplayId { get; }
+    public BarSide Side { get; }
     public event EventHandler? ExitRequested;
 
     /// <summary>
@@ -164,6 +168,12 @@ public sealed class TileBar : Window, ITileBarView
         {
             _light = info.IsLightTheme;
             Theme.ApplyTo(Resources, info.IsLightTheme);
+        }
+        if (_owner != info.Handle && _hwnd != IntPtr.Zero)
+        {
+            // Opening Start lifts the taskbar into a z-band above every topmost window; windows it owns go along.
+            _owner = info.Handle;
+            SetWindowLongPtr(_hwnd, GWLP_HWNDPARENT, _owner);
         }
         Reflow();
     }
@@ -222,7 +232,7 @@ public sealed class TileBar : Window, ITileBarView
         {
             var current = view.Slot;
             var member = view.CurrentMember;
-            Save(() => _editor.RemoveTile(DisplayId, current.Index, current.IsStack ? member : null));
+            Save(() => _editor.RemoveTile(DisplayId, current.Index, current.IsStack ? member : null, Side));
         };
         return view;
     }
@@ -238,7 +248,7 @@ public sealed class TileBar : Window, ITileBarView
         var state = new SlotMenuState(IsStack: view.Slot.IsStack, RotationPaused: view.Rotation?.Paused == true);
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
         menu.Items.Clear();
-        foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
+        foreach (var entry in TileMenu.Entries(state, _editing, Side)) menu.Items.Add(Item(entry, view, member));
     }
 
     /// <summary>
@@ -309,13 +319,17 @@ public sealed class TileBar : Window, ITileBarView
             case LayoutCommand.RemoveFromStack:
                 Edit(l => LayoutEdits.RemoveFromStack(l, slot.Index, member));
                 break;
+            case LayoutCommand.MoveToOtherSide:
+                var other = Side == BarSide.Right ? BarSide.Left : BarSide.Right;
+                Save(() => _editor.MoveToDisplay(DisplayId, slot.Index, DisplayId, null, DropPosition.After, Side, other));
+                break;
             case LayoutCommand.RemoveTile:
-                Save(() => _editor.RemoveTile(DisplayId, slot.Index, slot.IsStack ? member : null));
+                Save(() => _editor.RemoveTile(DisplayId, slot.Index, slot.IsStack ? member : null, Side));
                 break;
         }
     }
 
-    void Edit(Func<DisplayLayout, DisplayLayout> edit) => Save(() => _editor.EditLayout(DisplayId, edit));
+    void Edit(Func<DisplayLayout, DisplayLayout> edit) => Save(() => _editor.EditLayout(DisplayId, edit, Side));
 
     /// <summary>Saves a layout change; the new slots arrive through SetSlots. Shows a notice when nothing was saved.</summary>
     void Save(Func<ConfigError?> save)
@@ -342,7 +356,7 @@ public sealed class TileBar : Window, ITileBarView
             ? "Nothing to add: every tile is on this display already."
             : "It is added at the end of this display's tiles.");
         panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
-            (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item)))))));
+            (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, side: Side)))))));
         FlyoutWindow.ShowPanel(_addButton, panel, _light ?? false, _log);
     }
 
@@ -370,7 +384,7 @@ public sealed class TileBar : Window, ITileBarView
         {
             if (choices.Count > 0) panel.Children.Add(Section("Add a tile"));
             panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
-                (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target)))))));
+                (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target, side: Side)))))));
         }
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
         FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
@@ -486,8 +500,8 @@ public sealed class TileBar : Window, ITileBarView
         EndDrag();
         if (dragged is null || bar is null || drop is not { } d) return; // a click, or released outside every bar: cancel
         var from = dragged.Slot.Index;
-        var toDisplay = bar.DisplayId;
-        Save(() => _editor.MoveToDisplay(DisplayId, from, toDisplay, d.Target, d.Position));
+        var (toDisplay, toSide) = (bar.DisplayId, bar.Side);
+        Save(() => _editor.MoveToDisplay(DisplayId, from, toDisplay, d.Target, d.Position, Side, toSide));
     }
 
     protected override void OnLostMouseCapture(MouseEventArgs e)
@@ -630,8 +644,11 @@ public sealed class TileBar : Window, ITileBarView
     void Reflow()
     {
         if (_hwnd == IntPtr.Zero || _info is null) return;
-        var zone = _info.FreeZone.Zone;
         var scale = _info.DpiScale;
+        var zone = _info.ZoneFor(Side);
+        // With left-aligned icons both sides share the space before the tray: the left bar ends where the right one starts.
+        if (Side == BarSide.Left && !_info.FreeZone.IconsCentered && _bars.Sibling(this)?._shownLeft is { } rightBarLeft)
+            zone = zone with { Right = Math.Min(zone.Right, rightBarLeft - (int)Math.Round(GapDip * scale)) };
         var hidden = _info.Hidden || zone.IsEmpty;
         // In edit mode the bar keeps DropGapDip of transparent room after Done, so a drop preview can slide tiles apart
         // without resizing the bar or reflowing its tiles.
@@ -639,7 +656,7 @@ public sealed class TileBar : Window, ITileBarView
 
         var layout = hidden
             ? null
-            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned)).ToList(),
+            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned, v.Slot.CanCompact)).ToList(),
                 zone.Width / scale - (_editing ? chrome + GapDip : 0), GapDip);
         Arrange(layout, showChrome: _editing && !hidden);
 
@@ -648,6 +665,7 @@ public sealed class TileBar : Window, ITileBarView
         {
             CloseOverflow();
             if (IsVisible) Hide();
+            Shown(null);
             return;
         }
 
@@ -655,9 +673,18 @@ public sealed class TileBar : Window, ITileBarView
         var clamped = _editing && w > zone.Width;
         if (clamped) w = zone.Width; // never cover the taskbar icons
         _panel.HorizontalAlignment = clamped ? HorizontalAlignment.Right : HorizontalAlignment.Left; // keep + and Done visible
-        var x = _info.FreeZone.IconsCentered ? zone.Left : zone.Right - w;
+        var x = _info.AnchorsRight(Side) ? zone.Right - w : zone.Left;
         if (!IsVisible) Show();
         SetWindowPos(_hwnd, HWND_TOPMOST, x, zone.Top, w, zone.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        Shown(x);
+    }
+
+    /// <summary>Remembers where the bar starts (null: hidden); the right bar's start limits the left bar's space.</summary>
+    void Shown(int? left)
+    {
+        if (_shownLeft == left) return;
+        _shownLeft = left;
+        if (Side == BarSide.Right && _info is { FreeZone.IconsCentered: false }) _bars.Sibling(this)?.Reflow();
     }
 
     /// <summary>Puts full and compact slots on the bar, then the » tile when anything overflows, then + and Done in edit mode.</summary>
@@ -709,7 +736,7 @@ public sealed class TileBar : Window, ITileBarView
         }
         if (_overflowed.Count == 0 || _info is null) return;
 
-        var tileHeight = Math.Max(24, _info.FreeZone.Zone.Height / _info.DpiScale - 2 * InsetDip);
+        var tileHeight = Math.Max(24, _info.ZoneFor(Side).Height / _info.DpiScale - 2 * InsetDip);
         var panel = new StackPanel { Orientation = Orientation.Vertical };
         for (var i = 0; i < _overflowed.Count; i++)
         {
