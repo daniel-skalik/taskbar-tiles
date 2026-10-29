@@ -14,7 +14,9 @@ public interface ITileBarView
 {
     string DisplayId { get; }
     void SetSlots(IReadOnlyList<BarSlot> slots);
-    void Apply(TaskbarInfo info);
+
+    /// <summary>The taskbar the bar sits on, and which side of it the display's tiles use.</summary>
+    void Apply(TaskbarInfo info, BarSide side);
 
     /// <summary>Edit mode: dashed tiles, drag, ×, + and Done.</summary>
     void SetEditing(bool editing);
@@ -124,7 +126,7 @@ public sealed class HostController(
         var (target, refused) = Editable(displayId);
         if (target is not { } t) return refused;
         var changed = edit(t.Layout);
-        if (LayoutEdits.SameSlots(t.Layout, changed)) return null;
+        if (LayoutEdits.SameLayout(t.Layout, changed)) return null;
         return Saved(LayoutOf(displayId, t.Key), writer!.Save(root => ConfigJson.SetDisplay(root, t.Key, changed)));
     }
 
@@ -133,7 +135,7 @@ public sealed class HostController(
         var (target, refused) = Editable(displayId);
         if (target is not { } t) return refused;
         var changed = LayoutEdits.Remove(t.Layout, index, member);
-        if (LayoutEdits.SameSlots(t.Layout, changed)) return null;
+        if (LayoutEdits.SameLayout(t.Layout, changed)) return null;
         var removed = LayoutEdits.RemovedTileIds(t.Layout, changed);
         return Saved(LayoutOf(displayId, t.Key), writer!.Save(root =>
         {
@@ -159,7 +161,7 @@ public sealed class HostController(
 
         var newSource = LayoutEdits.Remove(s.Layout, fromIndex);
         var newTarget = LayoutEdits.DropIncoming(d.Layout, slot, target, position);
-        var targetChanged = !LayoutEdits.SameSlots(d.Layout, newTarget); // else a display inheriting "*" would be forked into its own entry
+        var targetChanged = !LayoutEdits.SameLayout(d.Layout, newTarget); // else a display inheriting "*" would be forked into its own entry
         return Saved($"a move from display '{fromDisplayId}' (\"{s.Key}\") to display '{toDisplayId}' (\"{d.Key}\")",
             writer!.Save(root =>
             {
@@ -255,7 +257,7 @@ public sealed class HostController(
                     if (Editing) bar.SetEditing(true);
                 }
                 bar.SetSlots(BarSlots(layouts[info.DisplayId]));
-                bar.Apply(info);
+                bar.Apply(info, layouts[info.DisplayId].Side);
             }
             catch (Exception ex)
             {

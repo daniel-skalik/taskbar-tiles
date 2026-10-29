@@ -27,4 +27,18 @@ public static class FreeZoneCalculator
         if (right < left) right = left;
         return new FreeZone(new PixelRect(left, tb.Top, right, tb.Bottom), centered);
     }
+
+    /// <summary>
+    /// The space between the app icons and the tray (or the taskbar edge minus a clock reserve on secondary taskbars),
+    /// for displays whose tiles sit on the right. <paramref name="iconsRight"/> is where the icons end when known
+    /// better than the icon area window says (UI Automation).
+    /// </summary>
+    public static PixelRect ComputeRight(TaskbarGeometry g, int marginPx, int clockReservePx, int? iconsRight = null)
+    {
+        var tb = g.Taskbar;
+        var left = (iconsRight ?? g.IconArea?.Right ?? g.Start?.Right ?? tb.Left) + marginPx;
+        var right = (g.Tray?.Left ?? tb.Right - clockReservePx) - marginPx;
+        if (right < left) right = left;
+        return new PixelRect(left, tb.Top, right, tb.Bottom);
+    }
 }

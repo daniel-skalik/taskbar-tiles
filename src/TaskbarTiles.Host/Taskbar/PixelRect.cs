@@ -23,4 +23,12 @@ public sealed record TaskbarInfo(
     FreeZone FreeZone,
     bool Hidden,
     bool IsLightTheme,
-    double DpiScale);
+    double DpiScale,
+    PixelRect? RightZone = null)
+{
+    /// <summary>The zone a bar on <paramref name="side"/> uses; the right zone defaults to the free zone.</summary>
+    public PixelRect ZoneFor(Config.BarSide side) => side == Config.BarSide.Right ? RightZone ?? FreeZone.Zone : FreeZone.Zone;
+
+    /// <summary>The bar hugs the zone's right end (the tray) on the right side, or when the icons are left-aligned.</summary>
+    public bool AnchorsRight(Config.BarSide side) => side == Config.BarSide.Right || !FreeZone.IconsCentered;
+}

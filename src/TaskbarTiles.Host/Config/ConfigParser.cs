@@ -96,7 +96,8 @@ public static class ConfigParser
     static DisplayLayout BuildLayout(string display, JsonElement el, IReadOnlyDictionary<string, TileConfig> tiles)
     {
         if (el.ValueKind != JsonValueKind.Object) throw new ConfigException($"Display '{display}' must be an object.");
-        if (!el.TryGetProperty("slots", out var slotsEl)) return DisplayLayout.Empty;
+        var side = Side(display, el);
+        if (!el.TryGetProperty("slots", out var slotsEl)) return DisplayLayout.Empty with { Side = side };
         if (slotsEl.ValueKind != JsonValueKind.Array) throw new ConfigException($"\"slots\" on display '{display}' must be an array.");
 
         var slots = new List<Slot>();
@@ -111,7 +112,17 @@ public static class ConfigParser
                     throw new ConfigException($"Display '{display}' references unknown tile '{id}'.");
             slots.Add(slot);
         }
-        return new DisplayLayout(slots);
+        return new DisplayLayout(slots, side);
+    }
+
+    static BarSide Side(string display, JsonElement el)
+    {
+        if (!el.TryGetProperty("side", out var s)) return BarSide.Left;
+        return s.ValueKind == JsonValueKind.String && s.GetString() is { } text
+            ? text.Equals("left", StringComparison.OrdinalIgnoreCase) ? BarSide.Left
+            : text.Equals("right", StringComparison.OrdinalIgnoreCase) ? BarSide.Right
+            : throw new ConfigException($"\"side\" on display '{display}' must be \"left\" or \"right\".")
+            : throw new ConfigException($"\"side\" on display '{display}' must be \"left\" or \"right\".");
     }
 
     static Slot BuildSlot(string display, int index, JsonElement el)

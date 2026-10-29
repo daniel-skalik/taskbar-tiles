@@ -32,6 +32,7 @@ It publishes a Release build into a staging folder next to the install folder an
   - a tile id: `"uptime"`
   - a pinned tile: `{ "tile": "spotify", "pin": true }` (see below)
   - a stack: `{ "stack": ["uptime", "ping"], "rotate": "5s" }`
+- `"side"` on a display: `"left"` (default) puts its tiles left of Start when the taskbar icons are centered; `"right"` puts them between the app icons and the tray, against the tray, so opening apps never moves them. Right-click the bar → **Move tiles to the right side** (or left) sets it. With left-aligned icons both sides are the space between the icons and the tray.
 - Display keys, in the order they are tried:
   1. the monitor's device id (edit mode writes these, e.g. `"\\\\?\\DISPLAY#DEL41A8#5&2b1c…"`, with the backslashes doubled as JSON requires)
   2. `primary`, for the primary display
@@ -94,7 +95,7 @@ A stack takes one tile's place and shows its members one at a time, with a dot p
 
 ## When space runs out
 
-Tiles fill the free part of the taskbar next to the Start button (centered icons) or before the tray (left-aligned icons). When they do not fit:
+Tiles fill the free part of the taskbar next to the Start button (centered icons, `"side": "left"`) or before the tray (left-aligned icons, or `"side": "right"`). When they do not fit:
 
 1. Tiles become compact, from the right end: only the icon (or the first letter of the title), 40 DIP wide, with the title, subtitle and tooltip in the tooltip. Pinned tiles stay full size.
 2. If that is not enough, tiles move into a `»` tile at the end, from the right end; pinned tiles go last. Click `»` to see them at full size. They still work there: buttons, popups (shown above the `»` tile) and the right-click menu.

@@ -34,7 +34,7 @@ public class ConfigJsonTests
         var parsed = ConfigParser.Parse(ConfigJson.Serialize(root));
 
         Assert.True(parsed.Success, parsed.Error?.ToString());
-        Assert.True(LayoutEdits.SameSlots(layout, parsed.Config!.Displays["primary"]));
+        Assert.True(LayoutEdits.SameLayout(layout, parsed.Config!.Displays["primary"]));
     }
 
     [Fact]
@@ -130,4 +130,17 @@ public class ConfigJsonTests
     [Fact]
     public void Parse_root_rejects_a_non_object() =>
         Assert.Throws<InvalidOperationException>(() => ConfigJson.ParseRoot("[1]"));
+
+    [Fact]
+    public void Set_display_writes_the_right_side_and_removes_the_left_one()
+    {
+        var root = ConfigJson.ParseRoot("""{ "displays": { "primary": { "slots": [], "note": "x" } } }""");
+
+        ConfigJson.SetDisplay(root, "primary", new DisplayLayout([new TileSlot("a", false)], BarSide.Right));
+        Assert.Equal("right", root["displays"]!["primary"]!["side"]!.GetValue<string>());
+        Assert.Equal("x", root["displays"]!["primary"]!["note"]!.GetValue<string>());
+
+        ConfigJson.SetDisplay(root, "primary", new DisplayLayout([new TileSlot("a", false)]));
+        Assert.Null(root["displays"]!["primary"]!["side"]);
+    }
 }

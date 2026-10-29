@@ -94,6 +94,19 @@ public class HostControllerLayoutTests
     }
 
     [Fact]
+    public void Moving_tiles_to_the_right_side_saves_it_and_tells_the_bar()
+    {
+        var f = new Fixture(Config);
+        Assert.Equal(BarSide.Left, f.Bars["MAIN"].Side);
+
+        Assert.Null(f.Host.EditLayout("MAIN", l => l with { Side = BarSide.Right }));
+
+        Assert.Equal("right", f.Displays.GetProperty("primary").GetProperty("side").GetString());
+        Assert.Equal(BarSide.Right, f.Bars["MAIN"].Side);
+        Assert.Equal(3, f.Bars["MAIN"].Tiles.Count); // the tiles stay
+    }
+
+    [Fact]
     public void Editing_the_primary_display_writes_primary()
     {
         var f = new Fixture(Config);

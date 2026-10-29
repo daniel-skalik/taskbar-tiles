@@ -113,7 +113,7 @@ public static class LayoutEdits
         DisplayResolver.PlacedTileIds(before).Except(DisplayResolver.PlacedTileIds(after), StringComparer.Ordinal).ToList();
 
     /// <summary>True when both layouts hold equal slots in the same order.</summary>
-    public static bool SameSlots(DisplayLayout a, DisplayLayout b) => a.Slots.SequenceEqual(b.Slots);
+    public static bool SameLayout(DisplayLayout a, DisplayLayout b) => a.Side == b.Side && a.Slots.SequenceEqual(b.Slots);
 
     static bool Valid(DisplayLayout layout, int index) => index >= 0 && index < layout.Slots.Count;
 

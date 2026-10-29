@@ -30,11 +30,16 @@ public static class ConfigJson
 
     public static string Serialize(JsonObject root) => root.ToJsonString(WriteOptions) + Environment.NewLine;
 
-    /// <summary>Sets displays[key].slots, keeping any other keys of that display entry.</summary>
+    /// <summary>
+    /// Sets displays[key].slots and its "side" ("right"; left is the default, so the key is removed), keeping any other
+    /// keys of that display entry.
+    /// </summary>
     public static void SetDisplay(JsonObject root, string key, DisplayLayout layout)
     {
         var displays = ChildObject(root, "displays");
         var display = ChildObject(displays, key);
+        if (layout.Side == BarSide.Right) display["side"] = "right";
+        else display.Remove("side");
         display["slots"] = new JsonArray(layout.Slots.Select(ToNode).ToArray());
     }
 

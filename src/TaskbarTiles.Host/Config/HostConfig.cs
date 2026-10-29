@@ -15,7 +15,10 @@ public sealed record HostConfig(
 /// </summary>
 public sealed record TileConfig(string Kind, JsonElement Settings);
 
-public sealed record DisplayLayout(IReadOnlyList<Slot> Slots)
+/// <summary>Where a display's tiles sit: left of Start (centered icons), or between the icons and the tray.</summary>
+public enum BarSide { Left, Right }
+
+public sealed record DisplayLayout(IReadOnlyList<Slot> Slots, BarSide Side = BarSide.Left)
 {
     public static DisplayLayout Empty { get; } = new([]);
 }

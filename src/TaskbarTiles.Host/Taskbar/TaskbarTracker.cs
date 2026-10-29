@@ -151,7 +151,9 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
             var scale = GetDpiForMonitor(monitor, 0, out var dpi, out _) == 0 ? dpi / 96.0 : 1.0;
 
             var geometry = new TaskbarGeometry(barRect, Rect(start), Rect(icons), Rect(tray));
-            var zone = FreeZoneCalculator.Compute(geometry, (int)Math.Round(MarginDip * scale), (int)Math.Round(ClockReserveDip * scale));
+            var margin = (int)Math.Round(MarginDip * scale);
+            var clockReserve = (int)Math.Round(ClockReserveDip * scale);
+            var zone = FreeZoneCalculator.Compute(geometry, margin, clockReserve);
 
             into.Add(new TaskbarInfo(
                 DisplayId: DeviceId(info.szDevice),
@@ -160,7 +162,8 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
                 FreeZone: zone,
                 Hidden: IsFullscreenOn(monitor, info.rcMonitor),
                 IsLightTheme: light,
-                DpiScale: scale));
+                DpiScale: scale,
+                RightZone: FreeZoneCalculator.ComputeRight(geometry, margin, clockReserve)));
         }
     }
 

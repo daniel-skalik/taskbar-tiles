@@ -137,4 +137,25 @@ public class ConfigParserTests
         Assert.True(result.Success);
         Assert.Empty(result.Config!.Displays);
     }
+
+    [Theory]
+    [InlineData("", BarSide.Left)]
+    [InlineData("\"side\": \"left\",", BarSide.Left)]
+    [InlineData("\"side\": \"Right\",", BarSide.Right)]
+    public void A_display_names_its_side(string side, BarSide expected)
+    {
+        var cfg = ConfigParser.Parse($$"""{ "tiles": {}, "displays": { "primary": { {{side}} "slots": [] } } }""");
+
+        Assert.Equal(expected, cfg.Config!.Displays["primary"].Side);
+    }
+
+    [Theory]
+    [InlineData("\"middle\"")]
+    [InlineData("1")]
+    public void An_unknown_side_is_a_config_error(string side)
+    {
+        var result = ConfigParser.Parse($$"""{ "tiles": {}, "displays": { "primary": { "side": {{side}} } } }""");
+
+        Assert.Equal("\"side\" on display 'primary' must be \"left\" or \"right\".", result.Error!.Message);
+    }
 }

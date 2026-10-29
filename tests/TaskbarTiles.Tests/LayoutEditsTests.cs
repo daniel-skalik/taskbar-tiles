@@ -12,7 +12,7 @@ public class LayoutEditsTests
     static DisplayLayout L(params Slot[] slots) => new(slots);
 
     static void Same(DisplayLayout expected, DisplayLayout actual) =>
-        Assert.True(LayoutEdits.SameSlots(expected, actual), $"expected [{string.Join(", ", expected.Slots)}] but got [{string.Join(", ", actual.Slots)}]");
+        Assert.True(LayoutEdits.SameLayout(expected, actual), $"expected [{string.Join(", ", expected.Slots)}] but got [{string.Join(", ", actual.Slots)}]");
 
     [Theory]
     [InlineData(0.0, DropPosition.Before)]

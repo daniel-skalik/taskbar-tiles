@@ -43,6 +43,7 @@ public sealed class TileBar : Window, ITileBarView
     StackPanel? _overflowPanel; // set while the overflow popup is open
     IntPtr _hwnd;
     TaskbarInfo? _info;
+    BarSide _side;
     bool? _light;
     bool _editing;
     IntPtr _menuForeground; // the foreground window before a menu took it for the bar
@@ -157,9 +158,14 @@ public sealed class TileBar : Window, ITileBarView
         Reflow();
     }
 
-    public void Apply(TaskbarInfo info)
+    public void Apply(TaskbarInfo info, BarSide side)
     {
         _info = info;
+        if (_side != side)
+        {
+            _side = side;
+            FillBarMenu(ContextMenu); // the move entry names the other side
+        }
         if (_light != info.IsLightTheme)
         {
             _light = info.IsLightTheme;
@@ -230,7 +236,7 @@ public sealed class TileBar : Window, ITileBarView
     void FillBarMenu(ContextMenu menu)
     {
         menu.Items.Clear();
-        foreach (var entry in TileMenu.Entries(null, _editing)) menu.Items.Add(Item(entry, null, 0));
+        foreach (var entry in TileMenu.Entries(null, _editing, _side)) menu.Items.Add(Item(entry, null, 0));
     }
 
     void FillSlotMenu(ContextMenu menu, SlotView view)
@@ -238,7 +244,7 @@ public sealed class TileBar : Window, ITileBarView
         var state = new SlotMenuState(IsStack: view.Slot.IsStack, RotationPaused: view.Rotation?.Paused == true);
         var member = view.CurrentMember; // the member shown when the menu opened, even if the stack rotates meanwhile
         menu.Items.Clear();
-        foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
+        foreach (var entry in TileMenu.Entries(state, _editing, _side)) menu.Items.Add(Item(entry, view, member));
     }
 
     /// <summary>
@@ -271,6 +277,11 @@ public sealed class TileBar : Window, ITileBarView
             item.Click += (_, _) => _editor.SetEditMode(false);
         else if (entry.Bar == BarCommand.OpenConfig)
             item.Click += (_, _) => _commands.OpenConfig();
+        else if (entry.Bar is BarCommand.MoveRight or BarCommand.MoveLeft)
+        {
+            var side = entry.Bar == BarCommand.MoveRight ? BarSide.Right : BarSide.Left;
+            item.Click += (_, _) => Edit(layout => layout with { Side = side });
+        }
         else if (entry.Bar == BarCommand.Exit)
             item.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         return item;
@@ -630,7 +641,7 @@ public sealed class TileBar : Window, ITileBarView
     void Reflow()
     {
         if (_hwnd == IntPtr.Zero || _info is null) return;
-        var zone = _info.FreeZone.Zone;
+        var zone = _info.ZoneFor(_side);
         var scale = _info.DpiScale;
         var hidden = _info.Hidden || zone.IsEmpty;
         // In edit mode the bar keeps DropGapDip of transparent room after Done, so a drop preview can slide tiles apart
@@ -655,7 +666,7 @@ public sealed class TileBar : Window, ITileBarView
         var clamped = _editing && w > zone.Width;
         if (clamped) w = zone.Width; // never cover the taskbar icons
         _panel.HorizontalAlignment = clamped ? HorizontalAlignment.Right : HorizontalAlignment.Left; // keep + and Done visible
-        var x = _info.FreeZone.IconsCentered ? zone.Left : zone.Right - w;
+        var x = _info.AnchorsRight(_side) ? zone.Right - w : zone.Left;
         if (!IsVisible) Show();
         SetWindowPos(_hwnd, HWND_TOPMOST, x, zone.Top, w, zone.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
@@ -709,7 +720,7 @@ public sealed class TileBar : Window, ITileBarView
         }
         if (_overflowed.Count == 0 || _info is null) return;
 
-        var tileHeight = Math.Max(24, _info.FreeZone.Zone.Height / _info.DpiScale - 2 * InsetDip);
+        var tileHeight = Math.Max(24, _info.ZoneFor(_side).Height / _info.DpiScale - 2 * InsetDip);
         var panel = new StackPanel { Orientation = Orientation.Vertical };
         for (var i = 0; i < _overflowed.Count; i++)
         {

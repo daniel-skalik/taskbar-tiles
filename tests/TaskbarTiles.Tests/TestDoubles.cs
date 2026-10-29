@@ -102,7 +102,8 @@ public sealed class FakeBar(string displayId) : TaskbarTiles.Host.ITileBarView
         Editing = editing;
     }
     public void SetSlots(IReadOnlyList<TaskbarTiles.Host.Layout.BarSlot> slots) => Slots = slots;
-    public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info) => Info = info;
+    public TaskbarTiles.Host.Config.BarSide Side { get; private set; }
+    public void Apply(TaskbarTiles.Host.Taskbar.TaskbarInfo info, TaskbarTiles.Host.Config.BarSide side) { Info = info; Side = side; }
     public void Close() => Closed = true;
 }
 

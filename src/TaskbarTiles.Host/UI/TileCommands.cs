@@ -1,5 +1,6 @@
 using System.IO;
 using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Runtime;
 
 namespace TaskbarTiles.Host.UI;
@@ -8,7 +9,7 @@ namespace TaskbarTiles.Host.UI;
 public enum TileCommand { ShowFolder, Refresh, ShowLog, Restart }
 
 /// <summary>Commands on the whole app.</summary>
-public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
+public enum BarCommand { EditLayout, DoneEditing, OpenConfig, MoveRight, MoveLeft, Exit }
 
 /// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
 public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
@@ -34,8 +35,11 @@ public sealed record SlotMenuState(bool IsStack, bool RotationPaused);
 
 public static class TileMenu
 {
-    /// <summary>The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null.</summary>
-    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing)
+    /// <summary>
+    /// The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null. <paramref name="side"/>
+    /// is where the display's tiles sit now; the menu offers the other side.
+    /// </summary>
+    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing, BarSide side = BarSide.Left)
     {
         var editEntry = editing ? new MenuEntry("Done editing", Bar: BarCommand.DoneEditing) : new MenuEntry("Edit layout", Bar: BarCommand.EditLayout);
         var entries = new List<MenuEntry>();
@@ -68,6 +72,9 @@ public static class TileMenu
             entries.Add(editEntry);
             entries.Add(MenuEntry.Separator);
         }
+        entries.Add(side == BarSide.Right
+            ? new MenuEntry("Move tiles to the left side", Bar: BarCommand.MoveLeft)
+            : new MenuEntry("Move tiles to the right side", Bar: BarCommand.MoveRight));
         entries.Add(new("Show config file", Bar: BarCommand.OpenConfig));
         entries.Add(MenuEntry.Separator);
         entries.Add(new("Exit Taskbar Tiles", Bar: BarCommand.Exit));
