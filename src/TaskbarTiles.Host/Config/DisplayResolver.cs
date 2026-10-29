@@ -6,12 +6,16 @@ public static class DisplayResolver
     public const string FallbackKey = "*";
 
     /// <summary>Exact device id, then "primary" for the primary display, then "*".</summary>
-    public static DisplayLayout Resolve(HostConfig config, string displayId, bool isPrimary)
+    public static DisplayEntry Resolve(HostConfig config, string displayId, bool isPrimary)
     {
         if (config.Displays.TryGetValue(displayId, out var exact)) return exact;
         if (isPrimary && config.Displays.TryGetValue(PrimaryKey, out var primary)) return primary;
-        return config.Displays.TryGetValue(FallbackKey, out var any) ? any : DisplayLayout.Empty;
+        return config.Displays.TryGetValue(FallbackKey, out var any) ? any : DisplayEntry.Empty;
     }
+
+    /// <summary>Every tile either side of the display places, left side first, each once.</summary>
+    public static IReadOnlyList<string> PlacedTileIds(DisplayEntry entry) =>
+        PlacedTileIds(entry.Left).Concat(PlacedTileIds(entry.Right)).Distinct(StringComparer.Ordinal).ToList();
 
     /// <summary>
     /// The "displays" key edit mode writes for this display: the device id when it has its own entry;

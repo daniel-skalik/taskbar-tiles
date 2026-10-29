@@ -15,7 +15,7 @@ public class ConfigStoreSaveTests
     """;
 
     static Action<JsonObject> PlaceBoth =>
-        root => ConfigJson.SetDisplay(root, "primary", new DisplayLayout([new TileSlot("a", false), new TileSlot("b", false)]));
+        root => ConfigJson.SetDisplay(root, "primary", new DisplayEntry(new([new TileSlot("a", false), new TileSlot("b", false)]), DisplayLayout.Empty));
 
     [Fact]
     public void Save_rewrites_the_file_and_updates_current()
@@ -31,10 +31,10 @@ public class ConfigStoreSaveTests
 
         Assert.Null(error);
         Assert.Equal(1, changed);
-        Assert.Equal(2, store.Current.Displays["primary"].Slots.Count);
+        Assert.Equal(2, store.Current.Displays["primary"].Left.Slots.Count);
         var written = File.ReadAllText(dir.File("config.json"));
         Assert.DoesNotContain("my notes", written); // comments are lost: documented
-        Assert.Equal(2, ConfigParser.Parse(written).Config!.Displays["primary"].Slots.Count);
+        Assert.Equal(2, ConfigParser.Parse(written).Config!.Displays["primary"].Left.Slots.Count);
         Assert.False(File.Exists(dir.File("config.json.tmp")));
     }
 
@@ -50,7 +50,7 @@ public class ConfigStoreSaveTests
         Assert.Equal(Original, File.ReadAllText(store.BackupPath));
 
         var afterFirst = File.ReadAllText(dir.File("config.json"));
-        Assert.Null(store.Save(root => ConfigJson.SetDisplay(root, "primary", DisplayLayout.Empty)));
+        Assert.Null(store.Save(root => ConfigJson.SetDisplay(root, "primary", DisplayEntry.Empty)));
         Assert.Equal(afterFirst, File.ReadAllText(store.BackupPath));
     }
 
@@ -70,7 +70,7 @@ public class ConfigStoreSaveTests
         Assert.NotNull(error.Line);
         Assert.Equal("{ \"tiles\": ", File.ReadAllText(dir.File("config.json")));
         Assert.False(File.Exists(store.BackupPath));
-        Assert.Single(store.Current.Displays["primary"].Slots); // last good config stays
+        Assert.Single(store.Current.Displays["primary"].Left.Slots); // last good config stays
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ConfigStoreSaveTests
         using var store = new ConfigStore(dir.File("config.json"), new CollectingLog());
         store.Load();
 
-        var error = store.Save(root => ConfigJson.SetDisplay(root, "primary", new DisplayLayout([new TileSlot("ghost", false)])));
+        var error = store.Save(root => ConfigJson.SetDisplay(root, "primary", new DisplayEntry(new([new TileSlot("ghost", false)]), DisplayLayout.Empty)));
 
         Assert.NotNull(error);
         Assert.Contains("ghost", error!.Message);

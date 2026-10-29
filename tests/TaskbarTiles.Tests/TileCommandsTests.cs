@@ -49,8 +49,8 @@ public class TileCommandsTests
             new[]
             {
                 "Show tile folder", "Refresh now", "Show connector log", "Restart tile", "",
-                "Create stack…", "", "Edit layout", "Remove tile", "",
-                "Move tiles to the right side", "Show config file", "", "Exit Taskbar Tiles",
+                "Create stack…", "", "Edit layout", "Move to the right side", "Remove tile", "",
+                "Show config file", "", "Exit Taskbar Tiles",
             },
             TileMenu.Entries(MiddleTile, editing: false).Select(e => e.Header));
 
@@ -122,22 +122,19 @@ public class TileCommandsTests
     {
         var entries = TileMenu.Entries(null, editing: false);
 
-        Assert.Equal(new[] { "Edit layout", "", "Move tiles to the right side", "Show config file", "", "Exit Taskbar Tiles" },
-            entries.Select(e => e.Header));
+        Assert.Equal(new[] { "Edit layout", "", "Show config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
         Assert.Equal(BarCommand.EditLayout, entries[0].Bar);
         Assert.True(entries[1].IsSeparator);
-        Assert.Equal(BarCommand.MoveRight, entries[2].Bar);
-        Assert.Equal(BarCommand.OpenConfig, entries[3].Bar);
-        Assert.Equal(BarCommand.Exit, entries[5].Bar);
+        Assert.Equal(BarCommand.OpenConfig, entries[2].Bar);
+        Assert.Equal(BarCommand.Exit, entries[4].Bar);
     }
 
     [Fact]
-    public void On_the_right_side_the_menu_offers_the_left_side()
+    public void A_tile_on_the_right_side_offers_the_left_side()
     {
-        var entry = TileMenu.Entries(null, editing: false, BarSide.Right)[2];
+        var entry = TileMenu.Entries(MiddleTile, editing: false, BarSide.Right).Single(e => e.Layout == LayoutCommand.MoveToOtherSide);
 
-        Assert.Equal("Move tiles to the left side", entry.Header);
-        Assert.Equal(BarCommand.MoveLeft, entry.Bar);
+        Assert.Equal("Move to the left side", entry.Header);
     }
 
     [Fact]

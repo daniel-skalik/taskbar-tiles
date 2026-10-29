@@ -4,9 +4,9 @@ namespace TaskbarTiles.Host.Config;
 
 public sealed record HostConfig(
     IReadOnlyDictionary<string, TileConfig> Tiles,
-    IReadOnlyDictionary<string, DisplayLayout> Displays)
+    IReadOnlyDictionary<string, DisplayEntry> Displays)
 {
-    public static HostConfig Empty { get; } = new(new Dictionary<string, TileConfig>(), new Dictionary<string, DisplayLayout>());
+    public static HostConfig Empty { get; } = new(new Dictionary<string, TileConfig>(), new Dictionary<string, DisplayEntry>());
 }
 
 /// <summary>
@@ -15,12 +15,31 @@ public sealed record HostConfig(
 /// </summary>
 public sealed record TileConfig(string Kind, JsonElement Settings);
 
-/// <summary>Where a display's tiles sit: left of Start (centered icons), or between the icons and the tray.</summary>
+/// <summary>
+/// A bar on a taskbar: left of Start (centered icons), or between the app icons and the tray, against the tray.
+/// </summary>
 public enum BarSide { Left, Right }
 
-public sealed record DisplayLayout(IReadOnlyList<Slot> Slots, BarSide Side = BarSide.Left)
+/// <summary>One bar's slots, left to right.</summary>
+public sealed record DisplayLayout(IReadOnlyList<Slot> Slots)
 {
     public static DisplayLayout Empty { get; } = new([]);
+
+    // Records compare lists by reference; compare items so layouts with equal content are equal.
+    public bool Equals(DisplayLayout? other) => other is not null && Slots.SequenceEqual(other.Slots);
+
+    public override int GetHashCode() => Slots.Count;
+}
+
+/// <summary>A display entry in config.json: its "left" and "right" bars.</summary>
+public sealed record DisplayEntry(DisplayLayout Left, DisplayLayout Right)
+{
+    public static DisplayEntry Empty { get; } = new(DisplayLayout.Empty, DisplayLayout.Empty);
+
+    public DisplayLayout this[BarSide side] => side == BarSide.Right ? Right : Left;
+
+    public DisplayEntry With(BarSide side, DisplayLayout layout) =>
+        side == BarSide.Right ? this with { Right = layout } : this with { Left = layout };
 }
 
 public abstract record Slot;

@@ -4,11 +4,11 @@ namespace TaskbarTiles.Tests;
 
 public class DisplayResolverTests
 {
-    static readonly DisplayLayout Primary = new([new TileSlot("p", false)]);
-    static readonly DisplayLayout Exact = new([new TileSlot("e", false)]);
-    static readonly DisplayLayout Any = new([new TileSlot("a", false)]);
+    static readonly DisplayEntry Primary = new(new([new TileSlot("p", false)]), DisplayLayout.Empty);
+    static readonly DisplayEntry Exact = new(new([new TileSlot("e", false)]), DisplayLayout.Empty);
+    static readonly DisplayEntry Any = new(new([new TileSlot("a", false)]), DisplayLayout.Empty);
 
-    static HostConfig Config(params (string Key, DisplayLayout Layout)[] displays) =>
+    static HostConfig Config(params (string Key, DisplayEntry Layout)[] displays) =>
         new(new Dictionary<string, TileConfig>(), displays.ToDictionary(d => d.Key, d => d.Layout));
 
     [Fact]
@@ -28,13 +28,20 @@ public class DisplayResolverTests
 
     [Fact]
     public void No_match_gives_empty_layout() =>
-        Assert.Empty(DisplayResolver.Resolve(Config(("primary", Primary)), "DEV9", isPrimary: false).Slots);
+        Assert.Empty(DisplayResolver.Resolve(Config(("primary", Primary)), "DEV9", isPrimary: false).Left.Slots);
 
     [Fact]
     public void Placed_tile_ids_include_every_stack_member_once()
     {
         var layout = new DisplayLayout([new TileSlot("a", false), new StackSlot(["b", "c", "a"], TimeSpan.FromSeconds(5)), new StackSlot([], TimeSpan.FromSeconds(5))]);
         Assert.Equal(new[] { "a", "b", "c" }, DisplayResolver.PlacedTileIds(layout));
+    }
+
+    [Fact]
+    public void Placed_tile_ids_of_a_display_list_the_left_side_first()
+    {
+        var entry = new DisplayEntry(new([new TileSlot("b", false)]), new([new TileSlot("a", false), new TileSlot("b", false)]));
+        Assert.Equal(new[] { "b", "a" }, DisplayResolver.PlacedTileIds(entry));
     }
 
     [Fact]

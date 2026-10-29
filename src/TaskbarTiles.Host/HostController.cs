@@ -13,10 +13,14 @@ namespace TaskbarTiles.Host;
 public interface ITileBarView
 {
     string DisplayId { get; }
+
+    /// <summary>Which of the display's two bars this is.</summary>
+    BarSide Side { get; }
+
     void SetSlots(IReadOnlyList<BarSlot> slots);
 
-    /// <summary>The taskbar the bar sits on, and which side of it the display's tiles use.</summary>
-    void Apply(TaskbarInfo info, BarSide side);
+    /// <summary>The taskbar the bar sits on.</summary>
+    void Apply(TaskbarInfo info);
 
     /// <summary>Edit mode: dashed tiles, drag, ×, + and Done.</summary>
     void SetEditing(bool editing);
@@ -26,46 +30,49 @@ public interface ITileBarView
 /// <summary>Layout changes a bar asks for. HostController implements it. UI thread only.</summary>
 public interface ILayoutEditor
 {
-    /// <summary>Edit mode is on for every bar at once; each bar still edits only its own display's layout.</summary>
+    /// <summary>Edit mode is on for every bar at once; each bar still edits only its own side of its display.</summary>
     bool Editing { get; }
 
     void SetEditMode(bool editing);
 
     /// <summary>
-    /// Applies <paramref name="edit"/> to the layout the display shows and saves config.json under the display's
-    /// edit key (<see cref="DisplayResolver.EditKey"/>). Returns null when saved or when nothing changed, otherwise why
-    /// nothing was saved.
+    /// Applies <paramref name="edit"/> to the <paramref name="side"/> bar of the display and saves config.json under the
+    /// display's edit key (<see cref="DisplayResolver.EditKey"/>). Returns null when saved or when nothing changed,
+    /// otherwise why nothing was saved.
     /// </summary>
-    ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit);
+    ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit, BarSide side = BarSide.Left);
 
-    /// <summary>What edit mode's "+" offers on this display.</summary>
+    /// <summary>What edit mode's "+" offers on this display: tiles neither side places yet, then new tiles.</summary>
     IReadOnlyList<GalleryItem> GalleryFor(string displayId);
 
     /// <summary>
-    /// Places the gallery item at the end of the display's layout, adding an instance of its kind when it is new. With
-    /// <paramref name="stackWith"/> it joins that slot instead, as "Create stack…" does (<see cref="LayoutEdits.StackInto"/>).
+    /// Places the gallery item at the end of the display's <paramref name="side"/> bar, adding an instance of its kind
+    /// when it is new. With <paramref name="stackWith"/> it joins that slot instead, as "Create stack…" does
+    /// (<see cref="LayoutEdits.StackInto"/>).
     /// </summary>
-    ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null);
+    ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null, BarSide side = BarSide.Left);
 
     /// <summary>
     /// × and "Remove tile": removes slot <paramref name="index"/>, or with <paramref name="member"/> one member of a stack,
-    /// from the display's layout. A tile no display entry (including "*") places afterwards loses its definition under
-    /// "tiles" in the same save; other unplaced definitions are kept.
+    /// from the display's <paramref name="side"/> bar. A tile no display entry (including "*") places afterwards loses its
+    /// definition under "tiles" in the same save; other unplaced definitions are kept.
     /// </summary>
-    ConfigError? RemoveTile(string displayId, int index, int? member);
+    ConfigError? RemoveTile(string displayId, int index, int? member, BarSide side = BarSide.Left);
 
     /// <summary>
-    /// Drag and drop between displays' bars. Slot <paramref name="fromIndex"/> of the source display lands before, into or
-    /// after slot <paramref name="target"/> of the target display, or at its end when target is null; tiles the target
-    /// display already places only leave the source. One save writes both displays' edit keys. On the same display this
-    /// is <see cref="LayoutEdits.Drop"/> (a null target changes nothing).
+    /// Drag and drop between bars. Slot <paramref name="fromIndex"/> of the source bar lands before, into or after slot
+    /// <paramref name="target"/> of the target bar, or at its end when target is null; tiles the target display already
+    /// places (on either side) only leave the source. One save writes both displays' edit keys. On the same bar this is
+    /// <see cref="LayoutEdits.Drop"/>.
     /// </summary>
-    ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position);
+    ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position,
+        BarSide fromSide = BarSide.Left, BarSide toSide = BarSide.Left);
 }
 
 /// <summary>
 /// Keeps runtimes and bars in sync with config, the tile kinds and connected displays.
-/// One runtime per tile id placed on any display (stack members included); one bar per display. Runs on the UI thread.
+/// One runtime per tile id placed on any display (stack members included); two bars per display, one per side.
+/// Runs on the UI thread.
 /// <paramref name="catalog"/> holds the connectors built into the app (script); <paramref name="kinds"/> the kind table.
 /// </summary>
 public sealed class HostController(
@@ -74,7 +81,7 @@ public sealed class HostController(
     ITaskbarSource taskbars,
     IUiDispatcher ui,
     Func<string, ITileLog> logFor,
-    Func<string, ITileBarView> createBar,
+    Func<string, BarSide, ITileBarView> createBar,
     string? configDirectory = null,
     IConfigWriter? writer = null,
     Func<KindTable>? kinds = null) : ILayoutEditor, IAsyncDisposable
@@ -83,7 +90,7 @@ public sealed class HostController(
     sealed record TilePlan(string ConnectorId, double Width, Func<ITileConnector> Create, JsonElement Settings, string Directory, string Fingerprint);
 
     readonly Dictionary<string, (TileRuntime Runtime, string Fingerprint)> _runtimes = new(StringComparer.Ordinal);
-    readonly Dictionary<string, ITileBarView> _bars = new(StringComparer.Ordinal);
+    readonly Dictionary<(string DisplayId, BarSide Side), ITileBarView> _bars = [];
     readonly TileRuntimeOptions _runtimeOptions = new() { ConfigDirectory = configDirectory ?? AppPaths.DataDir };
     bool _disposed;
 
@@ -114,29 +121,29 @@ public sealed class HostController(
     {
         if (_disposed || Editing == editing) return;
         Editing = editing;
-        foreach (var (id, bar) in _bars)
+        foreach (var (key, bar) in _bars)
         {
             try { bar.SetEditing(editing); }
-            catch (Exception ex) { logFor("host").Error($"Switching edit mode on display '{id}' failed", ex); }
+            catch (Exception ex) { logFor("host").Error($"Switching edit mode on display '{key.DisplayId}' failed", ex); }
         }
     }
 
-    public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit)
+    public ConfigError? EditLayout(string displayId, Func<DisplayLayout, DisplayLayout> edit, BarSide side = BarSide.Left)
     {
         var (target, refused) = Editable(displayId);
         if (target is not { } t) return refused;
-        var changed = edit(t.Layout);
-        if (LayoutEdits.SameLayout(t.Layout, changed)) return null;
+        var changed = t.Entry.With(side, edit(t.Entry[side]));
+        if (changed == t.Entry) return null;
         return Saved(LayoutOf(displayId, t.Key), writer!.Save(root => ConfigJson.SetDisplay(root, t.Key, changed)));
     }
 
-    public ConfigError? RemoveTile(string displayId, int index, int? member)
+    public ConfigError? RemoveTile(string displayId, int index, int? member, BarSide side = BarSide.Left)
     {
         var (target, refused) = Editable(displayId);
         if (target is not { } t) return refused;
-        var changed = LayoutEdits.Remove(t.Layout, index, member);
-        if (LayoutEdits.SameLayout(t.Layout, changed)) return null;
-        var removed = LayoutEdits.RemovedTileIds(t.Layout, changed);
+        var changed = t.Entry.With(side, LayoutEdits.Remove(t.Entry[side], index, member));
+        if (changed == t.Entry) return null;
+        var removed = DisplayResolver.PlacedTileIds(t.Entry).Except(DisplayResolver.PlacedTileIds(changed), StringComparer.Ordinal).ToList();
         return Saved(LayoutOf(displayId, t.Key), writer!.Save(root =>
         {
             ConfigJson.SetDisplay(root, t.Key, changed);
@@ -144,24 +151,32 @@ public sealed class HostController(
         }));
     }
 
-    public ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position)
+    public ConfigError? MoveToDisplay(string fromDisplayId, int fromIndex, string toDisplayId, int? target, DropPosition position,
+        BarSide fromSide = BarSide.Left, BarSide toSide = BarSide.Left)
     {
-        if (fromDisplayId == toDisplayId)
+        if (fromDisplayId == toDisplayId && fromSide == toSide)
             return EditLayout(fromDisplayId, l => target is { } to
                 ? LayoutEdits.Drop(l, fromIndex, to, position)
-                : LayoutEdits.Drop(l, fromIndex, l.Slots.Count - 1, DropPosition.After)); // no target: to the end
+                : LayoutEdits.Drop(l, fromIndex, l.Slots.Count - 1, DropPosition.After), fromSide); // no target: to the end
 
         var (source, refused) = Editable(fromDisplayId);
         if (source is not { } s) return refused;
+        if (s.Entry[fromSide].Slots.ElementAtOrDefault(fromIndex) is not { } slot) return null; // a stale index: nothing to move
+        var newSource = s.Entry.With(fromSide, LayoutEdits.Remove(s.Entry[fromSide], fromIndex));
+
+        if (fromDisplayId == toDisplayId) // the other side of the same display: one entry
+        {
+            var moved = newSource.With(toSide, LayoutEdits.DropIncoming(newSource[toSide], slot, target, position, alsoPlaced: newSource[fromSide]));
+            if (moved == s.Entry) return null;
+            return Saved(LayoutOf(fromDisplayId, s.Key), writer!.Save(root => ConfigJson.SetDisplay(root, s.Key, moved)));
+        }
+
         var (destination, refusedTarget) = Editable(toDisplayId);
         if (destination is not { } d) return refusedTarget;
-        if (s.Layout.Slots.ElementAtOrDefault(fromIndex) is not { } slot) return null; // a stale index: nothing to move
-
         if (s.Key == d.Key) return new ConfigError($"Displays '{fromDisplayId}' and '{toDisplayId}' are both saved under \"{s.Key}\"; a move between them cannot be saved.");
 
-        var newSource = LayoutEdits.Remove(s.Layout, fromIndex);
-        var newTarget = LayoutEdits.DropIncoming(d.Layout, slot, target, position);
-        var targetChanged = !LayoutEdits.SameLayout(d.Layout, newTarget); // else a display inheriting "*" would be forked into its own entry
+        var newTarget = d.Entry.With(toSide, LayoutEdits.DropIncoming(d.Entry[toSide], slot, target, position, alsoPlaced: d.Entry[Other(toSide)]));
+        var targetChanged = newTarget != d.Entry; // else a display inheriting "*" would be forked into its own entry
         return Saved($"a move from display '{fromDisplayId}' (\"{s.Key}\") to display '{toDisplayId}' (\"{d.Key}\")",
             writer!.Save(root =>
             {
@@ -170,17 +185,19 @@ public sealed class HostController(
             }));
     }
 
+    static BarSide Other(BarSide side) => side == BarSide.Right ? BarSide.Left : BarSide.Right;
+
     public IReadOnlyList<GalleryItem> GalleryFor(string displayId)
     {
         var cfg = config();
         var display = taskbars.Current.FirstOrDefault(d => d.DisplayId == displayId);
-        var layout = display is null ? DisplayLayout.Empty : DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
-        return TileGallery.Build(cfg, layout, Kinds());
+        var entry = display is null ? DisplayEntry.Empty : DisplayResolver.Resolve(cfg, displayId, display.IsPrimary);
+        return TileGallery.Build(cfg, entry, Kinds());
     }
 
     KindTable Kinds() => kinds?.Invoke() ?? KindTable.Empty;
 
-    public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null)
+    public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null, BarSide side = BarSide.Left)
     {
         DisplayLayout Place(DisplayLayout layout, string id)
         {
@@ -188,7 +205,7 @@ public sealed class HostController(
             return stackWith is { } target ? LayoutEdits.StackInto(placed, placed.Slots.Count - 1, target) : placed;
         }
 
-        if (item.NewTile is not { } definition) return EditLayout(displayId, l => Place(l, item.TileId));
+        if (item.NewTile is not { } definition) return EditLayout(displayId, l => Place(l, item.TileId), side);
 
         var (target, refused) = Editable(displayId);
         if (target is not { } t) return refused;
@@ -198,12 +215,12 @@ public sealed class HostController(
             var taken = root["tiles"] is System.Text.Json.Nodes.JsonObject tiles ? tiles.Select(tile => tile.Key) : [];
             var id = TileGallery.UniqueId(item.TileId, taken);
             ConfigJson.SetTile(root, id, definition);
-            ConfigJson.SetDisplay(root, t.Key, Place(t.Layout, id));
+            ConfigJson.SetDisplay(root, t.Key, t.Entry.With(side, Place(t.Entry[side], id)));
         }));
     }
 
-    /// <summary>The layout the display shows and the key its edits are saved under, or (null, why it cannot be edited).</summary>
-    ((DisplayLayout Layout, string Key)? Target, ConfigError? Refused) Editable(string displayId)
+    /// <summary>The entry the display shows and the key its edits are saved under, or (null, why it cannot be edited).</summary>
+    ((DisplayEntry Entry, string Key)? Target, ConfigError? Refused) Editable(string displayId)
     {
         var (display, refused) = EditTarget(displayId);
         if (display is null) return (null, refused);
@@ -237,32 +254,36 @@ public sealed class HostController(
         var cfg = config();
         var displays = taskbars.Current.GroupBy(d => d.DisplayId).Select(g => g.First()).ToList();
         var layouts = displays.ToDictionary(d => d.DisplayId, d => DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary));
-        taskbars.TrackIconEdges = layouts.Values.Any(l => l.Side == BarSide.Right); // UI Automation reads only when needed
+        taskbars.TrackIconEdges = layouts.Values.Any(e => e.Right.Slots.Count > 0); // UI Automation reads only when needed
 
         SyncRuntimes(cfg, layouts.Values.SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal));
 
-        foreach (var gone in _bars.Keys.Except(layouts.Keys).ToList())
+        foreach (var gone in _bars.Keys.Where(k => !layouts.ContainsKey(k.DisplayId)).ToList())
         {
             try { _bars[gone].Close(); }
-            catch (Exception ex) { logFor("host").Error($"Closing bar for display '{gone}' failed", ex); }
+            catch (Exception ex) { logFor("host").Error($"Closing bar for display '{gone.DisplayId}' failed", ex); }
             _bars.Remove(gone);
         }
 
         foreach (var info in displays)
         {
-            try
+            // Right first: with left-aligned icons both sides share one space, and the left bar takes what the right one leaves.
+            foreach (var side in (BarSide[])[BarSide.Right, BarSide.Left])
             {
-                if (!_bars.TryGetValue(info.DisplayId, out var bar))
+                try
                 {
-                    _bars[info.DisplayId] = bar = createBar(info.DisplayId);
-                    if (Editing) bar.SetEditing(true);
+                    if (!_bars.TryGetValue((info.DisplayId, side), out var bar))
+                    {
+                        _bars[(info.DisplayId, side)] = bar = createBar(info.DisplayId, side);
+                        if (Editing) bar.SetEditing(true);
+                    }
+                    bar.SetSlots(BarSlots(layouts[info.DisplayId][side]));
+                    bar.Apply(info);
                 }
-                bar.SetSlots(BarSlots(layouts[info.DisplayId]));
-                bar.Apply(info, layouts[info.DisplayId].Side);
-            }
-            catch (Exception ex)
-            {
-                logFor("host").Error($"Updating bar for display '{info.DisplayId}' failed", ex);
+                catch (Exception ex)
+                {
+                    logFor("host").Error($"Updating the {side.ToString().ToLowerInvariant()} bar for display '{info.DisplayId}' failed", ex);
+                }
             }
         }
     }

@@ -19,4 +19,7 @@ public sealed class TileBarRegistry
 
     /// <summary>The bar in edit mode, on screen, whose window holds the screen point (physical pixels); null if none.</summary>
     public TileBar? BarAt(Point screen) => _bars.FirstOrDefault(b => b.HoldsPoint(screen));
+
+    /// <summary>The other side's bar of the same display, if any.</summary>
+    public TileBar? Sibling(TileBar bar) => _bars.FirstOrDefault(b => b != bar && b.DisplayId == bar.DisplayId);
 }

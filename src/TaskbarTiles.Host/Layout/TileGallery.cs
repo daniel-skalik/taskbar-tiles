@@ -16,9 +16,9 @@ public static class TileGallery
     /// Existing tiles this display does not place yet (in config order), then one new tile per kind in tiles\, by name
     /// (broken kinds too: titled with their folder name, the error as subtitle). A new tile is just { "kind": id }.
     /// </summary>
-    public static IReadOnlyList<GalleryItem> Build(HostConfig config, DisplayLayout layout, KindTable kinds)
+    public static IReadOnlyList<GalleryItem> Build(HostConfig config, DisplayEntry display, KindTable kinds)
     {
-        var placed = DisplayResolver.PlacedTileIds(layout).ToHashSet(StringComparer.Ordinal);
+        var placed = DisplayResolver.PlacedTileIds(display).ToHashSet(StringComparer.Ordinal);
         var items = new List<GalleryItem>();
 
         foreach (var (id, tile) in config.Tiles)

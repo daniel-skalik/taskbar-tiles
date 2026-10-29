@@ -56,7 +56,7 @@ public class HostControllerTests
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
         var bars = new Dictionary<string, FakeBar>();
         var host = new HostController(ConnectorCatalog.Empty, () => current, source, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => bars[id] = new FakeBar(id));
+            _ => new CollectingLog(), FakeBar.Into(bars));
         return (host, source, bars, () => current, c => current = c);
     }
 
@@ -145,7 +145,7 @@ public class HostControllerTests
         var cfg = Parse("""{ "tiles": { "a": { "kind": "bad" }, "b": { "kind": "ok" } }, "displays": { "primary": { "slots": ["a", "b"] } } }""");
         var host = new HostController(ConnectorCatalog.Empty, () => cfg,
             new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), kinds: () => kinds);
+            _ => new CollectingLog(), FakeBar.Into(), kinds: () => kinds);
 
         host.Start();
 
@@ -164,7 +164,7 @@ public class HostControllerTests
         var bars = new Dictionary<string, FakeBar>();
         var log = new CollectingLog();
         var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
-            _ => log, id => bars[id] = new FakeBar(id), kinds: () => kinds);
+            _ => log, FakeBar.Into(bars), kinds: () => kinds);
 
         host.Start();
 
@@ -183,7 +183,7 @@ public class HostControllerTests
         var cfg = Parse("""{ "tiles": { "w": { "kind": "wide" }, "p": { "kind": "plain" } }, "displays": { "primary": { "slots": ["w", "p"] } } }""");
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
         var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), configDirectory: @"C:\cfg", kinds: () => kinds);
+            _ => new CollectingLog(), FakeBar.Into(), configDirectory: @"C:\cfg", kinds: () => kinds);
 
         host.Start();
 
@@ -199,7 +199,7 @@ public class HostControllerTests
         var cfg = Parse("""{ "tiles": { "x": { "kind": "cap", "settings": { "b": 3 } } }, "displays": { "primary": { "slots": ["x"] } } }""");
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
         var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), configDirectory: @"C:\cfg", kinds: () => kinds);
+            _ => new CollectingLog(), FakeBar.Into(), configDirectory: @"C:\cfg", kinds: () => kinds);
 
         CapturingConnector.InsideStart = true;
         try { host.Start(); }
@@ -225,7 +225,7 @@ public class HostControllerTests
             """);
         var host = new HostController(ConnectorCatalog.Empty, () => cfg,
             new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), kinds: () => kinds);
+            _ => new CollectingLog(), FakeBar.Into(), kinds: () => kinds);
         host.Start();
         var before = host.Runtimes;
 
@@ -244,7 +244,7 @@ public class HostControllerTests
         var cfg = Parse("""{ "tiles": { "a": { "kind": "slow" } }, "displays": { "primary": { "slots": ["a"] } } }""");
         var source = new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] };
         var host = new HostController(ConnectorCatalog.Empty, () => cfg, source, new ImmediateDispatcher(),
-            _ => new CollectingLog(), id => new FakeBar(id), kinds: () => kinds);
+            _ => new CollectingLog(), FakeBar.Into(), kinds: () => kinds);
         host.Start();
 
         var previous = SynchronizationContext.Current;
@@ -278,7 +278,7 @@ public class HostControllerTests
         var bars = new Dictionary<string, FakeBar>();
         var log = new CollectingLog();
         var host = new HostController(ConnectorCatalog.Empty, () => current, source, new ImmediateDispatcher(),
-            _ => log, id => id == "BAD" ? throw new InvalidOperationException("no bar") : bars[id] = new FakeBar(id));
+            _ => log, (id, side) => id == "BAD" ? throw new InvalidOperationException("no bar") : FakeBar.Into(bars)(id, side));
 
         host.Start();
 

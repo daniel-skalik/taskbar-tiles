@@ -30,20 +30,20 @@ public class ConfigParserTests
         Assert.Equal("Spotify", cfg.Tiles["spotify"].Settings.GetProperty("app").GetString());
         Assert.Equal(System.Text.Json.JsonValueKind.Object, cfg.Tiles["ci"].Settings.ValueKind);
 
-        var slots = cfg.Displays["primary"].Slots;
+        var slots = cfg.Displays["primary"].Left.Slots;
         Assert.Equal(new TileSlot("spotify", true), slots[0]);
         Assert.Equal(new TileSlot("ci", false), slots[1]);
         var stack = Assert.IsType<StackSlot>(slots[2]);
         Assert.Equal(new[] { "weather", "ci" }, stack.TileIds);
         Assert.Equal(TimeSpan.FromSeconds(8), stack.Rotate);
-        Assert.Empty(cfg.Displays["*"].Slots);
+        Assert.Empty(cfg.Displays["*"].Left.Slots);
     }
 
     [Fact]
     public void Stack_rotate_defaults_to_5_seconds()
     {
         var result = ConfigParser.Parse("""{ "tiles": { "a": { "kind": "x" } }, "displays": { "primary": { "slots": [ { "stack": ["a"] } ] } } }""");
-        Assert.Equal(TimeSpan.FromSeconds(5), Assert.IsType<StackSlot>(result.Config!.Displays["primary"].Slots[0]).Rotate);
+        Assert.Equal(TimeSpan.FromSeconds(5), Assert.IsType<StackSlot>(result.Config!.Displays["primary"].Left.Slots[0]).Rotate);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class ConfigParserTests
         var result = ConfigParser.Parse(json);
 
         Assert.True(result.Success, result.Error?.ToString());
-        Assert.Equal(TimeSpan.FromSeconds(seconds), Assert.IsType<StackSlot>(result.Config!.Displays["primary"].Slots[0]).Rotate);
+        Assert.Equal(TimeSpan.FromSeconds(seconds), Assert.IsType<StackSlot>(result.Config!.Displays["primary"].Left.Slots[0]).Rotate);
     }
 
     [Fact]
@@ -139,23 +139,39 @@ public class ConfigParserTests
     }
 
     [Theory]
-    [InlineData("", BarSide.Left)]
-    [InlineData("\"side\": \"left\",", BarSide.Left)]
-    [InlineData("\"side\": \"Right\",", BarSide.Right)]
-    public void A_display_names_its_side(string side, BarSide expected)
+    [InlineData("left")]
+    [InlineData("slots")]
+    public void A_display_has_a_left_and_a_right_side(string leftKey)
     {
-        var cfg = ConfigParser.Parse($$"""{ "tiles": {}, "displays": { "primary": { {{side}} "slots": [] } } }""");
+        var cfg = ConfigParser.Parse($$"""
+        { "tiles": { "a": { "kind": "x" }, "b": { "kind": "x" } }, "displays": { "primary": { "{{leftKey}}": ["a"], "right": ["b"] } } }
+        """);
 
-        Assert.Equal(expected, cfg.Config!.Displays["primary"].Side);
+        Assert.Equal(new TileSlot("a", false), Assert.Single(cfg.Config!.Displays["primary"].Left.Slots));
+        Assert.Equal(new TileSlot("b", false), Assert.Single(cfg.Config.Displays["primary"].Right.Slots));
     }
 
-    [Theory]
-    [InlineData("\"middle\"")]
-    [InlineData("1")]
-    public void An_unknown_side_is_a_config_error(string side)
+    [Fact]
+    public void A_missing_side_is_empty()
     {
-        var result = ConfigParser.Parse($$"""{ "tiles": {}, "displays": { "primary": { "side": {{side}} } } }""");
+        var cfg = ConfigParser.Parse("""{ "tiles": {}, "displays": { "primary": {} } }""");
 
-        Assert.Equal("\"side\" on display 'primary' must be \"left\" or \"right\".", result.Error!.Message);
+        Assert.Equal(DisplayEntry.Empty, cfg.Config!.Displays["primary"]);
+    }
+
+    [Fact]
+    public void Slots_and_left_together_are_a_config_error()
+    {
+        var result = ConfigParser.Parse("""{ "tiles": {}, "displays": { "primary": { "slots": [], "left": [] } } }""");
+
+        Assert.Equal("Display 'primary' has both \"slots\" and \"left\"; \"slots\" is the old name of \"left\", keep one.", result.Error!.Message);
+    }
+
+    [Fact]
+    public void A_right_side_that_is_not_an_array_is_a_config_error()
+    {
+        var result = ConfigParser.Parse("""{ "tiles": {}, "displays": { "primary": { "right": "a" } } }""");
+
+        Assert.Equal("\"right\" on display 'primary' must be an array.", result.Error!.Message);
     }
 }

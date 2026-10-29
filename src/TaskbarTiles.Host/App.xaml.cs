@@ -112,9 +112,9 @@ public partial class App : Application
             () => RevealInExplorer(Path.Combine(AppPaths.TilesDir, fresh[0]))));
     }
 
-    ITileBarView CreateBar(string displayId)
+    ITileBarView CreateBar(string displayId, Config.BarSide side)
     {
-        var bar = new TileBar(displayId, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!, _bars);
+        var bar = new TileBar(displayId, side, FileLog.For(AppPaths.LogsDir, "host"), _commands!, _host!, _bars);
         bar.ExitRequested += (_, _) => Shutdown();
         return bar;
     }

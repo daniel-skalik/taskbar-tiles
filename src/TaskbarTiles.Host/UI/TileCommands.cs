@@ -9,10 +9,10 @@ namespace TaskbarTiles.Host.UI;
 public enum TileCommand { ShowFolder, Refresh, ShowLog, Restart }
 
 /// <summary>Commands on the whole app.</summary>
-public enum BarCommand { EditLayout, DoneEditing, OpenConfig, MoveRight, MoveLeft, Exit }
+public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
 
 /// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
-public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, RemoveTile }
+public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, MoveToOtherSide, RemoveTile }
 
 /// <summary>
 /// One context-menu line; an entry without a command is a separator.
@@ -37,7 +37,7 @@ public static class TileMenu
 {
     /// <summary>
     /// The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null. <paramref name="side"/>
-    /// is where the display's tiles sit now; the menu offers the other side.
+    /// is the bar the slot is on; its menu offers to move the slot to the other side.
     /// </summary>
     public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing, BarSide side = BarSide.Left)
     {
@@ -64,6 +64,9 @@ public static class TileMenu
             }
             entries.Add(MenuEntry.Separator);
             entries.Add(editEntry);
+            entries.Add(side == BarSide.Right
+                ? new MenuEntry("Move to the left side", Layout: LayoutCommand.MoveToOtherSide)
+                : new MenuEntry("Move to the right side", Layout: LayoutCommand.MoveToOtherSide));
             entries.Add(new("Remove tile", Layout: LayoutCommand.RemoveTile));
             entries.Add(MenuEntry.Separator);
         }
@@ -72,9 +75,6 @@ public static class TileMenu
             entries.Add(editEntry);
             entries.Add(MenuEntry.Separator);
         }
-        entries.Add(side == BarSide.Right
-            ? new MenuEntry("Move tiles to the left side", Bar: BarCommand.MoveLeft)
-            : new MenuEntry("Move tiles to the right side", Bar: BarCommand.MoveRight));
         entries.Add(new("Show config file", Bar: BarCommand.OpenConfig));
         entries.Add(MenuEntry.Separator);
         entries.Add(new("Exit Taskbar Tiles", Bar: BarCommand.Exit));
