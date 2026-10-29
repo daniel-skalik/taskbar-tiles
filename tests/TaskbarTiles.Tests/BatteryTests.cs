@@ -205,6 +205,33 @@ public class BatteryConnectorTests
     [InlineData("Phone", DeviceType.Other)]
     public void Bluetooth_type_comes_from_category_ids(string ids, DeviceType type) =>
         Assert.Equal(type, BluetoothSource.TypeFrom(ids.Split(',')));
+    [Fact]
+    public async Task Show_hides_devices_not_listed_but_offers_every_device_seen()
+    {
+        var connector = new BatteryConnector([new Source("Logitech", () => [
+            new DeviceBattery("m", "Mouse", DeviceType.Mouse, 80), new DeviceBattery("k", "MX Keys", DeviceType.Keyboard, 20)])]);
+        var ctx = new Context { Settings = Json("""{ "show": ["mouse"] }""") };
+
+        await connector.StartAsync(ctx, CancellationToken.None);
+
+        Assert.Equal("80 %", Assert.Single(ctx.Updates).Title);
+        Assert.Equal("Mouse", Assert.Single((await connector.GetFlyoutAsync(CancellationToken.None))!.Rows).Text);
+        Assert.Equal(new[] { "Mouse", "MX Keys" }, await connector.GetChoicesAsync(BatteryConnector.ShowKey, CancellationToken.None));
+        Assert.Empty(await connector.GetChoicesAsync("interval", CancellationToken.None));
+        await connector.DisposeAsync();
+    }
+
+    [Fact]
+    public void Without_a_valid_show_every_device_shows()
+    {
+        var log = new CollectingLog();
+
+        Assert.Null(BatteryConnector.Shown(Json("{}"), log));
+        Assert.Empty(log.Snapshot());
+        Assert.Null(BatteryConnector.Shown(Json("""{ "show": "Mouse" }"""), log));
+        Assert.Contains(log.Snapshot(), m => m.Contains("\"show\""));
+        Assert.Empty(BatteryConnector.Filter([new DeviceBattery("m", "Mouse", DeviceType.Mouse, 1)], new HashSet<string>()));
+    }
 }
 
 public class HidppTests
@@ -450,4 +477,5 @@ public class HidTransportTests
     [InlineData(@"\\?\HID#VID_1532&PID_0084&MI_02#8&1#{4d1e55b2}", false)]
     public void Logitech_paths_are_recognized_over_usb_and_bluetooth(string path, bool logitech) =>
         Assert.Equal(logitech, HidTransport.IsLogitech(path));
+
 }

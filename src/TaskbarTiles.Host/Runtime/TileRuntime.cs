@@ -246,6 +246,25 @@ public sealed class TileRuntime : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The connector's choices for a "pick" settings field (<see cref="ITileChoices"/>); empty when it offers none, is not
+    /// running, or fails or times out (logged, the tile keeps running). Never throws.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetChoicesAsync(string key)
+    {
+        if (IsDisposed || Volatile.Read(ref _current) is not { Connector: ITileChoices choices } instance) return [];
+        try
+        {
+            var list = await RunWithTimeout(instance, ct => choices.GetChoicesAsync(key, ct));
+            return (list ?? []).Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Tile '{TileId}' ({ConnectorId}) could not list choices for \"{key}\": {ex.Message}");
+            return [];
+        }
+    }
+
     /// <summary>Plugins never run on the UI thread, so handlers are raised on the thread pool.</summary>
     public void RaiseResumed()
     {
