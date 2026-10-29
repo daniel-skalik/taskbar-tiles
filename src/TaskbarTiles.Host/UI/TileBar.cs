@@ -48,6 +48,7 @@ public sealed class TileBar : Window, ITileBarView
     bool _editing;
     IntPtr _menuForeground; // the foreground window before a menu took it for the bar
     IntPtr _previousForeground; // the window that was in front when edit mode activated this bar
+    IntPtr _owner; // this display's taskbar
     SlotView? _dragSource;
     SlotView? _dropTarget; // the slot of this bar a drop would stack onto
     TileBar? _hoverBar; // while this bar drags: the bar under the pointer, which shows the drop preview
@@ -170,6 +171,12 @@ public sealed class TileBar : Window, ITileBarView
         {
             _light = info.IsLightTheme;
             Theme.ApplyTo(Resources, info.IsLightTheme);
+        }
+        if (_owner != info.Handle && _hwnd != IntPtr.Zero)
+        {
+            // Opening Start lifts the taskbar into a z-band above every topmost window; windows it owns go along.
+            _owner = info.Handle;
+            SetWindowLongPtr(_hwnd, GWLP_HWNDPARENT, _owner);
         }
         Reflow();
     }

@@ -24,7 +24,8 @@ public sealed record TaskbarInfo(
     bool Hidden,
     bool IsLightTheme,
     double DpiScale,
-    PixelRect? RightZone = null)
+    PixelRect? RightZone = null,
+    IntPtr Handle = default)
 {
     /// <summary>The zone a bar on <paramref name="side"/> uses; the right zone defaults to the free zone.</summary>
     public PixelRect ZoneFor(Config.BarSide side) => side == Config.BarSide.Right ? RightZone ?? FreeZone.Zone : FreeZone.Zone;

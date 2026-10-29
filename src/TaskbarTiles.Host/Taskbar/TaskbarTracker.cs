@@ -230,7 +230,8 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
                 Hidden: IsFullscreenOn(monitor, info.rcMonitor),
                 IsLightTheme: light,
                 DpiScale: scale,
-                RightZone: FreeZoneCalculator.ComputeRight(geometry, margin, clockReserve, iconsRight)));
+                RightZone: FreeZoneCalculator.ComputeRight(geometry, margin, clockReserve, iconsRight),
+                Handle: bar));
         }
     }
 
