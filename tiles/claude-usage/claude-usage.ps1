@@ -95,6 +95,46 @@ $week = Get-Percent $usage.seven_day; $weekReset = ConvertTo-Local $usage.seven_
 $updated = "Updated $($fetchedAt.ToLocalTime().ToString('HH:mm'))"
 if ($stale) { $updated += " ($stale)" }
 
+# The Claude desktop app's own logo, read from its installed package; looking the package up is slow, so its path is
+# cached in %TEMP%. Null when the app is not installed from its package: the tile then keeps its glyph icon.
+function Find-Logo {
+    $cache = Join-Path ([IO.Path]::GetTempPath()) 'TaskbarTiles-claude-logo.txt'
+    $path = if (Test-Path $cache) { Get-Content $cache -Raw -ErrorAction SilentlyContinue } else { $null }
+    if ($path) { $path = $path.Trim() }
+    if ($path -and (Test-Path $path)) { return $path }
+    try { $package = Get-AppxPackage -Name Claude -ErrorAction Stop | Select-Object -First 1 } catch { return $null }
+    if (-not $package) { return $null }
+    $path = Join-Path $package.InstallLocation 'assets\Square44x44Logo.targetsize-64_altform-unplated.png'
+    if (-not (Test-Path $path)) { return $null }
+    Set-Content $cache $path -ErrorAction SilentlyContinue
+    return $path
+}
+
+# The logo as base64 PNG, with a status dot in the bottom-right corner when $dotColor (#RRGGBB) is given.
+function Get-LogoImage([string]$dotColor) {
+    $path = Find-Logo
+    if (-not $path) { return $null }
+    if (-not $dotColor) { return [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }
+    Add-Type -AssemblyName System.Drawing
+    $logo = [System.Drawing.Image]::FromFile($path)
+    try {
+        $size = $logo.Width
+        $bitmap = New-Object System.Drawing.Bitmap $size, $size
+        $g = [System.Drawing.Graphics]::FromImage($bitmap)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.DrawImage($logo, 0, 0, $size, $size)
+        $d = [int]($size * 0.42); $x = $size - $d; $ring = [Math]::Max(2, [int]($size / 16))
+        $g.FillEllipse([System.Drawing.Brushes]::Black, $x - $ring, $x - $ring, $d + $ring, $d + $ring) # dark ring keeps the dot apart from the logo
+        $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.ColorTranslator]::FromHtml($dotColor))
+        $g.FillEllipse($brush, $x, $x, $d - $ring, $d - $ring)
+        $g.Dispose(); $brush.Dispose()
+        $stream = New-Object System.IO.MemoryStream
+        $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bitmap.Dispose()
+        return [Convert]::ToBase64String($stream.ToArray())
+    } finally { $logo.Dispose() }
+}
+
 if ($env:TILE_HOOK -eq 'flyout') {
     $rows = @()
     if ($null -ne $hour) { $rows += @{ text = '5 hours'; value = "$hour% $dot resets $(Format-Reset $hourReset)"; icon = @{ glyph = 'info'; color = (Get-Color $hour) } } }
@@ -104,12 +144,15 @@ if ($env:TILE_HOOK -eq 'flyout') {
         $p = [int]$limit.percent
         $rows += @{ text = "Week, $($limit.scope.model.display_name)"; value = "$p%"; icon = @{ glyph = 'info'; color = (Get-Color $p) } }
     }
-    @{
+    $popup = @{
         title    = 'Claude usage'
         subtitle = $updated
         rows     = $rows
         actions  = @(@{ id = 'open'; label = 'Open usage page'; primary = $true })
-    } | ConvertTo-Json -Depth 5 -Compress
+    }
+    $image = Get-LogoImage ''
+    if ($image) { $popup.image = $image }
+    $popup | ConvertTo-Json -Depth 5 -Compress
     exit 0
 }
 
@@ -127,6 +170,10 @@ if ($null -ne $week) {
     $state.subtitle = "Week $week% $dot resets $(Format-Reset $weekReset -dayOnly)"
     if ((Get-Color $week) -ne 'ok' -and $state.icon.color -eq 'ok') { $state.icon.color = Get-Color $week }
 }
+# The app's logo replaces the clock when it can be found, with an orange or red dot once a limit nears.
+$dotColor = switch ($state.icon.color) { 'warn' { '#F2A33A' } 'bad' { '#E5484D' } default { '' } }
+$image = Get-LogoImage $dotColor
+if ($image) { $state.image = $image }
 $tip = @()
 if ($null -ne $hour) { $tip += "5 hours: $hour% used, resets $(Format-Reset $hourReset)" }
 if ($null -ne $week) { $tip += "Week: $week% used, resets $(Format-Reset $weekReset)" }

@@ -104,7 +104,7 @@ The bundled `battery` kind shows the lowest battery of your wireless devices on 
 
 ### Claude usage
 
-The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour window on the first line ("5h 42% · resets 18:30", with the blue line along the bottom), the week below it. The icon turns orange at 80% and red at 95%. Click it for both windows with their reset times, plus any per-model weekly limit; **Open usage page** opens claude.ai's usage settings.
+The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour window on the first line ("5h 42% · resets 18:30", with the blue line along the bottom), the week below it. It shows the Claude app's logo (a clock when the app is not installed), with an orange dot at 80% and a red one at 95%. Click it for both windows with their reset times, plus any per-model weekly limit; **Open usage page** opens claude.ai's usage settings.
 
 - It reads every 5 minutes (and on **Refresh now**) from the usage endpoint Claude Code's `/usage` uses, signed in with Claude Code's login in `%USERPROFILE%\.claude\.credentials.json` (or `%CLAUDE_CONFIG_DIR%`; setting `"credentials"` overrides the path). The token goes only to `api.anthropic.com` and is never stored elsewhere. The endpoint is not documented, so a Claude update may change it.
 - Claude Code renews the login while you use it. If it has expired, the tile says so until Claude Code runs again; numbers under an hour old keep showing in the meantime, with the reason in the tooltip.
