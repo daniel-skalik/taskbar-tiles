@@ -65,6 +65,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
   "description": "Pings a host every 15 s", // subtitle in the picker
   "connector": "script",                    // "script", or a connector id declared by a DLL in this folder (required)
   "width": 132,                             // tile width, 48 to 640 (default: the connector's; 132 for scripts, 268 for media)
+  "compact": true,                          // false: its tiles never shrink to an icon when space runs out (default true)
   "settings": {                             // defaults for every tile of this kind
     "host": "1.1.1.1",
     "hooks": {
@@ -102,7 +103,7 @@ A stack takes one tile's place and shows its members one at a time, with a dot p
 
 Each side fills its own free part of the taskbar: next to the Start button (`"left"` with centered icons) or before the tray (`"right"`, or both sides with left-aligned icons). When a side's tiles do not fit:
 
-1. Tiles become compact, from the right end: only the icon (or the first letter of the title), 40 DIP wide, with the title, subtitle and tooltip in the tooltip. Pinned tiles stay full size.
+1. Tiles become compact, from the right end: only the icon (or the first letter of the title), 40 DIP wide, with the title, subtitle and tooltip in the tooltip. Pinned tiles stay full size, and so do tiles of a kind whose `tile.json` says `"compact": false` (the bundled `media` kind does; a stack stays full size if any member does).
 2. If that is not enough, tiles move into a `»` tile at the end, from the right end; pinned tiles go last. Click `»` to see them at full size. They still work there: buttons, popups (shown above the `»` tile) and the right-click menu.
 
 This is recomputed whenever the free space changes (apps opened or closed, alignment, display or DPI changes).

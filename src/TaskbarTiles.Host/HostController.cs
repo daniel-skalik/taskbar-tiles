@@ -87,7 +87,8 @@ public sealed class HostController(
     Func<KindTable>? kinds = null) : ILayoutEditor, IAsyncDisposable
 {
     /// <summary>How one tile runs; a runtime is kept while its Fingerprint is unchanged.</summary>
-    sealed record TilePlan(string ConnectorId, double Width, Func<ITileConnector> Create, JsonElement Settings, string Directory, string Fingerprint);
+    sealed record TilePlan(string ConnectorId, double Width, Func<ITileConnector> Create, JsonElement Settings, string Directory, string Fingerprint,
+        bool CanCompact = true);
 
     readonly Dictionary<string, (TileRuntime Runtime, string Fingerprint)> _runtimes = new(StringComparer.Ordinal);
     readonly Dictionary<(string DisplayId, BarSide Side), ITileBarView> _bars = [];
@@ -325,7 +326,7 @@ public sealed class HostController(
         {
             if (_runtimes.ContainsKey(id)) continue;
             var runtime = new TileRuntime(id, plan.ConnectorId, plan.Width, plan.Create, plan.Settings, ui, logFor($"tile-{id}"),
-                _runtimeOptions with { TileDirectory = plan.Directory });
+                _runtimeOptions with { TileDirectory = plan.Directory, CanCompact = plan.CanCompact });
             _runtimes[id] = (runtime, plan.Fingerprint);
             _ = runtime.StartAsync();
         }
@@ -354,12 +355,13 @@ public sealed class HostController(
         // The runtime calls Create on the thread pool (plugin constructors are plugin code) and again for every restart.
         // A throwing constructor shows the error look and is retried with backoff.
         if (kind.Plugin is { } plugin)
-            return new(plugin.Id, kind.Width ?? plugin.Width, () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint);
+            return new(plugin.Id, kind.Width ?? plugin.Width, () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint,
+                kind.Compact);
 
         var connectorId = kind.Connector; // "script": built into the app
         var width = kind.Width ?? (catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth);
         return new(connectorId, width, () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId), settings,
-            kind.Directory, fingerprint);
+            kind.Directory, fingerprint, kind.Compact);
     }
 
     /// <summary>

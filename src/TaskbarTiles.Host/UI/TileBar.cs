@@ -656,7 +656,7 @@ public sealed class TileBar : Window, ITileBarView
 
         var layout = hidden
             ? null
-            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned)).ToList(),
+            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned, v.Slot.CanCompact)).ToList(),
                 zone.Width / scale - (_editing ? chrome + GapDip : 0), GapDip);
         Arrange(layout, showChrome: _editing && !hidden);
 

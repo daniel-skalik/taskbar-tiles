@@ -3,8 +3,8 @@ namespace TaskbarTiles.Host.Layout;
 /// <summary>How a slot is shown: at full width, icon only, or inside the » overflow popup.</summary>
 public enum SlotMode { Full, Compact, Overflow }
 
-/// <summary>One slot as the layout sees it. A stack is one item.</summary>
-public readonly record struct LayoutItem(double FullWidth, bool Pinned);
+/// <summary>One slot as the layout sees it. A stack is one item. Without CanCompact it is never shown compact.</summary>
+public readonly record struct LayoutItem(double FullWidth, bool Pinned, bool CanCompact = true);
 
 /// <summary>A mode per item, whether the » tile is shown, and the total width in DIP of everything shown.</summary>
 public sealed record LayoutResult(IReadOnlyList<SlotMode> Modes, bool ShowOverflow, double Width)
@@ -13,8 +13,9 @@ public sealed record LayoutResult(IReadOnlyList<SlotMode> Modes, bool ShowOverfl
 }
 
 /// <summary>
-/// Fits slots into the free width: everything at full width if it fits; otherwise unpinned slots become compact
-/// from the right end; then slots move into a » tile from the right end, unpinned ones first and pinned ones last.
+/// Fits slots into the free width: everything at full width if it fits; otherwise unpinned slots that can become
+/// compact do so from the right end; then slots move into a » tile from the right end, unpinned ones first and pinned
+/// ones last.
 /// Pure: the bar runs it on every free-zone or slot change.
 /// </summary>
 public static class LayoutEngine
@@ -34,7 +35,7 @@ public static class LayoutEngine
 
         for (var i = items.Count - 1; i >= 0; i--)
         {
-            if (items[i].Pinned || items[i].FullWidth <= CompactWidth) continue;
+            if (items[i].Pinned || !items[i].CanCompact || items[i].FullWidth <= CompactWidth) continue;
             modes[i] = SlotMode.Compact;
             if (Fits()) return Result(items, modes, gap);
         }

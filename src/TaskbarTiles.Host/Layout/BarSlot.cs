@@ -14,6 +14,9 @@ public sealed record BarSlot(int Index, IReadOnlyList<TileRuntime> Members, bool
     /// <summary>A stack is as wide as its widest member, so it never changes width while it rotates.</summary>
     public double FullWidth => Members.Count == 0 ? 0 : Members.Max(m => m.Width);
 
+    /// <summary>A stack shrinks to an icon only when every member may.</summary>
+    public bool CanCompact => Members.All(m => m.CanCompact);
+
     /// <summary>Same tiles, pin and rotation, wherever the slot sits.</summary>
     public bool SameContent(BarSlot other) =>
         Pinned == other.Pinned && Rotate == other.Rotate && Members.SequenceEqual(other.Members);

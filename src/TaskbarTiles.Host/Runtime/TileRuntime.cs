@@ -41,6 +41,9 @@ public sealed record TileRuntimeOptions
 
     /// <summary>The tile's kind folder, handed to connectors as ITileContext.TileDirectory. Empty: ConfigDirectory.</summary>
     public string TileDirectory { get; init; } = "";
+
+    /// <summary>False for a kind whose tile.json says "compact": false: its tiles never shrink to an icon.</summary>
+    public bool CanCompact { get; init; } = true;
 }
 
 /// <summary>
@@ -116,6 +119,9 @@ public sealed class TileRuntime : IAsyncDisposable
     public string TileId { get; }
     public string ConnectorId { get; }
     public double Width { get; }
+
+    /// <summary>Whether the bar may shrink this tile to an icon when space runs out.</summary>
+    public bool CanCompact => _options.CanCompact;
 
     /// <summary>The tile's kind folder ("Show tile folder"); ConfigDirectory when the options name none.</summary>
     public string TileDirectory => _options.TileDirectory.Length > 0 ? _options.TileDirectory : _options.ConfigDirectory;
