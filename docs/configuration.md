@@ -1,6 +1,6 @@
 # Configuring Taskbar Tiles
 
-Your tiles and layout live in `%LOCALAPPDATA%\TaskbarTiles\config.json`; what each kind of tile does lives in its own folder under `%LOCALAPPDATA%\TaskbarTiles\tiles\`. Right-click a tile → **Show config file** shows `config.json` in Explorer, **Show tile folder** that tile's kind folder. Both are watched: a saved edit applies within a second, and an edit with a mistake is rejected with a notice (the last good config stays active).
+Your tiles and layout live in `%LOCALAPPDATA%\TaskbarTiles\config.json`; what each kind of tile does lives in its own folder under `%LOCALAPPDATA%\TaskbarTiles\tiles\`. Right-click a tile → **Show** → **Config file** shows `config.json` in Explorer, **Show tile folder** that tile's kind folder. Both are watched: a saved edit applies within a second, and an edit with a mistake is rejected with a notice (the last good config stays active).
 
 Script tiles are described in [script-connectors.md](script-connectors.md).
 
@@ -33,7 +33,7 @@ It publishes a Release build into a staging folder next to the install folder an
   - `"left"`: left of Start when the taskbar icons are centered. `"slots"`, its name in older configs, still works (not both in one display).
   - `"right"`: between the app icons and the tray, against the tray, so opening apps never moves them. Where the icons end is read with UI Automation, only while some display has right-side tiles.
   - With left-aligned icons both sides share the space between the icons and the tray: the right side sits against the tray, the left side right before it.
-  - Each side shrinks and overflows on its own (see below). Right-click a tile → **Move to the right side** (or left), or drag it across in edit mode.
+  - Each side shrinks and overflows on its own (see below). Drag a tile across in edit mode to move it to the other side.
 - A slot is:
   - a tile id: `"uptime"`
   - a pinned tile: `{ "tile": "spotify", "pin": true }` (see below)
@@ -138,11 +138,10 @@ The right-click menu changes the layout too, in and outside edit mode:
 
 - On a tile, **Create stack…** opens the same panel as **+**. It lists the other tiles on this display that are not in a stack (by the title they show, or their id), then the tiles you can add. Pick one to make a stack of the two where the tile you clicked is.
 - On a stack, **Add to stack…** opens the same panel: this display's tiles that are not in a stack, then the tiles you can add. The one you pick joins the end of this stack. **Remove from stack** takes the member shown out, right after the stack; **Pause rotation** stops it.
-- **Move to the right side** (or left) moves the tile to the end of the display's other side.
-- **Remove tile** works like `×`.
-- **Show tile folder** selects the tile's kind folder in Explorer; **Show config file** selects `config.json`.
+- **Show** → **Tile folder** selects the tile's kind folder in Explorer, **Connector log** its log, **Config file** `config.json`.
+- **More** → **Restart tile** starts the tile again from scratch; **Exit Taskbar Tiles** quits.
 
-To move a tile, drag it in edit mode.
+To move a tile (also to the other side), drag it in edit mode; `×` removes it.
 
 ### Which display entry is written
 

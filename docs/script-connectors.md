@@ -125,8 +125,8 @@ Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (
 - Unknown fields, values of the wrong type and non-finite numbers are ignored; each one is written to the tile's log as a warning, which helps catch typos such as `tittle`.
 - Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`, an unknown setting inside a hook such as `"timout"`, or `every` on a hook other than `interval`) put the tile in the error look and nothing runs until `tile.json` is fixed.
 - A `tile.json` that is not valid JSON or lacks `name` or `connector` shows its error (with the line for JSON errors) on every tile of that kind; other kinds keep working.
-- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** shows it selected in Explorer; **Show tile folder** shows the kind folder with its `tile.json` and scripts.
-- Right-click → **Refresh now** re-runs `interval` (or `startup`). **Restart tile** starts the connector again from scratch.
+- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show** → **Connector log** shows it selected in Explorer; **Tile folder** shows the kind folder with its `tile.json` and scripts.
+- Right-click → **Refresh now** re-runs `interval` (or `startup`). **More** → **Restart tile** starts the connector again from scratch.
 
 ## Output size
 

@@ -252,7 +252,7 @@ public sealed class TileBar : Window, ITileBarView
         var state = new SlotMenuState(IsStack: view.Slot.IsStack, RotationPaused: view.Rotation?.Paused == true,
             HasSettings: SettingsFor(view.Slot.Members[member].TileId) is not null);
         menu.Items.Clear();
-        foreach (var entry in TileMenu.Entries(state, _editing, Side)) menu.Items.Add(Item(entry, view, member));
+        foreach (var entry in TileMenu.Entries(state, _editing)) menu.Items.Add(Item(entry, view, member));
     }
 
     /// <summary>
@@ -272,6 +272,11 @@ public sealed class TileBar : Window, ITileBarView
         if (entry.IsSeparator) return new Separator();
         // Tile titles may hold "_", which a menu header would take as an access key marker.
         var item = new MenuItem { Header = entry.Header.Replace("_", "__"), IsEnabled = entry.Enabled };
+        if (entry.Children is { } children)
+        {
+            foreach (var child in children) item.Items.Add(Item(child, view, member));
+            return item;
+        }
         if (entry.Tile == TileCommand.Settings && view is not null)
         {
             var runtime = view.Slot.Members[member];
@@ -327,13 +332,6 @@ public sealed class TileBar : Window, ITileBarView
                 break;
             case LayoutCommand.RemoveFromStack:
                 Edit(l => LayoutEdits.RemoveFromStack(l, slot.Index, member));
-                break;
-            case LayoutCommand.MoveToOtherSide:
-                var other = Side == BarSide.Right ? BarSide.Left : BarSide.Right;
-                Save(() => _editor.MoveToDisplay(DisplayId, slot.Index, DisplayId, null, DropPosition.After, Side, other));
-                break;
-            case LayoutCommand.RemoveTile:
-                Save(() => _editor.RemoveTile(DisplayId, slot.Index, slot.IsStack ? member : null, Side));
                 break;
         }
     }

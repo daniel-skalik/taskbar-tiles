@@ -43,16 +43,21 @@ public class TileCommandsTests
 
     static readonly SlotMenuState MiddleTile = new(IsStack: false, RotationPaused: false);
 
+    static IEnumerable<string> Headers(IEnumerable<MenuEntry> entries) => entries.Select(e => e.Header);
+
     [Fact]
-    public void Tile_menu_lists_tile_commands_layout_commands_then_bar_commands() =>
-        Assert.Equal(
-            new[]
-            {
-                "Show tile folder", "Refresh now", "Show connector log", "Restart tile", "",
-                "Create stack…", "", "Edit layout", "Move to the right side", "Remove tile", "",
-                "Show config file", "", "Exit Taskbar Tiles",
-            },
-            TileMenu.Entries(MiddleTile, editing: false).Select(e => e.Header));
+    public void Tile_menu_keeps_everyday_commands_on_top_and_the_rest_in_submenus()
+    {
+        var entries = TileMenu.Entries(MiddleTile, editing: false);
+
+        Assert.Equal(new[] { "Refresh now", "", "Create stack…", "", "Edit layout", "", "Show", "More" }, Headers(entries));
+        Assert.Equal(new[] { "Tile folder", "Connector log", "Config file" }, Headers(entries[6].Children!));
+        Assert.Equal(new[] { TileCommand.ShowFolder, TileCommand.ShowLog }, entries[6].Children!.Take(2).Select(e => e.Tile!.Value));
+        Assert.Equal(BarCommand.OpenConfig, entries[6].Children![2].Bar);
+        Assert.Equal(new[] { "Restart tile", "Exit Taskbar Tiles" }, Headers(entries[7].Children!));
+        Assert.Equal((TileCommand.Restart, BarCommand.Exit), (entries[7].Children![0].Tile!.Value, entries[7].Children![1].Bar!.Value));
+        Assert.False(entries[6].IsSeparator);
+    }
 
     [Fact]
     public void Create_stack_opens_the_picker_instead_of_a_submenu()
@@ -69,11 +74,11 @@ public class TileCommandsTests
         var running = TileMenu.Entries(MiddleTile with { IsStack = true }, editing: false);
         var paused = TileMenu.Entries(MiddleTile with { IsStack = true, RotationPaused = true }, editing: false);
 
-        Assert.Equal(new[] { "Add to stack…", "Remove from stack", "Pause rotation" }, running.Skip(5).Take(3).Select(e => e.Header));
-        Assert.Equal(LayoutCommand.AddToStack, running[5].Layout); // opens the picker, like "Create stack…"
-        Assert.True(running[5].Enabled);
-        Assert.Equal(LayoutCommand.PauseRotation, running[7].Layout);
-        Assert.Equal(LayoutCommand.ResumeRotation, paused[7].Layout);
+        Assert.Equal(new[] { "Add to stack…", "Remove from stack", "Pause rotation" }, running.Skip(2).Take(3).Select(e => e.Header));
+        Assert.Equal(LayoutCommand.AddToStack, running[2].Layout); // opens the picker, like "Create stack…"
+        Assert.True(running[2].Enabled);
+        Assert.Equal(LayoutCommand.PauseRotation, running[4].Layout);
+        Assert.Equal(LayoutCommand.ResumeRotation, paused[4].Layout);
         Assert.DoesNotContain(running, e => e.Header == "Create stack…");
     }
 
@@ -122,19 +127,10 @@ public class TileCommandsTests
     {
         var entries = TileMenu.Entries(null, editing: false);
 
-        Assert.Equal(new[] { "Edit layout", "", "Show config file", "", "Exit Taskbar Tiles" }, entries.Select(e => e.Header));
+        Assert.Equal(new[] { "Edit layout", "", "Show", "More" }, Headers(entries));
         Assert.Equal(BarCommand.EditLayout, entries[0].Bar);
-        Assert.True(entries[1].IsSeparator);
-        Assert.Equal(BarCommand.OpenConfig, entries[2].Bar);
-        Assert.Equal(BarCommand.Exit, entries[4].Bar);
-    }
-
-    [Fact]
-    public void A_tile_on_the_right_side_offers_the_left_side()
-    {
-        var entry = TileMenu.Entries(MiddleTile, editing: false, BarSide.Right).Single(e => e.Layout == LayoutCommand.MoveToOtherSide);
-
-        Assert.Equal("Move to the left side", entry.Header);
+        Assert.Equal(BarCommand.OpenConfig, Assert.Single(entries[2].Children!).Bar);
+        Assert.Equal(BarCommand.Exit, Assert.Single(entries[3].Children!).Bar);
     }
 
     [Fact]
