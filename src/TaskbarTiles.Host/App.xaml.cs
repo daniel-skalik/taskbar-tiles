@@ -53,7 +53,7 @@ public partial class App : Application
             _commands = new TileCommands(AppPaths.ConfigFile, AppPaths.LogsDir, RevealInExplorer, log);
 
             var ui = new WpfUiDispatcher(Dispatcher);
-            _tracker = new TaskbarTracker(Dispatcher);
+            _tracker = new TaskbarTracker(Dispatcher, new UiaIconEdgeReader(), message => log.Warn(message));
             _host = new HostController(catalog, () => _config.Current, _tracker, ui,
                 name => FileLog.For(AppPaths.LogsDir, name), CreateBar, AppPaths.DataDir, _config, () => kinds.Current);
 

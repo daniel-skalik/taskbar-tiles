@@ -237,6 +237,7 @@ public sealed class HostController(
         var cfg = config();
         var displays = taskbars.Current.GroupBy(d => d.DisplayId).Select(g => g.First()).ToList();
         var layouts = displays.ToDictionary(d => d.DisplayId, d => DisplayResolver.Resolve(cfg, d.DisplayId, d.IsPrimary));
+        taskbars.TrackIconEdges = layouts.Values.Any(l => l.Side == BarSide.Right); // UI Automation reads only when needed
 
         SyncRuntimes(cfg, layouts.Values.SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal));
 

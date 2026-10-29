@@ -107,6 +107,19 @@ public class HostControllerLayoutTests
     }
 
     [Fact]
+    public void Icon_edges_are_read_only_while_a_display_uses_the_right_side()
+    {
+        var f = new Fixture(Config);
+        Assert.False(f.Source.TrackIconEdges);
+
+        f.Host.EditLayout("MAIN", l => l with { Side = BarSide.Right });
+        Assert.True(f.Source.TrackIconEdges);
+
+        f.Host.EditLayout("MAIN", l => l with { Side = BarSide.Left });
+        Assert.False(f.Source.TrackIconEdges);
+    }
+
+    [Fact]
     public void Editing_the_primary_display_writes_primary()
     {
         var f = new Fixture(Config);

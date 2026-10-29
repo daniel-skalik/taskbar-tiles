@@ -76,6 +76,7 @@ public sealed class FakeTaskbarSource : TaskbarTiles.Host.Taskbar.ITaskbarSource
 {
     public IReadOnlyList<TaskbarTiles.Host.Taskbar.TaskbarInfo> Current { get; set; } = [];
     public event EventHandler? Changed;
+    public bool TrackIconEdges { get; set; }
     public void Start() { }
     public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
     public void Dispose() { }

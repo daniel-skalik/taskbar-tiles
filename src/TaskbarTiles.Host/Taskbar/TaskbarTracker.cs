@@ -11,11 +11,14 @@ namespace TaskbarTiles.Host.Taskbar;
 ///  - WinEvent hooks on Explorer (taskbar, Start, icon area, tray moved/resized/re-ordered) and on foreground changes
 ///  - ABN_FULLSCREENAPP from an appbar registration (fullscreen without a foreground change, e.g. F11)
 ///  - TaskbarCreated (Explorer restarted), WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE
+/// While <see cref="TrackIconEdges"/> is on, each of those batches also reads where the app icons end with
+/// <paramref name="edges"/> on a thread-pool thread, for the right zone; a changed edge refreshes again.
 /// </summary>
-public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
+public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges = null, Action<string>? warn = null) : ITaskbarSource
 {
     const double MarginDip = 8;
     const double ClockReserveDip = 120;
+    const double IconSafetyDip = 44; // when the icon edge cannot be read: the icon area window can end an icon early
     const int AppBarCallbackMessage = 0x8000 + 1; // WM_APP + 1
 
     readonly List<IntPtr> _hooks = [];
@@ -25,9 +28,24 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
     bool _refreshQueued;
     bool _disposed;
     uint _explorerPid;
+    bool _trackIconEdges;
+    Dictionary<IntPtr, int?> _iconEdges = [];
+    bool _edgeReadRunning, _edgeReadAgain, _skipEdgeRead, _edgeFailureLogged;
 
     public IReadOnlyList<TaskbarInfo> Current { get; private set; } = [];
     public event EventHandler? Changed;
+
+    public bool TrackIconEdges
+    {
+        get => _trackIconEdges;
+        set
+        {
+            if (_trackIconEdges == value) return;
+            _trackIconEdges = value;
+            if (!value) _iconEdges = [];
+            QueueRefresh();
+        }
+    }
 
     public void Start()
     {
@@ -125,15 +143,60 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
         _watched.Clear();
         var light = IsLightTaskbar();
         var list = new List<TaskbarInfo>();
+        var bars = new List<IntPtr>();
 
-        Collect("Shell_TrayWnd", iconAreaClass: "ReBarWindow32", hasTray: true, light, list);
-        Collect("Shell_SecondaryTrayWnd", iconAreaClass: "WorkerW", hasTray: false, light, list);
+        Collect("Shell_TrayWnd", iconAreaClass: "ReBarWindow32", hasTray: true, light, list, bars);
+        Collect("Shell_SecondaryTrayWnd", iconAreaClass: "WorkerW", hasTray: false, light, list, bars);
 
         Current = list;
         Changed?.Invoke(this, EventArgs.Empty);
+
+        if (_skipEdgeRead) _skipEdgeRead = false; // this refresh only applied a new edge
+        else if (_trackIconEdges && edges is not null) ReadIconEdges(bars);
     }
 
-    void Collect(string taskbarClass, string iconAreaClass, bool hasTray, bool light, List<TaskbarInfo> into)
+    /// <summary>One read at a time; events during a read ask for one more after it.</summary>
+    void ReadIconEdges(IReadOnlyList<IntPtr> bars)
+    {
+        if (_edgeReadRunning) { _edgeReadAgain = true; return; }
+        _edgeReadRunning = true;
+        Task.Run(() =>
+        {
+            var read = new Dictionary<IntPtr, int?>();
+            string? failure = null;
+            foreach (var bar in bars)
+            {
+                try { read[bar] = edges!.IconsRight(bar); }
+                catch (Exception ex) { read[bar] = null; failure ??= ex.Message; }
+            }
+            dispatcher.BeginInvoke(DispatcherPriority.Background, () => EdgesRead(read, failure));
+        });
+    }
+
+    void EdgesRead(Dictionary<IntPtr, int?> read, string? failure)
+    {
+        _edgeReadRunning = false;
+        if (_disposed || !_trackIconEdges) return;
+        if (failure is not null && !_edgeFailureLogged)
+        {
+            _edgeFailureLogged = true;
+            warn?.Invoke($"Could not read where the taskbar icons end ({failure}); keeping a gap after the icon area instead.");
+        }
+        var changed = read.Count != _iconEdges.Count || read.Any(kv => !_iconEdges.TryGetValue(kv.Key, out var old) || old != kv.Value);
+        _iconEdges = read;
+        if (_edgeReadAgain)
+        {
+            _edgeReadAgain = false;
+            QueueRefresh(); // reads again after it
+        }
+        else if (changed)
+        {
+            _skipEdgeRead = true;
+            QueueRefresh();
+        }
+    }
+
+    void Collect(string taskbarClass, string iconAreaClass, bool hasTray, bool light, List<TaskbarInfo> into, List<IntPtr> bars)
     {
         var bar = IntPtr.Zero;
         while ((bar = FindWindowEx(IntPtr.Zero, bar, taskbarClass, null)) != IntPtr.Zero)
@@ -154,6 +217,10 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
             var margin = (int)Math.Round(MarginDip * scale);
             var clockReserve = (int)Math.Round(ClockReserveDip * scale);
             var zone = FreeZoneCalculator.Compute(geometry, margin, clockReserve);
+            bars.Add(bar);
+            int? iconsRight = _trackIconEdges
+                ? FreeZoneCalculator.IconsRight(_iconEdges.GetValueOrDefault(bar), geometry, (int)Math.Round(IconSafetyDip * scale))
+                : null;
 
             into.Add(new TaskbarInfo(
                 DisplayId: DeviceId(info.szDevice),
@@ -163,7 +230,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher) : ITaskbarSource
                 Hidden: IsFullscreenOn(monitor, info.rcMonitor),
                 IsLightTheme: light,
                 DpiScale: scale,
-                RightZone: FreeZoneCalculator.ComputeRight(geometry, margin, clockReserve)));
+                RightZone: FreeZoneCalculator.ComputeRight(geometry, margin, clockReserve, iconsRight)));
         }
     }
 

@@ -37,7 +37,7 @@ The icon window ends 133 px before the last icon, so phase 1 can overlap the las
 
 - `TaskbarInfo` gains `RightZone`: from the icons' right edge + margin to the tray's left edge − margin; on secondary taskbars (no tray window) to the taskbar edge − the clock reserve. With left-aligned icons it equals today's zone.
 - Phase 1: the icons' right edge is the `ReBarWindow32` (secondary: `WorkerW`) window's right edge, falling back to Start's right edge, then the taskbar's left edge.
-- Phase 2: an `IIconEdgeReader` reads the last `Taskbar.TaskListButtonAutomationPeer`'s right edge with UI Automation on a background thread, only while a display uses the right side and only after the tracker's coalesced taskbar change events (no polling). When it fails, phase 1's edge plus one icon width (44 DIP) is used and the failure is logged once.
+- Phase 2 (built): an `IIconEdgeReader` reads the last `Taskbar.TaskListButtonAutomationPeer`'s right edge with UI Automation on a background thread, only while a display uses the right side and only after the tracker's coalesced taskbar change events (no polling). When it fails, phase 1's edge plus one icon width (44 DIP) is used and the failure is logged once.
 - `TileBar` uses `RightZone` and anchors right when its side is right; otherwise today's zone and anchoring.
 
 ## Menu

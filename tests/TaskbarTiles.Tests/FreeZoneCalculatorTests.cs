@@ -98,4 +98,14 @@ public class FreeZoneCalculatorTests
         Assert.True(info.AnchorsRight(TaskbarTiles.Host.Config.BarSide.Right));
         Assert.Equal(centered.Zone, (info with { RightZone = null }).ZoneFor(TaskbarTiles.Host.Config.BarSide.Right));
     }
+
+    [Fact]
+    public void Icons_right_prefers_the_read_edge_else_the_icon_area_plus_a_gap()
+    {
+        var g = new TaskbarGeometry(MainBar, Start: null, IconArea: new(1656, 2088, 2118, 2160), Tray: new(3408, 2088, 3840, 2160));
+
+        Assert.Equal(2251, FreeZoneCalculator.IconsRight(2251, g, 66));
+        Assert.Equal(2184, FreeZoneCalculator.IconsRight(null, g, 66));
+        Assert.Null(FreeZoneCalculator.IconsRight(null, g with { IconArea = null }, 66));
+    }
 }
