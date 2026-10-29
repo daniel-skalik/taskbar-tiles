@@ -6,7 +6,7 @@ using TaskbarTiles.Host.Runtime;
 namespace TaskbarTiles.Host.UI;
 
 /// <summary>Commands on one tile, from its context menu or its error popup.</summary>
-public enum TileCommand { ShowFolder, Refresh, ShowLog, Restart }
+public enum TileCommand { Settings, ShowFolder, Refresh, ShowLog, Restart }
 
 /// <summary>Commands on the whole app.</summary>
 public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
@@ -30,8 +30,8 @@ public sealed record MenuSlot(int Index, bool IsStack, IReadOnlyList<string> Til
 /// <summary>A plain tile a stack picker offers: its slot's config index, its id and the label shown.</summary>
 public sealed record StackChoice(int SlotIndex, string TileId, string Label);
 
-/// <summary>What the menu needs to know about the right-clicked slot.</summary>
-public sealed record SlotMenuState(bool IsStack, bool RotationPaused);
+/// <summary>What the menu needs to know about the right-clicked slot; HasSettings: the shown tile's kind declares fields.</summary>
+public sealed record SlotMenuState(bool IsStack, bool RotationPaused, bool HasSettings = false);
 
 public static class TileMenu
 {
@@ -45,6 +45,7 @@ public static class TileMenu
         var entries = new List<MenuEntry>();
         if (slot is not null)
         {
+            if (slot.HasSettings) entries.Add(new("Settings…", TileCommand.Settings));
             entries.Add(new("Show tile folder", TileCommand.ShowFolder));
             entries.Add(new("Refresh now", TileCommand.Refresh));
             entries.Add(new("Show connector log", TileCommand.ShowLog));

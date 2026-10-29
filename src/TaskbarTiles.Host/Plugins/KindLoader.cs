@@ -89,7 +89,7 @@ public sealed class KindLoader(ITileLog log)
             Name: json.Error is null ? json.Name : id,
             Description: json.Error ?? json.Description,
             json.Connector, json.Settings, dlls, ErrorOf(id, json, dlls), Stamp(dir, IsWatched), dllStamp,
-            json.Width, json.Compact);
+            json.Width, json.Compact, json.Fields);
     }
 
     static string? ErrorOf(string id, TileJson json, KindDlls dlls)

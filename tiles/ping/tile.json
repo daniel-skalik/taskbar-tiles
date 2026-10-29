@@ -2,6 +2,9 @@
   "name": "Ping a host",
   "description": "Pings a host every 15 s",
   "connector": "script",
+  "fields": [
+    { "key": "host", "label": "Host", "type": "text", "help": "Name or IP address to ping." }
+  ],
   "settings": {
     "host": "1.1.1.1",
     "hooks": {

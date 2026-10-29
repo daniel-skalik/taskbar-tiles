@@ -19,7 +19,7 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// that does not load, a connector nobody in the folder declares); its tiles then show that error and other kinds keep
 /// working. Stamp changes when tile.json or a script in the folder changes; DllStamp when a DLL on disk does. Width is
 /// tile.json's "width", which replaces the connector's width when set; Compact is false when tile.json says
-/// "compact": false (its tiles never shrink to an icon).
+/// "compact": false (its tiles never shrink to an icon). Fields are the settings dialog's inputs (tile.json's "fields").
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -33,7 +33,8 @@ public sealed record TileKind(
     string Stamp,
     string DllStamp,
     double? Width = null,
-    bool Compact = true)
+    bool Compact = true,
+    IReadOnlyList<TileField>? Fields = null)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -75,7 +76,7 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
-    double? Width = null, bool Compact = true)
+    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null)
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -142,7 +143,15 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 compact = c.GetBoolean();
             }
 
-            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact);
+            IReadOnlyList<TileField> fields = [];
+            if (root.TryGetProperty("fields", out var f))
+            {
+                var (parsed, error) = TileFields.Parse(f, shownPath);
+                if (error is not null) return Broken(error);
+                fields = parsed;
+            }
+
+            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields);
         }
     }
 
