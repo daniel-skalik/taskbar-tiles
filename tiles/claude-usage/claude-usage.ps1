@@ -95,25 +95,11 @@ $week = Get-Percent $usage.seven_day; $weekReset = ConvertTo-Local $usage.seven_
 $updated = "Updated $($fetchedAt.ToLocalTime().ToString('HH:mm'))"
 if ($stale) { $updated += " ($stale)" }
 
-# The Claude desktop app's own logo, read from its installed package; looking the package up is slow, so its path is
-# cached in %TEMP%. Null when the app is not installed from its package: the tile then keeps its glyph icon.
-function Find-Logo {
-    $cache = Join-Path ([IO.Path]::GetTempPath()) 'TaskbarTiles-claude-logo.txt'
-    $path = if (Test-Path $cache) { Get-Content $cache -Raw -ErrorAction SilentlyContinue } else { $null }
-    if ($path) { $path = $path.Trim() }
-    if ($path -and (Test-Path $path)) { return $path }
-    try { $package = Get-AppxPackage -Name Claude -ErrorAction Stop | Select-Object -First 1 } catch { return $null }
-    if (-not $package) { return $null }
-    $path = Join-Path $package.InstallLocation 'assets\Square44x44Logo.targetsize-64_altform-unplated.png'
-    if (-not (Test-Path $path)) { return $null }
-    Set-Content $cache $path -ErrorAction SilentlyContinue
-    return $path
-}
-
-# The logo as base64 PNG, with a status dot in the bottom-right corner when $dotColor (#RRGGBB) is given.
+# claude.png next to this script as base64 PNG, with a status dot in the bottom-right corner when $dotColor (#RRGGBB)
+# is given. Null when the file is missing: the tile then keeps its glyph icon.
 function Get-LogoImage([string]$dotColor) {
-    $path = Find-Logo
-    if (-not $path) { return $null }
+    $path = Join-Path $PSScriptRoot 'claude.png'
+    if (-not (Test-Path $path)) { return $null }
     if (-not $dotColor) { return [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }
     Add-Type -AssemblyName System.Drawing
     $logo = [System.Drawing.Image]::FromFile($path)
@@ -170,7 +156,7 @@ if ($null -ne $week) {
     $state.subtitle = "Week $week% $dot resets $(Format-Reset $weekReset -dayOnly)"
     if ((Get-Color $week) -ne 'ok' -and $state.icon.color -eq 'ok') { $state.icon.color = Get-Color $week }
 }
-# The app's logo replaces the clock when it can be found, with an orange or red dot once a limit nears.
+# The Claude logo replaces the clock, with an orange or red dot once a limit nears.
 $dotColor = switch ($state.icon.color) { 'warn' { '#F2A33A' } 'bad' { '#E5484D' } default { '' } }
 $image = Get-LogoImage $dotColor
 if ($image) { $state.image = $image }

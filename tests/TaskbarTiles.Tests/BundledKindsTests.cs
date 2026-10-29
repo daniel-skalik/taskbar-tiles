@@ -199,6 +199,7 @@ public class BundledKindsTests
         Assert.StartsWith("Week 18% · resets ", outcome.Value.Subtitle);
         Assert.Equal(0.42, outcome.Value.Progress!.Value, 3);
         Assert.Equal(TileColor.Ok, outcome.Value.Icon!.Color);
+        Assert.NotNull(outcome.Value.Image); // claude.png from the tile folder
     }
 
     [Theory]
