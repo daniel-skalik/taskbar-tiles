@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.IO;
+using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Plugins;
 using TaskbarTiles.Plugins.Script;
 
@@ -16,7 +17,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "battery", "claude", "media", "ping", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "battery", "claude", "claude-usage", "media", "ping", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -43,13 +44,15 @@ public class BundledKindsTests
         }
     }
 
-    static async Task<ScriptResult> RunBundled(string kind, string script, string hook, string settingsJson = "{}")
+    static async Task<ScriptResult> RunBundled(string kind, string script, string hook, string settingsJson = "{}",
+        IReadOnlyDictionary<string, string>? extraEnv = null)
     {
         var command = new CommandResolver(Path.Combine(BundledTiles, kind), ExecutableLocator.PowerShell()).Resolve(script);
         var env = new Dictionary<string, string>
         {
             ["TILE_ID"] = kind, ["TILE_HOOK"] = hook, ["TILE_ACTION"] = "", ["TILE_SETTINGS_JSON"] = settingsJson,
         };
+        foreach (var (key, value) in extraEnv ?? new Dictionary<string, string>()) env[key] = value;
         return await new ProcessScriptRunner().RunAsync(command, env, TimeSpan.FromSeconds(30), CancellationToken.None);
     }
 
@@ -167,5 +170,67 @@ public class BundledKindsTests
 
         Assert.True(outcome.Failed);
         Assert.Contains("exited with code 3", outcome.ErrorDetails);
+    }
+
+    /// <summary>Runs claude-usage.ps1 on <paramref name="responseJson"/> instead of calling the usage endpoint.</summary>
+    static async Task<ScriptResult> RunUsage(string hook, string responseJson)
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("usage.json"), responseJson);
+        return await RunBundled("claude-usage", "claude-usage.ps1", hook,
+            extraEnv: new Dictionary<string, string> { ["TILE_CLAUDE_USAGE_RESPONSE"] = dir.File("usage.json") });
+    }
+
+    static string UsageSample(double hour, double week) => $$"""
+        { "five_hour": { "utilization": {{hour}}, "resets_at": "{{DateTimeOffset.UtcNow.AddHours(2):o}}" },
+          "seven_day": { "utilization": {{week}}, "resets_at": "2030-01-06T06:00:00+00:00" },
+          "limits": [ { "kind": "weekly_scoped", "percent": 12, "scope": { "model": { "display_name": "Opus" } } } ] }
+        """;
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_shows_the_five_hour_limit_with_the_week_below()
+    {
+        var outcome = HookResults.ForTile("interval", await RunUsage("interval", UsageSample(42, 18)), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.StartsWith("5h 42% · resets ", outcome.Value!.Title);
+        Assert.StartsWith("Week 18% · resets ", outcome.Value.Subtitle);
+        Assert.Equal(0.42, outcome.Value.Progress!.Value, 3);
+        Assert.Equal(TileColor.Ok, outcome.Value.Icon!.Color);
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(85, 10, TileColor.Warn)]
+    [InlineData(10, 96, TileColor.Bad)]
+    public async Task Claude_usage_turns_orange_then_red(double hour, double week, TileColor expected)
+    {
+        var outcome = HookResults.ForTile("interval", await RunUsage("interval", UsageSample(hour, week)), TimeSpan.FromSeconds(30));
+
+        Assert.Equal(expected, outcome.Value!.Icon!.Color);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_popup_lists_each_limit()
+    {
+        var outcome = HookResults.ForFlyout("flyout", await RunUsage("flyout", UsageSample(42, 18)), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal(new[] { "5 hours", "Week", "Week, Opus" }, outcome.Value!.Rows.Select(r => r.Text));
+        Assert.Equal("12%", outcome.Value.Rows[2].Value);
+        Assert.Equal("open", Assert.Single(outcome.Value.Actions).Id);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_without_plan_limits_says_why()
+    {
+        var outcome = HookResults.ForTile("interval", await RunUsage("interval", """{ "five_hour": null, "seven_day": null }"""), TimeSpan.FromSeconds(30));
+
+        Assert.True(outcome.Failed);
+        Assert.Contains("Pro and Max", outcome.ErrorMessage + outcome.ErrorDetails);
     }
 }

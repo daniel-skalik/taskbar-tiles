@@ -1,0 +1,13 @@
+{
+  "name": "Claude usage",
+  "description": "Your Claude plan's 5-hour and weekly usage limits",
+  "connector": "script",
+  "width": 220,
+  "settings": {
+    "hooks": {
+      "interval":    { "every": "5m", "run": "claude-usage.ps1" },
+      "flyout":      { "run": "claude-usage.ps1" },
+      "action:open": { "run": "claude-usage.ps1" }
+    }
+  }
+}
