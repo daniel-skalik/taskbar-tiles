@@ -10,14 +10,14 @@
     1. Publishes src\TaskbarTiles.Host (Release) into a staging folder next to the install folder and verifies it.
     2. Stops TaskbarTiles.exe if it runs from the install folder.
     3. Swaps the staging folder in for the install folder.
-    4. Replaces the bundled tile kinds uptime, ping, media, claude and battery in the tiles folder with the new copies.
+    4. Replaces the bundled tile kinds uptime, ping, media, claude, claude-usage and battery in the tiles folder with the new copies.
     5. Creates or updates the TaskbarTiles shortcut in the Startup folder.
     6. Starts the installed app.
 
     If the publish fails, the running app and the installed copy are left untouched.
 
     Your config.json, logs and every other folder in tiles\ (your own kinds) are never touched. To change a bundled
-    kind, copy its folder under a new name first: install replaces tiles\uptime, tiles\ping, tiles\media,
+    kind, copy its folder under a new name first: install replaces tiles\uptime, tiles\ping, tiles\media, tiles\claude-usage,
     tiles\claude and tiles\battery.
 
 .PARAMETER AppDir
@@ -54,7 +54,7 @@ $exe = Join-Path $AppDir 'TaskbarTiles.exe'
 $stage = "$AppDir.new"
 $old = "$AppDir.old"
 $TilesDir = [System.IO.Path]::GetFullPath($TilesDir).TrimEnd('\')
-$bundledKinds = @('uptime', 'ping', 'media', 'claude', 'battery') # replaced on every install; other folders in tiles\ are the user's
+$bundledKinds = @('uptime', 'ping', 'media', 'claude', 'claude-usage', 'battery') # replaced on every install; other folders in tiles\ are the user's
 
 if (-not (Test-Path -LiteralPath $project)) { throw "Cannot find $project. Run this script from the repository's tools folder." }
 

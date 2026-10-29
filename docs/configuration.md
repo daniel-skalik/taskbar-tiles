@@ -8,7 +8,7 @@ Script tiles are described in [script-connectors.md](script-connectors.md).
 
 Double-click `install.cmd` in the repository. On success its window closes and the app starts; on failure it stays open so you can read the error. (From a terminal: `install.cmd`, or `powershell -ExecutionPolicy Bypass -File tools\install.ps1`.)
 
-It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds `tiles\uptime`, `tiles\ping`, `tiles\media`, `tiles\claude` and `tiles\battery` with the new copies, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
+It publishes a Release build into a staging folder next to the install folder and verifies it (a failed build changes nothing), then stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds `tiles\uptime`, `tiles\ping`, `tiles\media`, `tiles\claude`, `tiles\claude-usage` and `tiles\battery` with the new copies, creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
 
 ## Tiles and displays
 
@@ -89,7 +89,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 
 ### Tile settings
 
-Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) and `battery` (Read every, Devices) do.
+Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) `battery` (Read every, Devices) and `claude-usage` (Refresh every) do.
 
 - Each field edits one top-level settings key; its default is the kind's `settings` value for that key.
   - `"key"`, `"label"` and `"type"` are required; `"help"` is shown under the input.
@@ -101,6 +101,14 @@ Right-click a tile → **Settings…** changes that tile's own settings without 
 ### Device batteries
 
 The bundled `battery` kind shows the lowest battery of your wireless devices on the tile and every device in its popup, with charging and asleep states. It reads Bluetooth devices from Windows (the level shown in Settings › Bluetooth & devices) and Logitech devices on a Bolt or Unifying receiver, or connected directly over USB or Bluetooth, over Logitech's HID++ protocol (alongside Logi Options+). Setting `"interval"` (default `"60s"`, `10s` to `1h`) is how often it reads. Setting `"show"` lists the device names to show (e.g. `["MX Master 3S", "WH-1000XM5"]`, ignoring case); others, and devices connected later, are hidden. Without it every device shows. **Settings…** → Devices ticks them from the devices the tile has seen since it started; right-click → **Refresh now** reads at once. A Logitech device that falls asleep keeps its last level, marked "asleep". Other vendors' receivers (Razer, Corsair, …) only report through their own apps and are not shown.
+
+### Claude usage
+
+The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour window on the first line ("5h 42% · resets 18:30", with the blue line along the bottom), the week below it. It shows the Claude logo (`claude.png` in its folder), with an orange dot at 80% and a red one at 95%. Click it for both windows with their reset times, plus any per-model weekly limit; **Open usage page** opens claude.ai's usage settings.
+
+- It reads every 5 minutes (setting `"refresh"`, `1m` to `1h`, also in **Settings…**) and on **Refresh now**, from the usage endpoint Claude Code's `/usage` uses, signed in with Claude Code's login in `%USERPROFILE%\.claude\.credentials.json` (or `%CLAUDE_CONFIG_DIR%`; setting `"credentials"` overrides the path). The token goes only to `api.anthropic.com` and is never stored elsewhere. The endpoint is not documented, so a Claude update may change it.
+- Claude Code renews the login while you use it. If it has expired, the tile says so until Claude Code runs again; numbers under an hour old keep showing in the meantime, with the reason in the tooltip.
+- Only Claude Pro and Max plans have these limits.
 
 ## Stacks
 

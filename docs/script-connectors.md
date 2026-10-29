@@ -33,7 +33,7 @@ A tile can override the kind's other settings in `config.json`, key by key: `"pi
 
 | Hook | `TILE_HOOK` | When it runs | What it prints |
 |---|---|---|---|
-| `interval` `{ every, run }` | `interval` | At start and every `every` (e.g. `"30s"`, `"10m"`; from `1s` to `24h`). A run is skipped while the previous one is still going. Also on "Refresh now", after the PC wakes from sleep, and after an action hook that printed nothing. | Tile JSON |
+| `interval` `{ every, run }` | `interval` | At start and every `every` (e.g. `"30s"`, `"10m"`; from `1s` to `24h`). `"every": "$refresh"` takes the duration from the top-level setting `refresh` instead, so a **Settings…** field can change it. A run is skipped while the previous one is still going. Also on "Refresh now", after the PC wakes from sleep, and after an action hook that printed nothing. | Tile JSON |
 | `watch` `{ run }` | `watch` | At start; meant to run forever. Every line it prints is one tile update. When it exits it is started again after 2 s, 10 s, 1 min, then every 5 min (back to 2 s after a valid line). A non-zero exit or a failure to start shows the error look until the next valid line; a clean exit is only logged. | One tile JSON object per line |
 | `click` `{ run }` | `click` | On a plain click, only when the tile has no popup. | Tile JSON, or nothing |
 | `flyout` `{ run }` | `flyout` | When the tile is clicked, to build its popup. | Popup JSON; print nothing for no popup (the click then goes to `click`) |
