@@ -36,12 +36,11 @@
                 <StackPanel x:Name="ButtonPanel" Orientation="Horizontal"/>
             </StackPanel>
 
-            <Grid x:Name="ProgressTrack" Grid.ColumnSpan="3" Height="2" VerticalAlignment="Bottom" Margin="0,0,0,3" Visibility="Collapsed">
+            <Grid x:Name="ProgressTrack" Grid.ColumnSpan="3" Height="2" VerticalAlignment="Bottom" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="ProgressDone" Width="0*"/>
                     <ColumnDefinition x:Name="ProgressLeft" Width="1*"/>
                 </Grid.ColumnDefinitions>
-                <Border Grid.ColumnSpan="2" CornerRadius="1" Background="{DynamicResource TileOutline}"/>
                 <Border CornerRadius="1" Background="#4C7CE0"/>
             </Grid>
         </Grid>
