@@ -6,7 +6,10 @@ namespace TaskbarTiles.Plugins.Script;
 /// <summary>One entry of settings.hooks. Every is set for "interval" only; Timeout overrides ScriptSettings.DefaultTimeout.</summary>
 public sealed record HookSpec(string Run, TimeSpan? Every = null, TimeSpan? Timeout = null);
 
-/// <summary>The script connector's settings, from tile.json: { "hooks": { "interval": { "every": "30s", "run": "x.ps1" }, ... } }.</summary>
+/// <summary>
+/// The script connector's settings, from tile.json: { "hooks": { "interval": { "every": "30s", "run": "x.ps1" }, ... } }.
+/// "every" may also be "$name": the duration in the top-level setting of that name, so a Settings… field can edit it.
+/// </summary>
 public sealed class ScriptSettings
 {
     /// <summary>Longest a hook script may run unless its "timeout" says otherwise. Click, action and popup hooks are also bounded by the host's 10 s.</summary>
@@ -71,14 +74,14 @@ public sealed class ScriptSettings
                 errors.Add($"Hook \"{name}\" uses a reserved id; ids starting with \"host:\" are reserved for the host.");
                 continue;
             }
-            if (ReadHook(name, hook.Value, errors) is { } spec) hooks[name] = spec;
+            if (ReadHook(name, hook.Value, settings, errors) is { } spec) hooks[name] = spec;
         }
 
         if (hooks.Count == 0 && errors.Count == 0) errors.Add("settings.hooks is empty; add at least one hook.");
         return new(hooks, errors);
     }
 
-    static HookSpec? ReadHook(string name, JsonElement el, List<string> errors)
+    static HookSpec? ReadHook(string name, JsonElement el, JsonElement settings, List<string> errors)
     {
         if (el.ValueKind == JsonValueKind.String)
         {
@@ -112,12 +115,22 @@ public sealed class ScriptSettings
         TimeSpan? every = null;
         if (name == "interval")
         {
-            if (!el.TryGetProperty("every", out var e) || !TryDuration(e, MinEvery, out var period))
+            if (el.TryGetProperty("every", out var named) && named.ValueKind == JsonValueKind.String
+                && named.GetString() is ['$', .. var key])
+            {
+                if (key.Length == 0 || !settings.TryGetProperty(key, out var value) || !TryDuration(value, MinEvery, out var fromSetting))
+                {
+                    errors.Add($"Hook \"interval\" takes \"every\" from setting \"{key}\", which must be a duration from 1s to 24h, e.g. \"30s\".");
+                    return null;
+                }
+                every = fromSetting;
+            }
+            else if (!el.TryGetProperty("every", out var e) || !TryDuration(e, MinEvery, out var period))
             {
                 errors.Add("Hook \"interval\" needs \"every\" as a duration from 1s to 24h, e.g. \"30s\".");
                 return null;
             }
-            every = period;
+            else every = period;
         }
 
         TimeSpan? timeout = null;

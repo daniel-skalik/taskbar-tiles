@@ -89,7 +89,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 
 ### Tile settings
 
-Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) and `battery` (Read every, Devices) do.
+Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) `battery` (Read every, Devices) and `claude-usage` (Refresh every) do.
 
 - Each field edits one top-level settings key; its default is the kind's `settings` value for that key.
   - `"key"`, `"label"` and `"type"` are required; `"help"` is shown under the input.
@@ -106,7 +106,7 @@ The bundled `battery` kind shows the lowest battery of your wireless devices on 
 
 The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour window on the first line ("5h 42% · resets 18:30", with the blue line along the bottom), the week below it. It shows the Claude logo (`claude.png` in its folder), with an orange dot at 80% and a red one at 95%. Click it for both windows with their reset times, plus any per-model weekly limit; **Open usage page** opens claude.ai's usage settings.
 
-- It reads every 5 minutes (and on **Refresh now**) from the usage endpoint Claude Code's `/usage` uses, signed in with Claude Code's login in `%USERPROFILE%\.claude\.credentials.json` (or `%CLAUDE_CONFIG_DIR%`; setting `"credentials"` overrides the path). The token goes only to `api.anthropic.com` and is never stored elsewhere. The endpoint is not documented, so a Claude update may change it.
+- It reads every 5 minutes (setting `"refresh"`, `1m` to `1h`, also in **Settings…**) and on **Refresh now**, from the usage endpoint Claude Code's `/usage` uses, signed in with Claude Code's login in `%USERPROFILE%\.claude\.credentials.json` (or `%CLAUDE_CONFIG_DIR%`; setting `"credentials"` overrides the path). The token goes only to `api.anthropic.com` and is never stored elsewhere. The endpoint is not documented, so a Claude update may change it.
 - Claude Code renews the login while you use it. If it has expired, the tile says so until Claude Code runs again; numbers under an hour old keep showing in the meantime, with the reason in the tooltip.
 - Only Claude Pro and Max plans have these limits.
 
