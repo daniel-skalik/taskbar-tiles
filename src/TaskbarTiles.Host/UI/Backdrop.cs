@@ -32,6 +32,9 @@ static class Backdrop
             UseAeroCaptionButtons = false,
         });
         var hwnd = new WindowInteropHelper(window).EnsureHandle();
+        // Without the system menu DWM draws no caption buttons into the glass (a close X in the corner otherwise).
+        var style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE, new IntPtr(style & ~NativeMethods.WS_SYSMENU));
         if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
         var margins = new NativeMethods.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
         NativeMethods.DwmExtendFrameIntoClientArea(hwnd, ref margins);
