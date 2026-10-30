@@ -20,10 +20,10 @@ public static class SettingsPanel
     /// <paramref name="save"/> gets the values (null: use the default) and returns true when they were saved;
     /// <paramref name="close"/> closes the popup (after a save, and on Esc).
     /// </summary>
-    public static FrameworkElement Build(TileSettingsForm form, Func<IReadOnlyDictionary<string, JsonNode?>, bool> save, Action close)
+    public static FrameworkElement Build(TileSettingsForm form, byte[]? image, Func<IReadOnlyDictionary<string, JsonNode?>, bool> save, Action close)
     {
         var panel = new StackPanel();
-        panel.Children.Add(Header(form));
+        panel.Children.Add(Header(form, image));
 
         var rows = form.Fields.Select(f => new Row(f, Default(form, f), Own(form, f))).ToList();
         var saveButton = new Button
@@ -80,8 +80,10 @@ public static class SettingsPanel
         return panel;
     }
 
-    /// <summary>A gear badge, the kind's name and the tile id, laid out like a tile popup's header.</summary>
-    static Grid Header(TileSettingsForm form)
+    /// <summary>
+    /// The tile's image (a gear badge without one), the kind's name and the tile id, laid out like a tile popup's header.
+    /// </summary>
+    static Grid Header(TileSettingsForm form, byte[]? image)
     {
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -94,9 +96,14 @@ public static class SettingsPanel
         gear.SetResourceReference(TextBlock.ForegroundProperty, "TileForeground");
         var badge = new Border
         {
-            Width = 44, Height = 44, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 12, 0), Child = gear,
+            Width = 56, Height = 56, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 12, 0), Child = gear,
         };
-        badge.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
+        if (Theme.Decode(image, 112) is { } img)
+        {
+            badge.Child = null;
+            badge.Background = new System.Windows.Media.ImageBrush(img) { Stretch = System.Windows.Media.Stretch.UniformToFill };
+        }
+        else badge.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
         header.Children.Add(badge);
         var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var title = FlyoutWindow.Text(form.KindName, 15, FontWeights.SemiBold, "TileForeground");

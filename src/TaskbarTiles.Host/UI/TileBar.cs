@@ -437,7 +437,9 @@ public sealed class TileBar : Window, ITileBarView
                 ? field with { Choices = TileFields.PickChoices(field, await runtime.GetChoicesAsync(field.Key), OwnValue(form, field.Key)) }
                 : field);
         form = form with { Fields = fields };
-        var panel = SettingsPanel.Build(form, values =>
+        // Dressed like the tile's popup: its image (or the tile's own) and tint.
+        var look = runtime.LastFlyoutLook;
+        var panel = SettingsPanel.Build(form, look.Image ?? runtime.State.Image, values =>
         {
             ConfigError? error;
             try { error = _editor.SaveSettings(tileId, values); }
@@ -453,7 +455,7 @@ public sealed class TileBar : Window, ITileBarView
             return false;
         }, FlyoutWindow.CloseOpen);
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
-        FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
+        FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log, tint: look.Tint);
     }
 
     static JsonElement? OwnValue(TileSettingsForm form, string key) =>
