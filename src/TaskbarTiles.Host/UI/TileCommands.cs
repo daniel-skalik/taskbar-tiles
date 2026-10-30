@@ -12,16 +12,16 @@ public enum TileCommand { Settings, ShowFolder, Refresh, ShowLog, Restart }
 public enum BarCommand { EditLayout, DoneEditing, OpenConfig, Exit }
 
 /// <summary>Commands that change the layout (saved to config.json) or a stack's rotation (not saved).</summary>
-public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation, MoveToOtherSide, RemoveTile }
+public enum LayoutCommand { CreateStack, AddToStack, RemoveFromStack, PauseRotation, ResumeRotation }
 
 /// <summary>
-/// One context-menu line; an entry without a command is a separator.
+/// One context-menu line: a command, a submenu (Children), or a separator (neither).
 /// </summary>
 public sealed record MenuEntry(string Header, TileCommand? Tile = null, BarCommand? Bar = null, LayoutCommand? Layout = null,
-    bool Enabled = true)
+    bool Enabled = true, IReadOnlyList<MenuEntry>? Children = null)
 {
     public static MenuEntry Separator { get; } = new("");
-    public bool IsSeparator => Tile is null && Bar is null && Layout is null;
+    public bool IsSeparator => Tile is null && Bar is null && Layout is null && Children is null;
 }
 
 /// <summary>A slot of this display as the menu sees it: config index, tile ids and the title its first member shows.</summary>
@@ -36,20 +36,19 @@ public sealed record SlotMenuState(bool IsStack, bool RotationPaused, bool HasSe
 public static class TileMenu
 {
     /// <summary>
-    /// The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null. <paramref name="side"/>
-    /// is the bar the slot is on; its menu offers to move the slot to the other side.
+    /// The right-click menu of a slot, or of the bar's gaps when <paramref name="slot"/> is null. Files to look at go in
+    /// a "Show" submenu and restarting or exiting in "More", so the everyday commands stay on top. Moving and removing
+    /// tiles is done in edit mode.
     /// </summary>
-    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing, BarSide side = BarSide.Left)
+    public static IReadOnlyList<MenuEntry> Entries(SlotMenuState? slot, bool editing)
     {
-        var editEntry = editing ? new MenuEntry("Done editing", Bar: BarCommand.DoneEditing) : new MenuEntry("Edit layout", Bar: BarCommand.EditLayout);
         var entries = new List<MenuEntry>();
+        var show = new List<MenuEntry>();
+        var more = new List<MenuEntry>();
         if (slot is not null)
         {
             if (slot.HasSettings) entries.Add(new("Settings…", TileCommand.Settings));
-            entries.Add(new("Show tile folder", TileCommand.ShowFolder));
             entries.Add(new("Refresh now", TileCommand.Refresh));
-            entries.Add(new("Show connector log", TileCommand.ShowLog));
-            entries.Add(new("Restart tile", TileCommand.Restart));
             entries.Add(MenuEntry.Separator);
             if (slot.IsStack)
             {
@@ -64,21 +63,16 @@ public static class TileMenu
                 entries.Add(new("Create stack…", Layout: LayoutCommand.CreateStack)); // opens the stack picker panel
             }
             entries.Add(MenuEntry.Separator);
-            entries.Add(editEntry);
-            entries.Add(side == BarSide.Right
-                ? new MenuEntry("Move to the left side", Layout: LayoutCommand.MoveToOtherSide)
-                : new MenuEntry("Move to the right side", Layout: LayoutCommand.MoveToOtherSide));
-            entries.Add(new("Remove tile", Layout: LayoutCommand.RemoveTile));
-            entries.Add(MenuEntry.Separator);
+            show.Add(new("Tile folder", TileCommand.ShowFolder));
+            show.Add(new("Connector log", TileCommand.ShowLog));
+            more.Add(new("Restart tile", TileCommand.Restart));
         }
-        else
-        {
-            entries.Add(editEntry);
-            entries.Add(MenuEntry.Separator);
-        }
-        entries.Add(new("Show config file", Bar: BarCommand.OpenConfig));
+        entries.Add(editing ? new MenuEntry("Done editing", Bar: BarCommand.DoneEditing) : new MenuEntry("Edit layout", Bar: BarCommand.EditLayout));
         entries.Add(MenuEntry.Separator);
-        entries.Add(new("Exit Taskbar Tiles", Bar: BarCommand.Exit));
+        show.Add(new("Config file", Bar: BarCommand.OpenConfig));
+        more.Add(new("Exit Taskbar Tiles", Bar: BarCommand.Exit));
+        entries.Add(new("Show", Children: show));
+        entries.Add(new("More", Children: more));
         return entries;
     }
 

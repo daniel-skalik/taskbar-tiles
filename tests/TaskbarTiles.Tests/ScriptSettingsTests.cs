@@ -114,4 +114,21 @@ public class ScriptSettingsTests
         Assert.Single(s.Errors);
         Assert.NotNull(s.Hook("click"));
     }
+
+    [Fact]
+    public void Every_can_come_from_a_setting()
+    {
+        var s = Parse("""{ "refresh": "2m", "hooks": { "interval": { "every": "$refresh", "run": "a.ps1" } } }""");
+
+        Assert.Empty(s.Errors);
+        Assert.Equal(TimeSpan.FromMinutes(2), s.Hook("interval")!.Every);
+    }
+
+    [Theory]
+    [InlineData("""{ "hooks": { "interval": { "every": "$refresh", "run": "a.ps1" } } }""")]
+    [InlineData("""{ "refresh": "soon", "hooks": { "interval": { "every": "$refresh", "run": "a.ps1" } } }""")]
+    [InlineData("""{ "refresh": 5, "hooks": { "interval": { "every": "$refresh", "run": "a.ps1" } } }""")]
+    public void Every_from_a_missing_or_bad_setting_is_an_error(string json) =>
+        Assert.Equal("Hook \"interval\" takes \"every\" from setting \"refresh\", which must be a duration from 1s to 24h, e.g. \"30s\".",
+            Assert.Single(Parse(json).Errors));
 }

@@ -33,7 +33,7 @@ A tile can override the kind's other settings in `config.json`, key by key: `"pi
 
 | Hook | `TILE_HOOK` | When it runs | What it prints |
 |---|---|---|---|
-| `interval` `{ every, run }` | `interval` | At start and every `every` (e.g. `"30s"`, `"10m"`; from `1s` to `24h`). A run is skipped while the previous one is still going. Also on "Refresh now", after the PC wakes from sleep, and after an action hook that printed nothing. | Tile JSON |
+| `interval` `{ every, run }` | `interval` | At start and every `every` (e.g. `"30s"`, `"10m"`; from `1s` to `24h`). `"every": "$refresh"` takes the duration from the top-level setting `refresh` instead, so a **Settings…** field can change it. A run is skipped while the previous one is still going. Also on "Refresh now", after the PC wakes from sleep, and after an action hook that printed nothing. | Tile JSON |
 | `watch` `{ run }` | `watch` | At start; meant to run forever. Every line it prints is one tile update. When it exits it is started again after 2 s, 10 s, 1 min, then every 5 min (back to 2 s after a valid line). A non-zero exit or a failure to start shows the error look until the next valid line; a clean exit is only logged. | One tile JSON object per line |
 | `click` `{ run }` | `click` | On a plain click, only when the tile has no popup. | Tile JSON, or nothing |
 | `flyout` `{ run }` | `flyout` | When the tile is clicked, to build its popup. | Popup JSON; print nothing for no popup (the click then goes to `click`) |
@@ -125,8 +125,8 @@ Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (
 - Unknown fields, values of the wrong type and non-finite numbers are ignored; each one is written to the tile's log as a warning, which helps catch typos such as `tittle`.
 - Invalid hook settings (unknown hook name, `interval` without `every`, a missing `run`, an unknown setting inside a hook such as `"timout"`, or `every` on a hook other than `interval`) put the tile in the error look and nothing runs until `tile.json` is fixed.
 - A `tile.json` that is not valid JSON or lacks `name` or `connector` shows its error (with the line for JSON errors) on every tile of that kind; other kinds keep working.
-- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show connector log** shows it selected in Explorer; **Show tile folder** shows the kind folder with its `tile.json` and scripts.
-- Right-click → **Refresh now** re-runs `interval` (or `startup`). **Restart tile** starts the connector again from scratch.
+- Every failure is written to `%LOCALAPPDATA%\TaskbarTiles\logs\tile-<id>.log`. Right-click the tile → **Show** → **Connector log** shows it selected in Explorer; **Tile folder** shows the kind folder with its `tile.json` and scripts.
+- Right-click → **Refresh now** re-runs `interval` (or `startup`). **More** → **Restart tile** starts the connector again from scratch.
 
 ## Output size
 

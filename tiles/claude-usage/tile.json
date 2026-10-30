@@ -1,0 +1,17 @@
+{
+  "name": "Claude usage",
+  "description": "Your Claude plan's 5-hour and weekly usage limits",
+  "connector": "script",
+  "width": 220,
+  "fields": [
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "1h", "help": "How often the usage is read." }
+  ],
+  "settings": {
+    "refresh": "5m",
+    "hooks": {
+      "interval":    { "every": "$refresh", "run": "claude-usage.ps1" },
+      "flyout":      { "run": "claude-usage.ps1" },
+      "action:open": { "run": "claude-usage.ps1" }
+    }
+  }
+}
