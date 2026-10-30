@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using TaskbarTiles.Contracts;
@@ -10,7 +11,7 @@ namespace TaskbarTiles.Host.UI;
 
 /// <summary>
 /// The popup above a tile, the overflow popup and the tile gallery. Only one is open at a time; it closes when it
-/// loses focus.
+/// loses focus. On Windows 11 it has the acrylic backdrop (<see cref="Backdrop"/>), elsewhere a solid background.
 /// </summary>
 public static class FlyoutWindow
 {
@@ -24,16 +25,18 @@ public static class FlyoutWindow
         w?.Close();
     }
 
+    /// <summary>A tile's popup; <paramref name="openSettings"/> (null when the tile has no settings) runs from the gear.</summary>
     public static void ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light,
-        TileCommands commands, ITileLog log) =>
-        ShowPanel(anchor, Build(state, runtime, commands, log), light, log, WidthDip);
+        TileCommands commands, ITileLog log, Action? openSettings = null) =>
+        ShowPanel(anchor, Build(state, runtime, commands, log, openSettings), light, log, WidthDip, tint: state.Tint);
 
     /// <summary>
     /// Shows any content in the popup frame above <paramref name="anchor"/>: 320 DIP wide by default, or as wide as the
     /// content with a null width. <paramref name="onClosed"/> runs when it closes, for whatever reason.
+    /// <paramref name="tint"/> ("#RRGGBB") colors the frame.
     /// </summary>
     public static void ShowPanel(FrameworkElement anchor, UIElement content, bool light, ITileLog log,
-        double? width = WidthDip, Action? onClosed = null)
+        double? width = WidthDip, Action? onClosed = null, string? tint = null)
     {
         CloseOpen();
 
@@ -51,7 +54,8 @@ public static class FlyoutWindow
         };
         if (width is { } w) window.Width = w;
         Theme.ApplyTo(window.Resources, light);
-        window.Content = Frame(content);
+        var acrylic = Backdrop.Supported && TryBackdrop(window, light, log);
+        window.Content = Frame(content, acrylic, tint);
         window.Deactivated += (_, _) => { if (_open == window) CloseOpen(); };
         if (onClosed is not null)
             window.Closed += (_, _) =>
@@ -64,7 +68,11 @@ public static class FlyoutWindow
             var positioned = false;
             try { positioned = Position(window, anchor); }
             catch (Exception ex) { log.Error("Flyout positioning failed", ex); }
-            if (positioned) window.Opacity = 1;
+            if (positioned)
+            {
+                if (acrylic) Backdrop.Uncloak(window);
+                else window.Opacity = 1;
+            }
             else
             {
                 // Never show a popup that could not be placed (for example its anchor left the visual tree).
@@ -77,59 +85,94 @@ public static class FlyoutWindow
         window.Activate();
     }
 
-    static UIElement Build(FlyoutState state, TileRuntime runtime, TileCommands commands, ITileLog log)
+    /// <summary>Turns on acrylic; the window then stays hidden by cloaking instead of Opacity.</summary>
+    static bool TryBackdrop(Window window, bool light, ITileLog log)
+    {
+        try
+        {
+            window.Opacity = 1;
+            Backdrop.Apply(window, light);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log.Error("Acrylic backdrop failed; the popup gets a solid background", ex);
+            return false;
+        }
+    }
+
+    static UIElement Build(FlyoutState state, TileRuntime runtime, TileCommands commands, ITileLog log, Action? openSettings)
     {
         var panel = new StackPanel();
 
-        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
-        if (Theme.Decode(state.Image, 144) is { } img)
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (Theme.Decode(state.Image, 112) is { } img)
             header.Children.Add(new Border
             {
-                Width = 72, Height = 72, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 12, 0),
+                Width = 56, Height = 56, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 12, 0),
                 Background = new ImageBrush(img) { Stretch = Stretch.UniformToFill },
             });
         var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        titles.Children.Add(Text(state.Title, 14, FontWeights.SemiBold, "TileForeground"));
-        if (!string.IsNullOrEmpty(state.Subtitle)) titles.Children.Add(Text(state.Subtitle, 12, FontWeights.Normal, "TileDim"));
+        var title = Text(state.Title, 15, FontWeights.SemiBold, "TileForeground");
+        title.TextTrimming = TextTrimming.CharacterEllipsis;
+        titles.Children.Add(title);
+        if (!string.IsNullOrEmpty(state.Subtitle))
+        {
+            var subtitle = Text(state.Subtitle, 12, FontWeights.Normal, "TileDim");
+            subtitle.TextTrimming = TextTrimming.CharacterEllipsis;
+            titles.Children.Add(subtitle);
+        }
+        Grid.SetColumn(titles, 1);
         header.Children.Add(titles);
+        if (openSettings is not null)
+        {
+            var gear = new Button
+            {
+                Content = "", // Settings
+                ToolTip = "Settings",
+                Style = (Style)Application.Current.FindResource("IconButton"),
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(8, -6, -6, 0),
+            };
+            gear.Click += (_, _) =>
+            {
+                try { CloseOpen(); openSettings(); }
+                catch (Exception ex) { log.Error($"Opening the settings of tile '{runtime.TileId}' failed", ex); }
+            };
+            Grid.SetColumn(gear, 2);
+            header.Children.Add(gear);
+        }
         panel.Children.Add(header);
 
-        foreach (var row in state.Rows)
+        if (state.Rows.Count > 0)
         {
-            var grid = new Grid { Margin = new Thickness(0, 6, 0, 0) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            if (row.Icon is { } icon)
-                grid.Children.Add(new Border
-                {
-                    Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 8, 0),
-                    Background = Theme.ColorFor(icon.Color), VerticalAlignment = VerticalAlignment.Center,
-                });
-            var text = Text(row.Text, 13, FontWeights.Normal, "TileForeground");
-            text.TextTrimming = TextTrimming.CharacterEllipsis;
-            Grid.SetColumn(text, 1);
-            grid.Children.Add(text);
-            if (row.Value is not null)
+            var rows = new StackPanel();
+            for (var i = 0; i < state.Rows.Count; i++) rows.Children.Add(Row(state.Rows[i], first: i == 0));
+            var card = new Border
             {
-                var value = Text(row.Value, 11.5, FontWeights.Normal, "TileDim");
-                value.FontFamily = new FontFamily("Cascadia Mono, Consolas");
-                value.Margin = new Thickness(8, 0, 0, 0);
-                Grid.SetColumn(value, 2);
-                grid.Children.Add(value);
-            }
-            panel.Children.Add(grid);
+                CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 14, 0, 0),
+                Child = rows,
+            };
+            card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
+            panel.Children.Add(card);
         }
 
         if (state.Actions.Count > 0)
         {
-            var actions = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-            foreach (var a in state.Actions)
+            // Buttons share the width: one button spans the popup.
+            var actions = new UniformGrid { Rows = 1, Margin = new Thickness(0, 14, 0, 0) };
+            for (var i = 0; i < state.Actions.Count; i++)
             {
+                var a = state.Actions[i];
                 var button = new Button
                 {
                     Content = a.Label,
                     Style = (Style)Application.Current.FindResource(a.Primary ? "FlyoutPrimaryButton" : "FlyoutButton"),
+                    Margin = new Thickness(i == 0 ? 0 : 8, 0, 0, 0),
+                    Padding = new Thickness(12, 6, 12, 6),
                 };
                 var id = a.Id;
                 // Host ids (Restart tile, Open log) become commands; the rest go to the connector.
@@ -146,18 +189,73 @@ public static class FlyoutWindow
         return panel;
     }
 
-    static Border Frame(UIElement content)
+    /// <summary>One line of the rows card: dot, text, and the value on the right; a hairline above all but the first.</summary>
+    static Border Row(FlyoutRow row, bool first)
     {
-        var border = new Border
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (row.Icon is { } icon)
+            grid.Children.Add(new Border
+            {
+                Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 10, 0),
+                Background = Theme.ColorFor(icon.Color), VerticalAlignment = VerticalAlignment.Center,
+            });
+        var text = Text(row.Text, 13, FontWeights.Normal, "TileForeground");
+        text.TextTrimming = TextTrimming.CharacterEllipsis;
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+        if (row.Value is not null)
+        {
+            var value = Text(row.Value, 12.5, FontWeights.SemiBold, "TileForeground");
+            System.Windows.Documents.Typography.SetNumeralAlignment(value, FontNumeralAlignment.Tabular); // digits line up from row to row
+            value.Margin = new Thickness(12, 0, 0, 0);
+            Grid.SetColumn(value, 2);
+            grid.Children.Add(value);
+        }
+        var line = new Border
+        {
+            Padding = new Thickness(0, 9, 0, 9),
+            BorderThickness = new Thickness(0, first ? 0 : 1, 0, 0),
+            Child = grid,
+        };
+        line.SetResourceReference(Border.BorderBrushProperty, "FlyoutDivider");
+        return line;
+    }
+
+    /// <summary>
+    /// With acrylic, DWM draws the corners, border and shadow and the frame only adds the tint; without it the frame is
+    /// the solid rounded panel. The tint washes over either, strongest at the top.
+    /// </summary>
+    static Border Frame(UIElement content, bool acrylic, string? tint)
+    {
+        var inner = new Border
         {
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(14),
+            Padding = new Thickness(16),
+            Background = TintBrush(tint) ?? Brushes.Transparent,
             Child = content,
         };
-        border.SetResourceReference(Border.BackgroundProperty, "FlyoutBackground");
-        border.SetResourceReference(Border.BorderBrushProperty, "FlyoutBorder");
+        var border = new Border { CornerRadius = new CornerRadius(8), Child = inner };
+        if (!acrylic)
+        {
+            border.BorderThickness = new Thickness(1);
+            border.SetResourceReference(Border.BackgroundProperty, "FlyoutBackground");
+            border.SetResourceReference(Border.BorderBrushProperty, "FlyoutBorder");
+        }
         return border;
+    }
+
+    static Brush? TintBrush(string? tint)
+    {
+        if (tint is null) return null;
+        Color color;
+        try { color = (Color)ColorConverter.ConvertFromString(tint); }
+        catch (FormatException) { return null; }
+        var brush = new LinearGradientBrush(Color.FromArgb(0x8C, color.R, color.G, color.B), Color.FromArgb(0x1F, color.R, color.G, color.B), 90);
+        brush.Freeze();
+        return brush;
     }
 
     /// <summary>A text line in the popup's colors: brushKey is a Theme key such as "TileForeground" or "TileDim".</summary>
@@ -170,7 +268,7 @@ public static class FlyoutWindow
 
     /// <summary>
     /// Centers the window above the anchor in physical pixels, 8 DIP above the taskbar, clamped to the work area
-    /// of the monitor holding the anchor. The window starts at Opacity 0; moving it onto the target monitor may
+    /// of the monitor holding the anchor. The window starts hidden; moving it onto the target monitor may
     /// change its DPI (WPF rescales synchronously), so we re-measure and re-apply until the DPI is stable (max 3 passes).
     /// </summary>
     static bool Position(Window window, FrameworkElement anchor)

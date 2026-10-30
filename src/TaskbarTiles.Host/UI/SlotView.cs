@@ -178,6 +178,12 @@ public sealed class SlotView : Grid
         set { foreach (var m in _members) m.FlyoutAnchor = value ?? this; }
     }
 
+    /// <summary>For the popup's gear: what opens a member's Settings panel, or null when its kind has no settings.</summary>
+    public Func<TileRuntime, Action?>? SettingsOpener
+    {
+        set { foreach (var m in _members) m.SettingsOpener = value; }
+    }
+
     /// <summary>Takes a slot with the same content at a new index (after a reorder), keeping rotation state.</summary>
     public void Retarget(BarSlot slot)
     {

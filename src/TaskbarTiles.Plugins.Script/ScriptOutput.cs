@@ -21,7 +21,7 @@ public static class ScriptOutput
         { "title", "subtitle", "tooltip", "icon", "image", "buttons", "progress", "sparkline", "urgent" };
 
     static readonly HashSet<string> FlyoutFields = new(StringComparer.Ordinal)
-        { "title", "subtitle", "rows", "actions", "image" };
+        { "title", "subtitle", "rows", "actions", "image", "tint" };
 
     public static ParseResult<TileState> ParseTile(string? text) => Parse(text, ReadTile);
 
@@ -68,7 +68,18 @@ public static class ScriptOutput
         WarnUnknown(o, FlyoutFields, w);
         var title = Text(o, "title", w);
         if (title is null) w.Add("\"title\" is missing.");
-        return new FlyoutState(title ?? "", Text(o, "subtitle", w), ReadRows(o, w), ReadActions(o, w), ReadImage(o, w));
+        return new FlyoutState(title ?? "", Text(o, "subtitle", w), ReadRows(o, w), ReadActions(o, w), ReadImage(o, w), ReadTint(o, w));
+    }
+
+    /// <summary>"tint": "#RRGGBB" (the # is optional), returned as "#RRGGBB".</summary>
+    static string? ReadTint(JsonElement o, List<string> w)
+    {
+        var text = Text(o, "tint", w)?.Trim();
+        if (string.IsNullOrEmpty(text)) return null;
+        var hex = text.TrimStart('#');
+        if (hex.Length == 6 && hex.All(Uri.IsHexDigit)) return "#" + hex.ToUpperInvariant();
+        w.Add($"\"tint\" must be a color like \"#D97757\"; got \"{text}\".");
+        return null;
     }
 
     static void WarnUnknown(JsonElement o, HashSet<string> known, List<string> w)

@@ -58,6 +58,9 @@ public partial class TileView : UserControl
     /// <summary>What the popup is placed above; null means this tile. Tiles in the overflow popup point it at the » tile.</summary>
     public FrameworkElement? FlyoutAnchor { get; set; }
 
+    /// <summary>For the popup's gear: what opens this tile's Settings panel, or null when its kind has no settings.</summary>
+    public Func<TileRuntime, Action?>? SettingsOpener { get; set; }
+
     public void Detach()
     {
         Runtime.StateChanged -= OnStateChanged;
@@ -195,7 +198,8 @@ public partial class TileView : UserControl
                     await Runtime.InvokeActionAsync(TileActions.Click);
                     break;
                 case FlyoutOutcome.Popup:
-                    FlyoutWindow.ShowAbove(FlyoutAnchor ?? this, result.Flyout!, Runtime, _isLightTheme(), _commands, _log);
+                    FlyoutWindow.ShowAbove(FlyoutAnchor ?? this, result.Flyout!, Runtime, _isLightTheme(), _commands, _log,
+                        SettingsOpener?.Invoke(Runtime));
                     break;
             }
         }

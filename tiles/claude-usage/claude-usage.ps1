@@ -133,6 +133,7 @@ if ($env:TILE_HOOK -eq 'flyout') {
     $popup = @{
         title    = 'Claude usage'
         subtitle = $updated
+        tint     = '#D97757' # Claude's clay
         rows     = $rows
         actions  = @(@{ id = 'open'; label = 'Open usage page'; primary = $true })
     }

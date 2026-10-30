@@ -9,4 +9,5 @@ public sealed record FlyoutState(
     string? Subtitle,
     IReadOnlyList<FlyoutRow> Rows,
     IReadOnlyList<FlyoutAction> Actions,
-    byte[]? Image = null);
+    byte[]? Image = null,
+    string? Tint = null); // "#RRGGBB" the popup is tinted with; null keeps the plain backdrop

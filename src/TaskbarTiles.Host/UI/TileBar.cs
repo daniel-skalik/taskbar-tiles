@@ -226,6 +226,7 @@ public sealed class TileBar : Window, ITileBarView
     SlotView CreateView(BarSlot slot)
     {
         var view = new SlotView(slot, () => _light ?? false, _commands, _log) { ContextMenu = new ContextMenu(), Editing = _editing };
+        view.SettingsOpener = runtime => SettingsFor(runtime.TileId) is null ? null : () => ShowSettings(view, runtime);
         // Built when it opens, for the member shown at that moment.
         view.ContextMenuOpening += (_, _) => FillSlotMenu(view.ContextMenu, view);
         // Tiles in the overflow popup live in another window, so their menu events never reach the bar.
