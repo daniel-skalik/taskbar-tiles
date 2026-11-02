@@ -34,7 +34,10 @@
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" Kind="battery" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" Kind="clipboard" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" Kind="system" />
-    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="pixel-scene" />
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="aquarium" />
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="snake" />
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="racers" />
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="cozy-farm" />
     <!-- tiles\**\* itself arrives through the Host reference: its None items with CopyToOutputDirectory are copied here too. -->
   </ItemGroup>
   <Import Project="..\..\build\CopyPlugins.targets" />

@@ -1,9 +1,10 @@
 namespace TaskbarTiles.Plugins.Scenes;
 
 /// <summary>
-/// A cozy farm that follows the real local time: the sky goes from dawn to blue day to a golden sunset and a starry
-/// night, the sun and moon cross it, and everything on the ground is lit to match. A farmer walks the flower field and
-/// waters the flowers, goes home at night (the window lights up, later the house sleeps) and comes out in the morning.
+/// A cozy farm that follows the real local time and the real sun: the sky goes from dawn at sunrise to blue day to a
+/// golden sunset and a starry night, the sun and moon cross it, and everything on the ground is lit to match. A farmer
+/// walks the flower field and waters the flowers during working hours (sunrise to sunset unless set otherwise), then
+/// goes home (the window lights up after dark, the house sleeps from 23:00 to 5:30) and comes out again next morning.
 /// Smoke curls from the chimney; birds and butterflies pass by day, fireflies glow at night. A click makes the farmer
 /// wave and a bird fly by, or at night sends a shooting star.
 /// </summary>
@@ -13,9 +14,10 @@ public sealed class FarmScene : IScene
 
     const int W = PixelCanvas.Width, H = PixelCanvas.Height;
     const int HouseX = 73, HouseY = 6, DoorX = HouseX + 3, PathY = 17, FieldLeft = 14, FieldRight = 60, TreeX = 1, TreeY = 4;
-    const float WakeHour = 6.75f, BedHour = 20.25f;
+    const float SleepHour = 23f, RiseHour = 5.5f;
 
-    // Sky colors through the day: hour, top, bottom, daylight (0..256), warmth (0..256).
+    // Sky colors through the day: sky hour (see SkyHour: sunrise is 6:00 and sunset 20:00), top, bottom, daylight
+    // (0..256), warmth (0..256).
     static readonly float[] KeyHour = [0f, 5.0f, 6.0f, 7.0f, 9.0f, 16.5f, 18.5f, 19.5f, 20.5f, 24f];
     static readonly int[] KeyTop = [0x0A0F2C, 0x0A0F2C, 0x2B3470, 0x5A8FD8, 0x4FA3EE, 0x4FA3EE, 0x5A5CA8, 0x2E2A66, 0x111538, 0x0A0F2C];
     static readonly int[] KeyBottom = [0x1A2350, 0x1A2350, 0xE88A6A, 0xFFD3A0, 0xBDE6FF, 0xBDE6FF, 0xFFB25E, 0xE0708A, 0x2A2A5E, 0x1A2350];
@@ -88,14 +90,19 @@ public sealed class FarmScene : IScene
     readonly Mote[] _smoke = new Mote[14], _fireflies = new Mote[9], _butterflies = new Mote[2], _drops = new Mote[8], _zs = new Mote[3];
     Mote _bird, _shootingStar;
     Doing _doing = Doing.Resting;
-    float _farmerX = 30, _targetX = 30, _hour;
+    readonly FarmOptions _options;
+    float _farmerX = 30, _targetX = 30, _hour, _clock;
+    DateOnly _sunDay;
+    SunTimes.Day _sun;
+    float _workStart, _workEnd;
     int _facing = 1, _timer = 20, _frame, _doorOpen, _light, _warm, _sky0, _sky1, _waveBack;
     int _statusTime = -1, _statusDoing = -1, _watered;
     bool _started;
     string _status = "";
 
-    public FarmScene(Random rng)
+    public FarmScene(Random rng, FarmOptions? options = null)
     {
+        _options = options ?? FarmOptions.Default;
         for (int x = 0; x < W; x++)
         {
             _far[x] = 8 + (int)MathF.Round(MathF.Sin(x * 0.06f + 2) * 2 + MathF.Sin(x * 0.15f) * 0.8f);
@@ -143,7 +150,16 @@ public sealed class FarmScene : IScene
     public void Step(DateTime now, Random rng)
     {
         _frame++;
-        _hour = (float)now.TimeOfDay.TotalHours;
+        var today = DateOnly.FromDateTime(now);
+        if (today != _sunDay)
+        {
+            _sunDay = today;
+            _sun = _options.SunOn(now);
+            _workStart = (float)_options.WorkStart.On(_sun);
+            _workEnd = (float)_options.WorkEnd.On(_sun);
+        }
+        _clock = (float)now.TimeOfDay.TotalHours;
+        _hour = SkyHour(_clock, _sun);
         Light();
         if (!_started)
         {
@@ -173,7 +189,27 @@ public sealed class FarmScene : IScene
             _shootingStar = new Mote { X = 40 + rng.Next(55), Y = rng.Next(3), Vx = -0.9f, Vy = 0.35f, Life = 16 };
     }
 
-    bool Awake() => _hour >= WakeHour && _hour < BedHour;
+    /// <summary>Within the farmer's working hours (which may run past midnight when the end is before the start).</summary>
+    bool Awake() => _workStart <= _workEnd ? _clock >= _workStart && _clock < _workEnd : _clock >= _workStart || _clock < _workEnd;
+
+    /// <summary>
+    /// Maps the clock onto the "sky hour" the sky was drawn for, where sunrise is 6:00 and sunset 20:00: an hour of
+    /// twilight either side of sunrise (5 to 7), half an hour either side of sunset (19.5 to 20.5), and the rest of the
+    /// day and the night stretched or squeezed in between. Days are kept between 2 and 22 hours long, so polar nights
+    /// get a short dim day and polar days a short night.
+    /// </summary>
+    public static float SkyHour(float clock, SunTimes.Day sun)
+    {
+        double length = Math.Clamp(sun.Sunset - sun.Sunrise, 2, 22), noon = sun.Noon;
+        double rise = noon - length / 2, set = noon + length / 2;
+        double dawn = rise - 1, morning = rise + 1, evening = set - 0.5, dusk = set + 0.5;
+        double h = ((clock - dawn) % 24 + 24) % 24 + dawn; // the same time of day, in [dawn, dawn + 24)
+        double sky = h < morning ? 5 + (h - dawn)
+            : h < evening ? 7 + (h - morning) / (evening - morning) * 12.5
+            : h < dusk ? 19.5 + (h - evening)
+            : 20.5 + (h - dusk) / (dawn + 24 - dusk) * 8.5;
+        return (float)(sky % 24);
+    }
 
     void Light()
     {
@@ -284,7 +320,9 @@ public sealed class FarmScene : IScene
         Move(_drops, wind: false);
     }
 
-    bool Asleep() => _doing == Doing.Inside && (_hour >= 23 || _hour < 5.5f);
+    bool Asleep() => _doing == Doing.Inside && BedTime();
+
+    bool BedTime() => _clock >= SleepHour || _clock < RiseHour;
 
     void StepCritters(Random rng)
     {
@@ -344,7 +382,9 @@ public sealed class FarmScene : IScene
 
     void UpdateStatus()
     {
-        int time = _hour switch { < 5.5f => 0, < 7f => 1, < 11.5f => 2, < 14f => 3, < 17.5f => 4, < 19.5f => 5, < 20.5f => 6, < 23f => 7, _ => 0 };
+        // Dawn to dusk follow the sun; after dark it is evening until bedtime, then night.
+        int time = _hour switch { < 5f => 0, < 7f => 1, < 11.5f => 2, < 14f => 3, < 17.5f => 4, < 19.5f => 5, < 20.5f => 6, _ => 7 };
+        if (time is 0 or 7) time = BedTime() || _hour < 5f && _clock < 12 ? 0 : 7;
         int doing = _doing == Doing.Inside ? (Asleep() ? 10 : 11) : (int)_doing;
         if (time == _statusTime && doing == _statusDoing) return;
         _statusTime = time;
@@ -399,7 +439,7 @@ public sealed class FarmScene : IScene
 
     void DrawSunAndMoon(PixelCanvas c)
     {
-        // The sun crosses from 6:00 to 20:00 and the moon from 19:30 to 6:30. The square root makes the arc climb
+        // The sun crosses from sky hour 6:00 to 20:00 (sunrise to sunset) and the moon from 19:30 to 6:30. The square root makes the arc climb
         // quickly, so the sun clears the hills soon after sunrise instead of hiding behind them half the morning.
         float sunT = (_hour - 6f) / 14f;
         if (sunT is > 0 and < 1)
@@ -489,7 +529,7 @@ public sealed class FarmScene : IScene
     }
 
     /// <summary>Lit after dark while the household is up, and in the early morning; dark once they are asleep.</summary>
-    bool WindowLit() => _light < 150 && !(_hour >= 23 || _hour < 5.5f);
+    bool WindowLit() => _light < 150 && !BedTime();
 
     void DrawFlowers(PixelCanvas c)
     {

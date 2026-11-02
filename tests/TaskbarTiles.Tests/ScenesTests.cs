@@ -9,30 +9,25 @@ public class ScenesTests
     static readonly DateTime Noon = new(2026, 6, 1, 12, 0, 0);
     static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 
-    static readonly string[] AllScenes = [SceneConnector.Aquarium, SceneConnector.Snake, SceneConnector.Racers, SceneConnector.CozyFarm, SceneConnector.Shuffle];
-    public static TheoryData<string> SceneNames() => new(AllScenes);
+    /// <summary>Prague without daylight saving, so tests give the same sun anywhere they run.</summary>
+    static readonly FarmOptions Prague = new(50.08, 14.42, DayTime.Sunrise, DayTime.Sunset,
+        TimeZoneInfo.CreateCustomTimeZone("test+1", TimeSpan.FromHours(1), "test+1", "test+1"));
 
-    [Theory]
-    [InlineData("{}", "Cozy farm", false)]
-    [InlineData("""{ "scene": "Snake" }""", "Snake", false)]
-    [InlineData("""{ "scene": "  racers " }""", "Racers", false)] // hand-edited config may differ in case and spacing
-    [InlineData("""{ "scene": "Shuffle" }""", "Shuffle", false)]
-    [InlineData("""{ "scene": "Pong" }""", "Cozy farm", true)]
-    [InlineData("""{ "scene": 3 }""", "Cozy farm", true)]
-    public void Scene_comes_from_settings_with_a_logged_fallback(string settings, string expected, bool warns)
+    static readonly Dictionary<string, Func<Random, IScene>> Scenes = new()
     {
-        var log = new CollectingLog();
-
-        Assert.Equal(expected, SceneConnector.SceneName(Json(settings), log));
-        Assert.Equal(warns, log.Snapshot().Any(m => m.StartsWith("WARN")));
-    }
+        ["Aquarium"] = rng => new AquariumScene(rng),
+        ["Snake"] = rng => new SnakeScene(rng),
+        ["Racers"] = rng => new RacersScene(rng),
+        ["Cozy farm"] = rng => new FarmScene(rng, Prague),
+    };
+    public static TheoryData<string> SceneNames() => new(Scenes.Keys);
 
     [Theory]
     [MemberData(nameof(SceneNames))]
     public void Every_scene_paints_every_pixel_of_every_frame(string name)
     {
         var rng = new Random(42);
-        var scene = SceneConnector.Create(name, rng);
+        var scene = Scenes[name](rng);
         var pixels = PixelCanvas.NewFrame();
 
         for (int step = 0; step < 400; step++)
@@ -51,7 +46,7 @@ public class ScenesTests
     public void Frames_change_over_time(string name)
     {
         var rng = new Random(1);
-        var scene = SceneConnector.Create(name, rng);
+        var scene = Scenes[name](rng);
         var first = Frame(scene, rng, 40);
         var later = Frame(scene, rng, 40);
 
@@ -179,8 +174,8 @@ public class ScenesTests
     [Fact]
     public void Farm_sky_follows_the_clock()
     {
-        var noon = Frame(new FarmScene(new Random(4)), Noon);
-        var midnight = Frame(new FarmScene(new Random(4)), Noon.Date);
+        var noon = Frame(new FarmScene(new Random(4), Prague), Noon);
+        var midnight = Frame(new FarmScene(new Random(4), Prague), Noon.Date);
 
         Assert.NotEqual(noon[50], midnight[50]);
         Assert.True(Brightness(noon, row: 0) > Brightness(midnight, row: 0) * 2);
@@ -210,7 +205,7 @@ public class ScenesTests
     public void Farmer_sleeps_at_night_and_comes_out_in_the_morning()
     {
         var rng = new Random(4);
-        var farm = new FarmScene(rng);
+        var farm = new FarmScene(rng, Prague);
 
         farm.Step(Noon.Date.AddHours(2), rng);
         Assert.True(farm.FarmerInside);
@@ -236,36 +231,6 @@ public class ScenesTests
     }
 
     [Fact]
-    public void Shuffle_switches_every_ten_minutes_and_never_repeats_a_scene_twice_in_a_row()
-    {
-        var rng = new Random(9);
-        var shuffle = new ShuffleScene([() => new Named("a"), () => new Named("b"), () => new Named("c"), () => new Named("d")]);
-        var now = Noon;
-
-        shuffle.Step(now, rng);
-        var shown = new List<string> { shuffle.Name };
-        shuffle.Step(now.AddMinutes(9), rng);
-        Assert.Equal(shown[0], shuffle.Name); // not before the ten minutes are up
-
-        for (int i = 1; i <= 300; i++)
-        {
-            shuffle.Step(now.AddMinutes(10 * i), rng);
-            shown.Add(shuffle.Name);
-        }
-
-        for (int i = 1; i < shown.Count; i++) Assert.NotEqual(shown[i - 1], shown[i]);
-        Assert.Equal(4, shown.Distinct().Count());
-    }
-
-    sealed class Named(string name) : IScene
-    {
-        public string Name => name;
-        public string Status => "fine";
-        public void Step(DateTime now, Random rng) { }
-        public void Render(int[] pixels) => new PixelCanvas(pixels).Clear(PixelCanvas.Rgb(0));
-    }
-
-    [Fact]
     public void Canvas_blends_by_alpha_and_clips_at_the_edges()
     {
         var pixels = PixelCanvas.NewFrame();
@@ -285,7 +250,7 @@ public class ScenesTests
 
     sealed class Context : ITileContext
     {
-        public string TileId => "pixel-scene";
+        public string TileId => "scene";
         public JsonElement Settings { get; init; } = Json("{}");
         public string ConfigDirectory => "";
         readonly List<TileState> _updates = [];
@@ -299,8 +264,8 @@ public class ScenesTests
     [Fact]
     public async Task Connector_draws_frames_with_only_the_picture_and_a_tooltip()
     {
-        var connector = new SceneConnector(new Random(1), () => Noon);
-        var ctx = new Context { Settings = Json("""{ "scene": "Snake" }""") };
+        var connector = new SnakeConnector(new Random(1), () => Noon);
+        var ctx = new Context();
 
         await connector.StartAsync(ctx, CancellationToken.None);
         await Eventually.Holds(() => ctx.Updates().Length >= 3);
@@ -320,8 +285,8 @@ public class ScenesTests
     [Fact]
     public async Task A_click_reaches_the_scene()
     {
-        var connector = new SceneConnector(new Random(1), () => Noon);
-        var ctx = new Context { Settings = Json("""{ "scene": "Racers" }""") };
+        var connector = new RacersConnector(new Random(1), () => Noon);
+        var ctx = new Context();
         await connector.StartAsync(ctx, CancellationToken.None);
 
         await connector.OnActionAsync(TileActions.Click, CancellationToken.None);
@@ -332,15 +297,140 @@ public class ScenesTests
     }
 
     [Fact]
-    public async Task An_unknown_scene_falls_back_to_the_farm()
+    public async Task The_farm_connector_reads_its_place_and_hours_from_settings()
     {
-        var connector = new SceneConnector(new Random(1), () => Noon);
-        var ctx = new Context { Settings = Json("""{ "scene": "Moon base" }""") };
+        var connector = new FarmConnector(new Random(1), () => Noon, region: () => (49.75, 15.5));
+        var ctx = new Context { Settings = Json("""{ "latitude": 60, "workStart": "7:30", "workEnd": "sunset" }""") };
 
         await connector.StartAsync(ctx, CancellationToken.None);
         await connector.DisposeAsync();
 
         Assert.IsType<FarmScene>(connector.Scene);
-        Assert.Contains(((CollectingLog)ctx.Log).Snapshot(), m => m.StartsWith("WARN") && m.Contains("scene"));
+        Assert.Empty(((CollectingLog)ctx.Log).Snapshot());
+    }
+
+    [Fact]
+    public void Farm_options_fall_back_to_the_windows_region_and_sunrise_to_sunset()
+    {
+        var log = new CollectingLog();
+
+        var options = FarmOptions.FromSettings(Json("{}"), log, () => (49.75, 15.5));
+        var nowhere = FarmOptions.FromSettings(Json("{}"), log, () => null);
+
+        Assert.Equal((49.75, 15.5), (options.Latitude, options.Longitude));
+        Assert.Equal((DayTime.Sunrise, DayTime.Sunset), (options.WorkStart, options.WorkEnd));
+        Assert.Equal((50.0, 15.0), (nowhere.Latitude, nowhere.Longitude));
+        Assert.Empty(log.Snapshot());
+    }
+
+    [Theory]
+    [InlineData("""{ "latitude": 95 }""", "latitude")]
+    [InlineData("""{ "longitude": "east" }""", "longitude")]
+    [InlineData("""{ "workStart": "noonish" }""", "workStart")]
+    [InlineData("""{ "workEnd": 18 }""", "workEnd")]
+    public void Bad_farm_settings_are_logged_and_the_default_used(string settings, string key)
+    {
+        var log = new CollectingLog();
+
+        var options = FarmOptions.FromSettings(Json(settings), log, () => (49.75, 15.5));
+
+        Assert.Equal(new FarmOptions(49.75, 15.5, DayTime.Sunrise, DayTime.Sunset, TimeZoneInfo.Local), options);
+        Assert.Contains(log.Snapshot(), m => m.StartsWith("WARN") && m.Contains(key));
+    }
+
+    [Theory]
+    [InlineData("sunrise", DayTime.Anchor.Sunrise, 0)]
+    [InlineData(" Sunset ", DayTime.Anchor.Sunset, 0)]
+    [InlineData("7:30", DayTime.Anchor.Clock, 7.5)]
+    [InlineData("18:06", DayTime.Anchor.Clock, 18.1)]
+    [InlineData("00:00", DayTime.Anchor.Clock, 0)]
+    public void Work_times_are_sunrise_sunset_or_a_clock_time(string text, DayTime.Anchor anchor, double hours)
+    {
+        Assert.True(DayTime.TryParse(text, out var value));
+        Assert.Equal(anchor, value.From);
+        Assert.Equal(hours, value.Hours, 6);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("25:00")]
+    [InlineData("7.30")]
+    [InlineData("dawn")]
+    public void Other_work_times_are_rejected(string text) => Assert.False(DayTime.TryParse(text, out _));
+
+    [Theory]
+    // Published times for Prague (50.08 N, 14.42 E), in CET (+1) or CEST (+2).
+    [InlineData(2026, 11, 2, 1, "06:52", "16:38")]
+    [InlineData(2026, 6, 21, 2, "04:52", "21:15")]
+    [InlineData(2026, 12, 21, 1, "07:59", "16:02")]
+    public void Sunrise_and_sunset_are_within_a_few_minutes_of_the_almanac(int year, int month, int day, int offset, string rise, string set)
+    {
+        var sun = SunTimes.For(new DateOnly(year, month, day), 50.08, 14.42, TimeSpan.FromHours(offset));
+
+        Assert.InRange(sun.Sunrise - TimeOnly.Parse(rise).ToTimeSpan().TotalHours, -4 / 60.0, 4 / 60.0);
+        Assert.InRange(sun.Sunset - TimeOnly.Parse(set).ToTimeSpan().TotalHours, -4 / 60.0, 4 / 60.0);
+    }
+
+    [Fact]
+    public void Polar_days_and_nights_have_no_sunrise_or_sunset()
+    {
+        var winter = SunTimes.For(new DateOnly(2026, 12, 21), 78.2, 15.6, TimeSpan.FromHours(1)); // Svalbard
+        var summer = SunTimes.For(new DateOnly(2026, 6, 21), 78.2, 15.6, TimeSpan.FromHours(2));
+
+        Assert.False(winter.Rises);
+        Assert.False(summer.Sets);
+        Assert.Equal(24, summer.Sunset - summer.Sunrise, 6);
+    }
+
+    [Fact]
+    public void Sky_hour_puts_sunrise_at_six_and_sunset_at_eight_and_keeps_its_order()
+    {
+        var november = new SunTimes.Day(6.87, 16.63);
+
+        Assert.Equal(6f, FarmScene.SkyHour(6.87f, november), 3);
+        Assert.Equal(20f, FarmScene.SkyHour(16.63f, november), 3);
+        Assert.Equal(5f, FarmScene.SkyHour(5.87f, november), 3); // an hour of twilight before sunrise
+        var previous = FarmScene.SkyHour(5.87f, november);
+        for (var h = 5.9f; h < 5.87f + 24; h += 0.1f) // one full day from dawn: the sky hour only moves forward
+        {
+            var sky = FarmScene.SkyHour(h % 24, november);
+            Assert.True((sky - previous + 24) % 24 < 1, $"{h}: {previous} -> {sky}");
+            previous = sky;
+        }
+    }
+
+    [Fact]
+    public void The_farmer_keeps_the_working_hours_from_settings()
+    {
+        var rng = new Random(4);
+        var farm = new FarmScene(rng, Prague with { WorkStart = DayTime.At(9), WorkEnd = DayTime.At(15) });
+
+        farm.Step(Noon.Date.AddHours(8), rng); // after sunrise, but before work
+        Assert.True(farm.FarmerInside);
+
+        farm.Step(Noon.Date.AddHours(9.5), rng);
+        Assert.False(farm.FarmerInside);
+
+        for (var i = 0; i < 2000 && !farm.FarmerInside; i++) farm.Step(Noon.Date.AddHours(16), rng); // walks home
+        Assert.True(farm.FarmerInside);
+    }
+
+    [Fact]
+    public void In_november_the_farm_is_dark_by_six_in_the_evening()
+    {
+        var day = new DateTime(2026, 11, 2);
+        var evening = Frame(new FarmScene(new Random(4), Prague), day.AddHours(18));
+        var afternoon = Frame(new FarmScene(new Random(4), Prague), day.AddHours(13));
+
+        Assert.True(Brightness(afternoon, row: 0) > Brightness(evening, row: 0) * 2);
+
+        static int[] Frame(FarmScene scene, DateTime at)
+        {
+            var rng = new Random(4);
+            for (int i = 0; i < 5; i++) scene.Step(at, rng);
+            var pixels = PixelCanvas.NewFrame();
+            scene.Render(pixels);
+            return pixels;
+        }
     }
 }

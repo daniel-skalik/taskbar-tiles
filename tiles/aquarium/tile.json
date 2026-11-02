@@ -1,0 +1,7 @@
+{
+  "name": "Aquarium",
+  "description": "Fish, bubbles and a treasure chest; click to feed them",
+  "group": "Fun/Scenes",
+  "connector": "aquarium",
+  "width": 200
+}

@@ -46,6 +46,47 @@ public class TileGalleryTests
     }
 
     [Fact]
+    public void New_tiles_sit_in_their_kinds_group_and_your_tiles_at_the_top()
+    {
+        var kinds = TestKinds.Of(
+            TestKinds.Script("ping", name: "Ping") with { Group = "Network" },
+            TestKinds.Script("snake", name: "Snake") with { Group = "Fun/Games" });
+        var cfg = Parse("""{ "tiles": { "mine": { "kind": "snake" } } }""");
+
+        var items = TileGallery.Build(cfg, DisplayEntry.Empty, kinds);
+
+        Assert.Equal(new[] { ("mine", ""), ("Ping", "Network"), ("Snake", "Fun/Games") }, items.Select(i => (i.Title, i.Group)));
+    }
+
+    [Fact]
+    public void Opening_a_folder_lists_its_subfolders_then_its_tiles()
+    {
+        GalleryItem Item(string title, string group) => new(title, "", title, null, group);
+        var items = new[]
+        {
+            Item("ci", ""), Item("Snake", "Fun/Games"), Item("Racers", "fun/games"), Item("Farm", "Fun/Scenes"),
+            Item("Dice", "Fun"), Item("Ping", "Network"), Item("Deep", "Fun/Games/Retro"),
+        };
+
+        var (top, topItems) = TileGallery.Open(items, "");
+        var (fun, funItems) = TileGallery.Open(items, "Fun");
+        var (games, gameItems) = TileGallery.Open(items, "Fun/Games");
+
+        Assert.Equal(new[] { new GalleryFolder("Fun", "Fun", 5), new GalleryFolder("Network", "Network", 1) }, top);
+        Assert.Equal(new[] { "ci" }, topItems.Select(i => i.Title));
+        Assert.Equal(new[] { new GalleryFolder("Games", "Fun/Games", 3), new GalleryFolder("Scenes", "Fun/Scenes", 1) }, fun);
+        Assert.Equal(new[] { "Dice" }, funItems.Select(i => i.Title));
+        Assert.Equal(new[] { new GalleryFolder("Retro", "Fun/Games/Retro", 1) }, games);
+        Assert.Equal(new[] { "Snake", "Racers" }, gameItems.Select(i => i.Title)); // folders match ignoring case
+    }
+
+    [Theory]
+    [InlineData("Fun/Games", "Fun")]
+    [InlineData("Fun", "")]
+    [InlineData("", "")]
+    public void Parent_is_the_folder_above(string path, string expected) => Assert.Equal(expected, TileGallery.Parent(path));
+
+    [Fact]
     public void An_instance_of_a_kind_that_is_gone_shows_the_kind_id()
     {
         var cfg = Parse("""{ "tiles": { "w": { "kind": "weather" } } }""");

@@ -1,0 +1,14 @@
+{
+  "name": "Cozy farm",
+  "description": "A farm that follows your clock and the real sunrise and sunset",
+  "group": "Fun/Scenes",
+  "connector": "cozy-farm",
+  "width": 200,
+  "fields": [
+    { "key": "workStart", "label": "Farmer starts work", "type": "text", "help": "\"sunrise\", \"sunset\" or a time such as 7:30." },
+    { "key": "workEnd", "label": "Farmer goes home", "type": "text", "help": "\"sunrise\", \"sunset\" or a time such as 18:00." },
+    { "key": "latitude", "label": "Latitude", "type": "number", "min": -90, "max": 90, "help": "For sunrise and sunset; north is positive. Empty: the middle of your Windows region." },
+    { "key": "longitude", "label": "Longitude", "type": "number", "min": -180, "max": 180, "help": "East is positive. Empty: the middle of your Windows region." }
+  ],
+  "settings": { "workStart": "sunrise", "workEnd": "sunset", "latitude": null, "longitude": null }
+}

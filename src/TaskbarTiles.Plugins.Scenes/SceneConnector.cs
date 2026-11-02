@@ -1,20 +1,14 @@
-using System.Text.Json;
 using TaskbarTiles.Contracts;
 
 namespace TaskbarTiles.Plugins.Scenes;
 
 /// <summary>
-/// Little self-running pixel-art animations across the whole tile. Setting "scene": Aquarium, Snake, Racers, Cozy farm
-/// or Shuffle (another scene every 10 minutes); default Cozy farm. A click pokes the scene: feeds the fish, restarts the
-/// snake, starts a new race, or makes the farmer wave.
+/// A little self-running pixel-art animation across the whole tile; each scene is its own tile kind with its own
+/// connector below. A click pokes the scene: feeds the fish, restarts the snake, starts a new race, or makes the farmer
+/// wave. Subclasses only say which scene to run.
 /// </summary>
-[TileConnector("pixel-scene", Width = 200)]
-public sealed class SceneConnector : ITileConnector
+public abstract class SceneConnector : ITileConnector
 {
-    public const string SceneKey = "scene";
-    public const string Aquarium = "Aquarium", Snake = "Snake", Racers = "Racers", CozyFarm = "Cozy farm", Shuffle = "Shuffle";
-    public static readonly IReadOnlyList<string> SceneNames = [Aquarium, Snake, Racers, CozyFarm, Shuffle];
-
     static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(100);
 
     readonly Random _rng;
@@ -28,9 +22,9 @@ public sealed class SceneConnector : ITileConnector
     Task? _loop;
     string? _lastName, _lastStatus, _tooltip;
 
-    public SceneConnector() : this(new Random(), () => DateTime.Now) { }
+    protected SceneConnector() : this(new Random(), () => DateTime.Now) { }
 
-    public SceneConnector(Random rng, Func<DateTime> clock)
+    protected SceneConnector(Random rng, Func<DateTime> clock)
     {
         _rng = rng;
         _clock = clock;
@@ -43,38 +37,17 @@ public sealed class SceneConnector : ITileConnector
     public Task StartAsync(ITileContext ctx, CancellationToken ct)
     {
         _ctx = ctx;
-        // The host restarts the connector when settings change, so the scene is read once here.
         lock (_gate)
         {
-            _scene = Create(SceneName(ctx.Settings, ctx.Log), _rng);
+            _scene = CreateScene(ctx, _rng);
             Frame();
         }
         if (!_disposed) _loop = LoopAsync(_stopping);
         return Task.CompletedTask;
     }
 
-    /// <summary>"scene" from settings, matched ignoring case; missing or unknown is logged and Cozy farm used.</summary>
-    public static string SceneName(JsonElement settings, ITileLog log)
-    {
-        if (settings.ValueKind != JsonValueKind.Object || !settings.TryGetProperty(SceneKey, out var value)) return CozyFarm;
-        if (value.ValueKind == JsonValueKind.String)
-        {
-            var text = value.GetString();
-            foreach (var name in SceneNames)
-                if (string.Equals(name, text?.Trim(), StringComparison.OrdinalIgnoreCase)) return name;
-        }
-        log.Warn($"\"scene\" must be one of {string.Join(", ", SceneNames)}; showing {CozyFarm}.");
-        return CozyFarm;
-    }
-
-    public static IScene Create(string name, Random rng) => name switch
-    {
-        Aquarium => new AquariumScene(rng),
-        Snake => new SnakeScene(rng),
-        Racers => new RacersScene(rng),
-        Shuffle => new ShuffleScene([() => new AquariumScene(rng), () => new SnakeScene(rng), () => new RacersScene(rng), () => new FarmScene(rng)]),
-        _ => new FarmScene(rng),
-    };
+    /// <summary>The scene this tile shows, made once per start (the host restarts the connector when settings change).</summary>
+    protected abstract IScene CreateScene(ITileContext ctx, Random rng);
 
     async Task LoopAsync(CancellationToken ct)
     {
@@ -139,4 +112,39 @@ public sealed class SceneConnector : ITileConnector
         if (_loop is not null) await _loop;
         _stop.Dispose();
     }
+}
+
+[TileConnector("aquarium", Width = 200)]
+public sealed class AquariumConnector : SceneConnector
+{
+    public AquariumConnector() { }
+    public AquariumConnector(Random rng, Func<DateTime> clock) : base(rng, clock) { }
+    protected override IScene CreateScene(ITileContext ctx, Random rng) => new AquariumScene(rng);
+}
+
+[TileConnector("snake", Width = 200)]
+public sealed class SnakeConnector : SceneConnector
+{
+    public SnakeConnector() { }
+    public SnakeConnector(Random rng, Func<DateTime> clock) : base(rng, clock) { }
+    protected override IScene CreateScene(ITileContext ctx, Random rng) => new SnakeScene(rng);
+}
+
+[TileConnector("racers", Width = 200)]
+public sealed class RacersConnector : SceneConnector
+{
+    public RacersConnector() { }
+    public RacersConnector(Random rng, Func<DateTime> clock) : base(rng, clock) { }
+    protected override IScene CreateScene(ITileContext ctx, Random rng) => new RacersScene(rng);
+}
+
+/// <summary>Settings: "latitude", "longitude", "workStart", "workEnd"; see <see cref="FarmOptions"/>.</summary>
+[TileConnector("cozy-farm", Width = 200)]
+public sealed class FarmConnector : SceneConnector
+{
+    readonly Func<(double, double)?>? _region;
+
+    public FarmConnector() { }
+    public FarmConnector(Random rng, Func<DateTime> clock, Func<(double, double)?>? region = null) : base(rng, clock) => _region = region;
+    protected override IScene CreateScene(ITileContext ctx, Random rng) => new FarmScene(rng, FarmOptions.FromSettings(ctx.Settings, ctx.Log, _region));
 }

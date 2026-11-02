@@ -24,7 +24,10 @@
     <ProjectReference Include="..\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" Kind="system" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" ReferenceOutputAssembly="false" />
-    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="pixel-scene" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="aquarium" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="snake" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="racers" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="cozy-farm" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>
