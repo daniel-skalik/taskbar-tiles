@@ -105,6 +105,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `rows` | array | Each row is a string, or `{ "text": "Build #41", "value": "2 min", "icon": { "glyph": "check", "color": "ok" } }`; the icon shows as a colored dot. |
 | `actions` | array | Buttons at the bottom: `{ "id": "rerun", "label": "Run again", "primary": true }`. `id` is required and runs the `action:<id>` hook; `label` defaults to the id. Ids starting with `host:` are reserved for the host (for example `host:restart` and `host:show-log` on the error popup); do not use them. |
 | `image` | string | Base64 PNG or JPEG shown next to the heading. |
+| `tint` | string | A color like `"#D97757"` washed over the popup's backdrop, strongest at the top. Leave it out for the plain backdrop. |
 
 ```json
 { "title": "1.1.1.1", "subtitle": "Last 4 pings",

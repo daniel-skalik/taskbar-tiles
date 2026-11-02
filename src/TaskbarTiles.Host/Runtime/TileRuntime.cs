@@ -226,6 +226,9 @@ public sealed class TileRuntime : IAsyncDisposable
         finally { _actionsInFlight.TryRemove(actionId, out _); }
     }
 
+    /// <summary>Image and tint of the connector's last popup, so the Settings panel can look like it.</summary>
+    public (byte[]? Image, string? Tint) LastFlyoutLook { get; private set; }
+
     public async Task<FlyoutResult> GetFlyoutAsync()
     {
         if (IsDisposed) return FlyoutResult.Unavailable;
@@ -234,6 +237,7 @@ public sealed class TileRuntime : IAsyncDisposable
         try
         {
             var flyout = await RunWithTimeout(instance, ct => instance.Connector.GetFlyoutAsync(ct));
+            if (flyout is not null) LastFlyoutLook = (flyout.Image, flyout.Tint);
             return flyout is null ? FlyoutResult.NoPopup : FlyoutResult.Of(flyout);
         }
         catch (TimeoutException) { ShowNotResponding(); return FlyoutResult.Unavailable; }

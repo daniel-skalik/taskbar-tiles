@@ -226,6 +226,7 @@ public sealed class TileBar : Window, ITileBarView
     SlotView CreateView(BarSlot slot)
     {
         var view = new SlotView(slot, () => _light ?? false, _commands, _log) { ContextMenu = new ContextMenu(), Editing = _editing };
+        view.SettingsOpener = runtime => SettingsFor(runtime.TileId) is null ? null : () => ShowSettings(view, runtime);
         // Built when it opens, for the member shown at that moment.
         view.ContextMenuOpening += (_, _) => FillSlotMenu(view.ContextMenu, view);
         // Tiles in the overflow popup live in another window, so their menu events never reach the bar.
@@ -436,7 +437,9 @@ public sealed class TileBar : Window, ITileBarView
                 ? field with { Choices = TileFields.PickChoices(field, await runtime.GetChoicesAsync(field.Key), OwnValue(form, field.Key)) }
                 : field);
         form = form with { Fields = fields };
-        var panel = SettingsPanel.Build(form, values =>
+        // Dressed like the tile's popup: its image (or the tile's own) and tint.
+        var look = runtime.LastFlyoutLook;
+        var panel = SettingsPanel.Build(form, look.Image ?? runtime.State.Image, values =>
         {
             ConfigError? error;
             try { error = _editor.SaveSettings(tileId, values); }
@@ -452,7 +455,7 @@ public sealed class TileBar : Window, ITileBarView
             return false;
         }, FlyoutWindow.CloseOpen);
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
-        FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
+        FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log, tint: look.Tint);
     }
 
     static JsonElement? OwnValue(TileSettingsForm form, string key) =>

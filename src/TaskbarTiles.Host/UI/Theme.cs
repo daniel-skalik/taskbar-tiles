@@ -54,6 +54,8 @@ public static class Theme
         r["FlyoutBackground"] = light ? Frozen(0xF3, 0xF3, 0xF3) : Frozen(0x2B, 0x2A, 0x31);
         r["FlyoutBorder"] = light ? Frozen(0x1F, 0, 0, 0) : Frozen(0x17, 0xFF, 0xFF, 0xFF);
         r["ButtonHover"] = light ? Frozen(0x1A, 0, 0, 0) : Frozen(0x22, 0xFF, 0xFF, 0xFF);
+        r["FlyoutCard"] = light ? Frozen(0x80, 0xFF, 0xFF, 0xFF) : Frozen(0x12, 0xFF, 0xFF, 0xFF);
+        r["FlyoutDivider"] = light ? Frozen(0x14, 0, 0, 0) : Frozen(0x14, 0xFF, 0xFF, 0xFF);
     }
 
     public static ImageSource? Decode(byte[]? bytes, int decodeWidth = 96)

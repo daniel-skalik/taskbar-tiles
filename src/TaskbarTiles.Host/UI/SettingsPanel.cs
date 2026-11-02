@@ -20,24 +20,39 @@ public static class SettingsPanel
     /// <paramref name="save"/> gets the values (null: use the default) and returns true when they were saved;
     /// <paramref name="close"/> closes the popup (after a save, and on Esc).
     /// </summary>
-    public static FrameworkElement Build(TileSettingsForm form, Func<IReadOnlyDictionary<string, JsonNode?>, bool> save, Action close)
+    public static FrameworkElement Build(TileSettingsForm form, byte[]? image, Func<IReadOnlyDictionary<string, JsonNode?>, bool> save, Action close)
     {
         var panel = new StackPanel();
-        panel.Children.Add(FlyoutWindow.Text(form.KindName, 14, FontWeights.SemiBold, "TileForeground"));
-        var id = FlyoutWindow.Text(form.TileId, 12, FontWeights.Normal, "TileDim");
-        id.Margin = new Thickness(0, 0, 0, 4);
-        panel.Children.Add(id);
+        panel.Children.Add(Header(form, image));
 
         var rows = form.Fields.Select(f => new Row(f, Default(form, f), Own(form, f))).ToList();
-        var saveButton = new Button { Content = "Save", Style = (Style)Application.Current.FindResource("FlyoutPrimaryButton") };
-        void Revalidate() => saveButton.IsEnabled = rows.All(r => r.Validate());
-        foreach (var row in rows)
+        var saveButton = new Button
         {
-            row.Changed += Revalidate;
-            panel.Children.Add(row.Element);
+            Content = "Save", Style = (Style)Application.Current.FindResource("FlyoutPrimaryButton"),
+            Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 6, 12, 6),
+        };
+        void Revalidate() => saveButton.IsEnabled = rows.All(r => r.Validate());
+        // The fields share one card, a hairline between them, like the rows of a tile's popup.
+        var fields = new StackPanel();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            rows[i].Changed += Revalidate;
+            rows[i].Element.BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0);
+            fields.Children.Add(rows[i].Element);
         }
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 14, 0, 0),
+            Child = fields,
+        };
+        card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
+        panel.Children.Add(card);
 
-        var reset = new Button { Content = "Reset to defaults", Style = (Style)Application.Current.FindResource("FlyoutButton") };
+        var reset = new Button
+        {
+            Content = "Reset to defaults", Style = (Style)Application.Current.FindResource("FlyoutButton"),
+            Margin = new Thickness(0), Padding = new Thickness(12, 6, 12, 6),
+        };
         reset.Click += (_, _) => { foreach (var row in rows) row.Reset(); };
         saveButton.Click += (_, _) =>
         {
@@ -50,7 +65,7 @@ public static class SettingsPanel
             }
             if (save(values)) close();
         };
-        var buttons = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
+        var buttons = new UniformGrid { Rows = 1, Margin = new Thickness(0, 14, 0, 0) };
         buttons.Children.Add(reset);
         buttons.Children.Add(saveButton);
         panel.Children.Add(buttons);
@@ -63,6 +78,43 @@ public static class SettingsPanel
         };
         Revalidate();
         return panel;
+    }
+
+    /// <summary>
+    /// The tile's image (a gear badge without one), the kind's name and the tile id, laid out like a tile popup's header.
+    /// </summary>
+    static Grid Header(TileSettingsForm form, byte[]? image)
+    {
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var gear = new TextBlock
+        {
+            Text = "", FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 20,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        };
+        gear.SetResourceReference(TextBlock.ForegroundProperty, "TileForeground");
+        var badge = new Border
+        {
+            Width = 56, Height = 56, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 12, 0), Child = gear,
+        };
+        if (Theme.Decode(image, 112) is { } img)
+        {
+            badge.Child = null;
+            badge.Background = new System.Windows.Media.ImageBrush(img) { Stretch = System.Windows.Media.Stretch.UniformToFill };
+        }
+        else badge.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
+        header.Children.Add(badge);
+        var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var title = FlyoutWindow.Text(form.KindName, 15, FontWeights.SemiBold, "TileForeground");
+        title.TextTrimming = TextTrimming.CharacterEllipsis;
+        titles.Children.Add(title);
+        var id = FlyoutWindow.Text($"Settings · {form.TileId}", 12, FontWeights.Normal, "TileDim");
+        id.TextTrimming = TextTrimming.CharacterEllipsis;
+        titles.Children.Add(id);
+        Grid.SetColumn(titles, 1);
+        header.Children.Add(titles);
+        return header;
     }
 
     static JsonElement? Default(TileSettingsForm form, TileField f) =>
@@ -84,38 +136,59 @@ public static class SettingsPanel
             _default = TileFields.Display(fallback);
             var current = own is null ? "" : TileFields.Display(own);
 
-            var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-            var label = FlyoutWindow.Text(field.Label, 12.5, FontWeights.SemiBold, "TileForeground");
-            label.Margin = new Thickness(0, 0, 0, 4);
-            stack.Children.Add(label);
+            var stack = new StackPanel();
+            // The label line; a toggle's switch sits at its right end.
+            var top = new Grid();
+            top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var label = FlyoutWindow.Text(field.Label, 13, FontWeights.SemiBold, "TileForeground");
+            label.VerticalAlignment = VerticalAlignment.Center;
+            top.Children.Add(label);
+            stack.Children.Add(top);
 
             switch (field.Type)
             {
                 case FieldType.Toggle:
                 {
-                    var box = new CheckBox { Content = "On", IsChecked = (current.Length > 0 ? current : _default) == "true" };
-                    box.SetResourceReference(Control.ForegroundProperty, "TileForeground");
+                    var box = new CheckBox
+                    {
+                        IsChecked = (current.Length > 0 ? current : _default) == "true",
+                        Style = (Style)Application.Current.FindResource("FlyoutToggle"),
+                    };
                     box.Checked += (_, _) => Changed?.Invoke();
                     box.Unchecked += (_, _) => Changed?.Invoke();
                     Input = () => box.IsChecked == true ? "true" : "false";
                     _set = text => box.IsChecked = text == "true";
-                    stack.Children.Add(box);
+                    Grid.SetColumn(box, 1);
+                    top.Children.Add(box);
                     break;
                 }
                 case FieldType.Choice:
                 {
-                    var combo = new ComboBox { ItemsSource = field.Choices, MinWidth = 160, HorizontalAlignment = HorizontalAlignment.Left };
-                    combo.SelectedItem = field.Choices!.FirstOrDefault(c => c == (current.Length > 0 ? current : _default));
-                    combo.SelectionChanged += (_, _) => Changed?.Invoke();
-                    Input = () => combo.SelectedItem as string ?? "";
-                    _set = text => combo.SelectedItem = field.Choices!.FirstOrDefault(c => c == text);
-                    stack.Children.Add(combo);
+                    // One pill per choice; the ticked one is the value.
+                    var pills = new WrapPanel { Margin = new Thickness(0, 8, 0, -6) };
+                    var buttons = new List<RadioButton>();
+                    var selected = current.Length > 0 ? current : _default;
+                    foreach (var choice in field.Choices!)
+                    {
+                        var pill = new RadioButton
+                        {
+                            Content = choice, IsChecked = choice == selected,
+                            Style = (Style)Application.Current.FindResource("FlyoutPill"),
+                        };
+                        pill.Checked += (_, _) => Changed?.Invoke();
+                        buttons.Add(pill);
+                        pills.Children.Add(pill);
+                    }
+                    Input = () => buttons.FirstOrDefault(b => b.IsChecked == true)?.Content as string ?? "";
+                    _set = text => { foreach (var b in buttons) b.IsChecked = (string)b.Content == text; };
+                    stack.Children.Add(pills);
                     break;
                 }
                 case FieldType.Pick:
                 {
                     // Nothing saved yet (the default) shows every value ticked; the first change saves the ticked list.
-                    var picks = new StackPanel();
+                    var picks = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
                     var boxes = new List<CheckBox>();
                     var saved = own is { ValueKind: JsonValueKind.Array } list
                         ? list.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToHashSet(StringComparer.CurrentCultureIgnoreCase)
@@ -124,8 +197,11 @@ public static class SettingsPanel
                     var setting = false;
                     foreach (var choice in field.Choices ?? [])
                     {
-                        var box = new CheckBox { Content = choice, IsChecked = saved?.Contains(choice) ?? true, Margin = new Thickness(0, 2, 0, 2) };
-                        box.SetResourceReference(Control.ForegroundProperty, "TileForeground");
+                        var box = new CheckBox
+                        {
+                            Content = choice, IsChecked = saved?.Contains(choice) ?? true, Margin = new Thickness(0, 4, 0, 4),
+                            Style = (Style)Application.Current.FindResource("FlyoutCheckBox"),
+                        };
                         RoutedEventHandler changed = (_, _) =>
                         {
                             if (setting) return;
@@ -153,14 +229,11 @@ public static class SettingsPanel
                 }
                 default:
                 {
-                    var box = new TextBox { Text = current, Padding = new Thickness(6, 4, 6, 4), BorderThickness = new Thickness(1) };
-                    box.SetResourceReference(Control.BackgroundProperty, "TileFill");
-                    box.SetResourceReference(Control.ForegroundProperty, "TileForeground");
-                    box.SetResourceReference(Control.BorderBrushProperty, "TileOutline");
-                    box.SetResourceReference(TextBoxBase.CaretBrushProperty, "TileForeground");
+                    var box = new TextBox { Text = current, Style = (Style)Application.Current.FindResource("FlyoutTextBox") };
                     // The default shows dim behind the box while it is empty.
                     var placeholder = FlyoutWindow.Text(_default, 13, FontWeights.Normal, "TileDim");
-                    placeholder.Margin = new Thickness(8, 5, 8, 0);
+                    placeholder.Margin = new Thickness(11, 0, 9, 0); // the box's padding and border
+                    placeholder.VerticalAlignment = VerticalAlignment.Center;
                     placeholder.IsHitTestVisible = false;
                     placeholder.Visibility = current.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
                     box.TextChanged += (_, _) =>
@@ -170,7 +243,7 @@ public static class SettingsPanel
                     };
                     Input = () => box.Text;
                     _set = text => box.Text = text;
-                    var grid = new Grid();
+                    var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
                     grid.Children.Add(box);
                     grid.Children.Add(placeholder);
                     stack.Children.Add(grid);
@@ -191,11 +264,14 @@ public static class SettingsPanel
                 Foreground = Theme.ColorFor(TileColor.Bad), Visibility = Visibility.Collapsed,
             };
             stack.Children.Add(_error);
-            Element = stack;
+            Element = new Border { Padding = new Thickness(0, 12, 0, 12), Child = stack };
+            Element.SetResourceReference(Border.BorderBrushProperty, "FlyoutDivider");
         }
 
         public TileField Field { get; }
-        public FrameworkElement Element { get; }
+
+        /// <summary>The field's line in the card; the panel sets the hairline above it.</summary>
+        public Border Element { get; }
         public Func<string> Input { get; } = () => "";
         public event Action? Changed;
 

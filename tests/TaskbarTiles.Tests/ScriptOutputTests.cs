@@ -217,4 +217,26 @@ public class ScriptOutputTests
         Assert.Empty(r.Value.Actions);
         Assert.Equal(3, r.Warnings.Count);
     }
+
+    [Theory]
+    [InlineData("#d97757", "#D97757")]
+    [InlineData("D97757", "#D97757")]
+    public void Flyout_tint_is_a_hex_color(string tint, string expected)
+    {
+        var r = ScriptOutput.ParseFlyout($$"""{ "title": "t", "tint": "{{tint}}" }""");
+
+        Assert.Empty(r.Warnings);
+        Assert.Equal(expected, r.Value!.Tint);
+    }
+
+    [Theory]
+    [InlineData("orange")]
+    [InlineData("#D977")]
+    public void Flyout_tint_that_is_not_a_color_warns_and_is_dropped(string tint)
+    {
+        var r = ScriptOutput.ParseFlyout($$"""{ "title": "t", "tint": "{{tint}}" }""");
+
+        Assert.Null(r.Value!.Tint);
+        Assert.Contains(r.Warnings, w => w.Contains("\"tint\""));
+    }
 }
