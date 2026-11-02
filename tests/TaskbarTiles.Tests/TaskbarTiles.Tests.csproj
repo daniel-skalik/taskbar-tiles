@@ -19,6 +19,9 @@
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" />
+    <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" />
+    <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" />
+    <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Build order only; the plugin is copied to plugins\ by CopyPlugins.targets, not referenced. -->
