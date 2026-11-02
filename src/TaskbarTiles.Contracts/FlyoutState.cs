@@ -1,6 +1,7 @@
 namespace TaskbarTiles.Contracts;
 
-public sealed record FlyoutRow(string Text, string? Value = null, TileIcon? Icon = null);
+/// <summary>A popup line; with <paramref name="Action"/> it is clickable and sends that action id to the connector.</summary>
+public sealed record FlyoutRow(string Text, string? Value = null, TileIcon? Icon = null, string? Action = null);
 
 public sealed record FlyoutAction(string Id, string Label, bool Primary = false);
 

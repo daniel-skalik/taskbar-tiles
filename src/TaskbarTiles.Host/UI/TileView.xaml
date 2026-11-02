@@ -11,6 +11,12 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
+            <!-- TileState.Canvas under everything, edge to edge like the progress bar, with hard pixel edges. -->
+            <Grid x:Name="SceneClip" Grid.ColumnSpan="3" Margin="-6,0" IsHitTestVisible="False">
+                <Image x:Name="Scene" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="NearestNeighbor"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+
             <Grid x:Name="IconHost" Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center">
                 <Border x:Name="IconBackground" CornerRadius="5"/>
                 <TextBlock x:Name="IconGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"

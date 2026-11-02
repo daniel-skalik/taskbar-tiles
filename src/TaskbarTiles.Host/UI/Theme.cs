@@ -79,6 +79,16 @@ public static class Theme
         }
     }
 
+    /// <summary>A TileCanvas as a bitmap; null when there is none or its pixel count does not match its size.</summary>
+    public static BitmapSource? FromPixels(TileCanvas? canvas)
+    {
+        if (canvas is not { Width: > 0 and <= 1024, Height: > 0 and <= 256 } c || c.Pixels is null || c.Pixels.Length != c.Width * c.Height) return null;
+        // 0xAARRGGBB ints are B, G, R, A bytes in memory: Bgra32.
+        var bmp = BitmapSource.Create(c.Width, c.Height, 96, 96, PixelFormats.Bgra32, null, c.Pixels, c.Width * 4);
+        bmp.Freeze();
+        return bmp;
+    }
+
     static SolidColorBrush Frozen(byte r, byte g, byte b) => Frozen(0xFF, r, g, b);
 
     static SolidColorBrush Frozen(byte a, byte r, byte g, byte b)
