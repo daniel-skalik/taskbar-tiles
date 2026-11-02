@@ -110,6 +110,18 @@ The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour wind
 - Claude Code renews the login while you use it. If it has expired, the tile says so until Claude Code runs again; numbers under an hour old keep showing in the meantime, with the reason in the tooltip.
 - Only Claude Pro and Max plans have these limits.
 
+### Clipboard peek
+
+The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. Copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
+
+### System monitor
+
+The bundled `system` kind shows CPU, memory, GPU, network speed and the fullest disk, sampled every second. **Settings…** → Show ticks which (setting `"show"`, e.g. `["CPU", "RAM"]`; all five without it). Layout `"All at once"` fits them on two lines; `"Rotate"` shows one at a time with its chart, switching every `"rotate"` (default `"5s"`). The icon turns orange at 80% and red at 95%. Click it for every metric and each drive's free space; **Task Manager** opens it.
+
+### Pixel scene
+
+The bundled `pixel-scene` kind is a tiny animated world across the whole tile. Setting `"scene"`, also in **Settings…**: `"Cozy farm"` (default; follows your local time from sunrise to a starry night), `"Aquarium"`, `"Snake"` (plays itself), `"Racers"`, or `"Shuffle"`, a different one every 10 minutes. Click it to join in: feed the fish, restart the snake or the race, make the farmer wave. Hover for the score or status.
+
 ## Stacks
 
 A stack takes one tile's place and shows its members one at a time, with a dot per member at the bottom.
