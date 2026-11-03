@@ -54,7 +54,6 @@ tiles\
   uptime\  tile.json, uptime.ps1              bundled: replaced on install
   ping\    tile.json, ping.ps1                bundled: replaced on install
   media\   tile.json, TaskbarTiles.Plugins.Media.dll   bundled: replaced on install
-  claude\  tile.json, claude.ps1              bundled: replaced on install
   battery\ tile.json, TaskbarTiles.Plugins.Battery.dll  bundled: replaced on install
   meeting\ tile.json, urgent.ps1              yours: never touched
 ```

@@ -56,7 +56,6 @@ RunSta(() =>
     {
         ("media", 268, Media()),
         ("claude-usage", 220, Script($$"""{ "title": "5h 34% · resets 16:40", "subtitle": "Week 21% · resets Fri", "progress": 0.34, "icon": { "glyph": "clock", "color": "ok" }, "image": "{{claudeLogo}}" }""")),
-        ("claude", 268, Script($$"""{ "title": "Claude", "subtitle": "1 blocked · 2 working · 1 idle", "icon": { "glyph": "warning", "color": "warn" }, "image": "{{claudeLogo}}" }""")),
         ("system", 200, SystemTile()),
         ("battery", 132, BatteryView.Tile(BatteryView.Sorted([
             new DeviceBattery("m", "MX Master 3S", DeviceType.Mouse, 65),
@@ -74,7 +73,7 @@ RunSta(() =>
     };
     foreach (var (kind, width, state) in tiles) Save(Render(width, state), Path.Combine(outDir, $"tile-{kind}.png"));
 });
-Console.WriteLine($"Wrote 12 tiles to {outDir}");
+Console.WriteLine($"Wrote 11 tiles to {outDir}");
 return 0;
 
 // Exit code 0 when the tile drew without errors, 1 otherwise.
