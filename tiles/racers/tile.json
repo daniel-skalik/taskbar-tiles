@@ -2,6 +2,7 @@
   "name": "Racers",
   "description": "Pixel cars race for the win; click for a new race",
   "group": "Fun/Games",
+  "minWidth": 100,
   "connector": "racers",
   "width": 200
 }

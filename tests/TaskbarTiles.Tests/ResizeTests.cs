@@ -181,4 +181,43 @@ public class ResizeTests
 
         Assert.Equal(300, runtime.Width);
     }
+
+    // --- min and max width -----------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Tile_json_may_bound_the_width_a_tile_is_resized_to()
+    {
+        var json = TileJson.Parse("""{ "name": "A", "connector": "script", "minWidth": 120, "maxWidth": 300 }""", "t.json");
+        Assert.Equal((120.0, 300.0), (json.WidthMin, json.WidthMax));
+        var plain = TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json");
+        Assert.Equal((TileJson.MinWidth, TileJson.MaxWidth), (plain.WidthMin, plain.WidthMax));
+    }
+
+    [Theory]
+    [InlineData("""{ "name": "A", "connector": "script", "minWidth": 300, "maxWidth": 120 }""", "t.json: \"minWidth\" must not be more than \"maxWidth\".")]
+    [InlineData("""{ "name": "A", "connector": "script", "maxWidth": 1000 }""", "t.json: \"maxWidth\" must be a number from 48 to 640.")]
+    [InlineData("""{ "name": "A", "connector": "script", "minWidth": "wide" }""", "t.json: \"minWidth\" must be a number from 48 to 640.")]
+    public void A_bad_width_range_breaks_the_kind(string json, string error) =>
+        Assert.Equal(error, TileJson.Parse(json, "t.json").Error);
+
+    [Fact]
+    public void A_saved_width_outside_the_kinds_range_is_kept_within_it()
+    {
+        var kinds = TestKinds.Of(
+            TestKinds.Script("ping", width: 132) with { WidthMin = 100, WidthMax = 250 },
+            TestKinds.Script("wide", width: 200) with { WidthMin = 150 });
+        var writer = new FakeConfigWriter("""
+            { "tiles": { "a": { "kind": "ping", "width": 600 }, "b": { "kind": "ping", "width": 60 }, "c": { "kind": "wide" } },
+              "displays": { "primary": { "slots": [ "a", "b", { "stack": ["b", "c"], "rotate": "5s" } ] } } }
+            """);
+        var bars = new Dictionary<string, FakeBar>();
+        new HostController(ConnectorCatalog.Empty, () => writer.Current,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), FakeBar.Into(bars), writer: writer, kinds: () => kinds).Start();
+        var slots = bars["MAIN"].Slots;
+
+        Assert.Equal((250.0, 100.0, 250.0), (slots[0].FullWidth, slots[0].MinWidth, slots[0].MaxWidth));
+        Assert.Equal(100, slots[1].FullWidth);
+        Assert.Equal((150.0, 250.0), (slots[2].MinWidth, slots[2].MaxWidth)); // a stack: every member's range holds
+    }
 }
