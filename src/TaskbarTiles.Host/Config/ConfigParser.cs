@@ -1,5 +1,6 @@
 using System.Text.Json;
 using TaskbarTiles.Contracts;
+using TaskbarTiles.Host.Plugins;
 
 namespace TaskbarTiles.Host.Config;
 
@@ -90,7 +91,14 @@ public static class ConfigParser
             ? s.Clone()
             : EmptyObject();
         if (settings.TryGetProperty("hooks", out _)) throw new ConfigException($@"hooks belong in tiles\{kind}\tile.json");
-        return new TileConfig(kind, settings);
+        double? width = null;
+        if (el.TryGetProperty("width", out var w))
+        {
+            if (w.ValueKind != JsonValueKind.Number || w.GetDouble() is < TileJson.MinWidth or > TileJson.MaxWidth)
+                throw new ConfigException($"Tile '{id}': \"width\" must be a number from {TileJson.MinWidth} to {TileJson.MaxWidth}.");
+            width = w.GetDouble();
+        }
+        return new TileConfig(kind, settings, width);
     }
 
     /// <summary>"left" (or "slots", its name before there were two sides) and "right".</summary>

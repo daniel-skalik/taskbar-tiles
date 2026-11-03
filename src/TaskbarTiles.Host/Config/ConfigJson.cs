@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TaskbarTiles.Host.Plugins;
 
 namespace TaskbarTiles.Host.Config;
 
@@ -53,14 +54,27 @@ public static class ConfigJson
         else display.Remove("right");
     }
 
-    /// <summary>Adds or replaces tiles[id] with { "kind": ... }, plus "settings" when it has any keys.</summary>
+    /// <summary>Adds or replaces tiles[id] with { "kind": ... }, plus "settings" when it has any keys and "width" when set.</summary>
     public static void SetTile(JsonObject root, string id, TileConfig tile)
     {
         var tiles = ChildObject(root, "tiles");
         var node = new JsonObject { ["kind"] = tile.Kind };
         if (tile.Settings.ValueKind == JsonValueKind.Object && tile.Settings.EnumerateObject().Any())
             node["settings"] = JsonNode.Parse(tile.Settings.GetRawText());
+        if (tile.Width is { } width) node["width"] = width;
         tiles[id] = node;
+    }
+
+    /// <summary>
+    /// Sets tiles[id].width, rounded to a whole pixel and kept within the width range, or removes it for null (back to
+    /// the kind's width). Other keys stay. Throws InvalidOperationException when the tile is not defined.
+    /// </summary>
+    public static void SetTileWidth(JsonObject root, string id, double? width)
+    {
+        if (root["tiles"] is not JsonObject tiles || tiles[id] is not JsonObject tile)
+            throw new InvalidOperationException($"Tile '{id}' is not defined in config.json any more.");
+        if (width is { } w) tile["width"] = (int)Math.Round(Math.Clamp(w, TileJson.MinWidth, TileJson.MaxWidth));
+        else tile.Remove("width");
     }
 
     /// <summary>

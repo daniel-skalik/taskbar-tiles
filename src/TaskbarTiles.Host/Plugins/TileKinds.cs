@@ -21,6 +21,8 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// tile.json's "width", which replaces the connector's width when set; Compact is false when tile.json says
 /// "compact": false (its tiles never shrink to an icon). Fields are the settings dialog's inputs (tile.json's "fields").
 /// Group is where the + picker files it, a path such as "Fun/Games" (tile.json's "group"); "" for the top level.
+/// Resizable is false when tile.json says "resizable": false: its tiles keep the kind's width, and edit mode offers no
+/// resize grip.
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -36,7 +38,8 @@ public sealed record TileKind(
     double? Width = null,
     bool Compact = true,
     IReadOnlyList<TileField>? Fields = null,
-    string Group = "")
+    string Group = "",
+    bool Resizable = true)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -78,7 +81,7 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
-    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "")
+    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "", bool Resizable = true)
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -145,6 +148,14 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 compact = c.GetBoolean();
             }
 
+            var resizable = true;
+            if (root.TryGetProperty("resizable", out var r))
+            {
+                if (r.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    return Broken($"{shownPath}: \"resizable\" must be true or false.");
+                resizable = r.GetBoolean();
+            }
+
             IReadOnlyList<TileField> fields = [];
             if (root.TryGetProperty("fields", out var f))
             {
@@ -161,7 +172,7 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 group = NormalizeGroup(g.GetString());
             }
 
-            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group);
+            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group, resizable);
         }
     }
 

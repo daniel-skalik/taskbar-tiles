@@ -13,7 +13,8 @@ public sealed record HostConfig(
 /// A tile instance: the kind (a folder in tiles\) and the settings that replace the kind's own, key by key.
 /// Settings is a cloned element, safe to keep after parsing.
 /// </summary>
-public sealed record TileConfig(string Kind, JsonElement Settings);
+/// <summary>A tile under "tiles": its kind, its own settings, and the width it was resized to (null: the kind's width).</summary>
+public sealed record TileConfig(string Kind, JsonElement Settings, double? Width = null);
 
 /// <summary>
 /// A bar on a taskbar: left of Start (centered icons), or between the app icons and the tray, against the tray.

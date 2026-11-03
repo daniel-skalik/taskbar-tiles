@@ -61,6 +61,12 @@ public interface ILayoutEditor
     ConfigError? RemoveTile(string displayId, int index, int? member, BarSide side = BarSide.Left);
 
     /// <summary>
+    /// Edit mode's resize grip: saves <paramref name="width"/> as the width of each of <paramref name="tileIds"/> (every
+    /// display that shows them), or removes it for null so they take their kind's width again.
+    /// </summary>
+    ConfigError? ResizeTiles(IReadOnlyList<string> tileIds, double? width);
+
+    /// <summary>
     /// Drag and drop between bars. Slot <paramref name="fromIndex"/> of the source bar lands before, into or after slot
     /// <paramref name="target"/> of the target bar, or at its end when target is null; tiles the target display already
     /// places (on either side) only leave the source. One save writes both displays' edit keys. On the same bar this is
@@ -103,10 +109,12 @@ public sealed class HostController(
     Func<KindTable>? kinds = null) : ILayoutEditor, IAsyncDisposable
 {
     /// <summary>How one tile runs; a runtime is kept while its Fingerprint is unchanged.</summary>
+    // Width and Resizable are not in the fingerprint: resizing a tile reflows the bars without restarting it.
     sealed record TilePlan(string ConnectorId, double Width, Func<ITileConnector> Create, JsonElement Settings, string Directory, string Fingerprint,
-        bool CanCompact = true);
+        bool CanCompact = true, bool Resizable = false);
 
     readonly Dictionary<string, (TileRuntime Runtime, string Fingerprint)> _runtimes = new(StringComparer.Ordinal);
+    readonly Dictionary<string, (double Width, bool Resizable)> _sizes = new(StringComparer.Ordinal);
     readonly Dictionary<(string DisplayId, BarSide Side), ITileBarView> _bars = [];
     readonly TileRuntimeOptions _runtimeOptions = new() { ConfigDirectory = configDirectory ?? AppPaths.DataDir };
     bool _disposed;
@@ -229,6 +237,17 @@ public sealed class HostController(
         return Saved($"the settings of tile '{tileId}'", writer.Save(root => ConfigJson.SetTileSettings(root, tileId, values, form.Defaults)));
     }
 
+    public ConfigError? ResizeTiles(IReadOnlyList<string> tileIds, double? width)
+    {
+        if (_disposed) return new ConfigError("Taskbar Tiles is shutting down.");
+        if (writer is null) return new ConfigError("This host cannot save config.json.");
+        if (tileIds.Count == 0) return null;
+        return Saved($"the width of {string.Join(", ", tileIds)}", writer.Save(root =>
+        {
+            foreach (var id in tileIds) ConfigJson.SetTileWidth(root, id, width);
+        }));
+    }
+
     public ConfigError? AddFromGallery(string displayId, GalleryItem item, int? stackWith = null, BarSide side = BarSide.Left)
     {
         DisplayLayout Place(DisplayLayout layout, string id)
@@ -329,15 +348,21 @@ public sealed class HostController(
             switch (layout.Slots[i])
             {
                 case TileSlot t when _runtimes.TryGetValue(t.TileId, out var entry):
-                    slots.Add(new BarSlot(i, [entry.Runtime], t.Pin, null));
+                    var size = SizeOf(t.TileId, entry.Runtime);
+                    slots.Add(new BarSlot(i, [entry.Runtime], t.Pin, null, size.Width, size.Resizable));
                     break;
                 case StackSlot s when s.TileIds.Count > 0 && s.TileIds.All(_runtimes.ContainsKey):
-                    slots.Add(new BarSlot(i, s.TileIds.Select(id => _runtimes[id].Runtime).ToList(), false, s.Rotate));
+                    // As wide as its widest member; resizing it resizes every member, so each must allow it.
+                    var sizes = s.TileIds.Select(id => SizeOf(id, _runtimes[id].Runtime)).ToList();
+                    slots.Add(new BarSlot(i, s.TileIds.Select(id => _runtimes[id].Runtime).ToList(), false, s.Rotate,
+                        sizes.Max(z => z.Width), sizes.All(z => z.Resizable)));
                     break;
             }
         }
         return slots;
     }
+
+    (double Width, bool Resizable) SizeOf(string id, TileRuntime runtime) => _sizes.GetValueOrDefault(id, (runtime.Width, false));
 
     void SyncRuntimes(HostConfig cfg, HashSet<string> wanted)
     {
@@ -345,6 +370,8 @@ public sealed class HostController(
         var plans = new Dictionary<string, TilePlan>(StringComparer.Ordinal);
         foreach (var id in wanted)
             if (cfg.Tiles.TryGetValue(id, out var tile)) plans[id] = Plan(tile, table);
+        _sizes.Clear();
+        foreach (var (id, plan) in plans) _sizes[id] = (plan.Width, plan.Resizable);
 
         foreach (var (id, entry) in _runtimes.ToList())
         {
@@ -385,14 +412,16 @@ public sealed class HostController(
 
         // The runtime calls Create on the thread pool (plugin constructors are plugin code) and again for every restart.
         // A throwing constructor shows the error look and is retried with backoff.
+        // A tile resized in edit mode keeps its own width, where its kind allows resizing.
+        double Sized(double kindWidth) => kind.Resizable && tile.Width is { } own ? own : kindWidth;
         if (kind.Plugin is { } plugin)
-            return new(plugin.Id, kind.Width ?? plugin.Width, () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint,
-                kind.Compact);
+            return new(plugin.Id, Sized(kind.Width ?? plugin.Width), () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint,
+                kind.Compact, kind.Resizable);
 
         var connectorId = kind.Connector; // "script": built into the app
         var width = kind.Width ?? (catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth);
-        return new(connectorId, width, () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId), settings,
-            kind.Directory, fingerprint, kind.Compact);
+        return new(connectorId, Sized(width), () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId), settings,
+            kind.Directory, fingerprint, kind.Compact, kind.Resizable);
     }
 
     /// <summary>

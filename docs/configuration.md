@@ -30,7 +30,7 @@ It stages the new build next to the install folder and verifies it (a failed cop
 }
 ```
 
-- `tiles` lists each tile once: its `kind` (a folder in `tiles\`, see below) and, optionally, `settings` that replace the kind's settings. A tile can appear on several displays; it runs once.
+- `tiles` lists each tile once: its `kind` (a folder in `tiles\`, see below) and, optionally, `settings` that replace the kind's settings and `width` (48 to 640), the width edit mode's resize grip saved. A tile can appear on several displays; it runs once.
 - `displays` says which tiles each taskbar shows, left to right, on its two sides:
   - `"left"`: left of Start when the taskbar icons are centered. `"slots"`, its name in older configs, still works (not both in one display).
   - `"right"`: between the app icons and the tray, against the tray, so opening apps never moves them. Where the icons end is read with UI Automation, only while some display has right-side tiles.
@@ -69,6 +69,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
   "connector": "script",                    // "script", or a connector id declared by a DLL in this folder (required)
   "width": 132,                             // tile width, 48 to 640 (default: the connector's; 132 for scripts, 268 for media)
   "compact": true,                          // false: its tiles never shrink to an icon when space runs out (default true)
+  "resizable": true,                        // false: its tiles keep this width; edit mode offers no resize grip (default true)
   "fields": [                               // inputs of the tile's Settings… dialog (optional, see "Tile settings")
     { "key": "host", "label": "Host", "type": "text", "help": "Name or IP address to ping." }
   ],
@@ -163,6 +164,7 @@ Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit m
 - Drag a tile onto the left or right part of another tile, or between two tiles, to move it there; release it past the last tile (over `»`, `+` or **Done**) to put it at the end. While you drag, a see-through copy of the tile follows the pointer (across monitors too), the tile itself fades, and the tiles of the taskbar under the pointer slide apart where it will land. Over the middle of a tile nothing slides; that tile lights up instead.
 - Drag a tile onto another monitor's taskbar to move it to that display: before, into or after the tile under the pointer, as on its own taskbar, or at the end when you release it anywhere else on that taskbar (`+`, **Done**, or a taskbar without tiles). If that display already shows the tile, it only leaves this one. Both displays' entries are saved together. Releasing outside every taskbar cancels the drag. Tiles inside the `»` popup cannot be dragged.
 - Drop it onto the middle of a stack to add it to the stack, or onto the middle of another tile to make a stack of the two.
+- Drag the grip on a tile's outer edge (the right edge; the left edge on the right side, which grows away from the tray) to resize it; letting go saves the width as `"width"` in the tile's entry under `tiles`, so it applies on every display. Double-click the grip for the kind's width again. Resizing a stack resizes all its members. Kinds whose `tile.json` says `"resizable": false` have no grip, and a `width` saved for them is ignored.
 - `×` removes the tile from this display. On a stack it removes the member shown (scroll the wheel to pick one); a stack left with one member becomes a plain tile. When no display entry (including `*`, and entries of monitors that are not connected) places the tile any more, its entry under `tiles` is deleted in the same save; the previous version stays in `config.json.bak` until the next save. Its kind folder in `tiles\` is never deleted. Tiles you listed by hand but have not placed anywhere yet are never deleted, and `+` lists them first.
 - `+` adds a tile at the end of its side: a tile you already have that this display does not show on either side, or a new tile of any kind in `tiles\` (listed by its `name`, with its `description` below). A new tile is written as `"ping": { "kind": "ping" }`, or with a free id such as `ping-2` when that id is taken.
 - **Done** or Esc leaves edit mode.

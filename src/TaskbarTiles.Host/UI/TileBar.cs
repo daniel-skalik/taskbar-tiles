@@ -232,6 +232,13 @@ public sealed class TileBar : Window, ITileBarView
         // Tiles in the overflow popup live in another window, so their menu events never reach the bar.
         view.ContextMenuClosing += (_, _) => ForgetMenuForegroundAfterClick();
         view.MouseLeftButtonDown += (_, e) => BeginDrag(view, e);
+        view.GripOnLeft = Side == BarSide.Right;
+        view.ResizePreview += (_, _) => Reflow();
+        view.ResizeCommitted += (_, width) =>
+        {
+            var ids = view.Slot.Members.Select(m => m.TileId).ToList();
+            if (!Save(() => _editor.ResizeTiles(ids, width))) view.ClearPreview();
+        };
         view.RemoveRequested += (_, _) =>
         {
             var current = view.Slot;
@@ -339,8 +346,8 @@ public sealed class TileBar : Window, ITileBarView
 
     void Edit(Func<DisplayLayout, DisplayLayout> edit) => Save(() => _editor.EditLayout(DisplayId, edit, Side));
 
-    /// <summary>Saves a layout change; the new slots arrive through SetSlots. Shows a notice when nothing was saved.</summary>
-    void Save(Func<ConfigError?> save)
+    /// <summary>Saves a layout change; the new slots arrive through SetSlots. Shows a notice and returns false when nothing was saved.</summary>
+    bool Save(Func<ConfigError?> save)
     {
         ConfigError? error;
         try { error = save(); }
@@ -349,11 +356,12 @@ public sealed class TileBar : Window, ITileBarView
             _log.Error("Layout edit failed", ex);
             error = new ConfigError("The layout could not be changed: " + ex.Message);
         }
-        if (error is null) return;
+        if (error is null) return true;
 
         _log.Warn($"Layout not saved: {error}");
         try { NotificationWindow.Show(ConfigNotice.SaveFailedTitle, ConfigNotice.SaveFailedBody(error), _light ?? false, _commands.OpenConfig, _log); }
         catch (Exception ex) { _log.Error("Could not show the save notice", ex); }
+        return false;
     }
 
     /// <summary>
