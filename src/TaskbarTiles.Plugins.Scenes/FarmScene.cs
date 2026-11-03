@@ -567,21 +567,43 @@ public sealed class FarmScene : IScene
     void DrawFarmer(PixelCanvas c)
     {
         if (_doing == Doing.Inside) return;
-        _farmerPalette[0] = Lit(Rgb(0xE8C060));
-        _farmerPalette[1] = Lit(Rgb(0x8A5A2B));
-        _farmerPalette[2] = Lit(Rgb(0xF2C29B));
-        _farmerPalette[3] = Lit(Rgb(0xD9534F));
-        _farmerPalette[4] = Lit(Rgb(0x3B6BB5));
-        _farmerPalette[5] = Lit(Rgb(0x4A3328));
+        // After dark the farmer carries a lantern (as the house lights its window), which lights them up warm.
+        int lantern = Math.Clamp((150 - _light) * 3, 0, 256);
+        _farmerPalette[0] = FarmerLit(Rgb(0xF5CF5A), lantern);
+        _farmerPalette[1] = FarmerLit(Rgb(0xB0342C), lantern);
+        _farmerPalette[2] = FarmerLit(Rgb(0xF2C29B), lantern);
+        _farmerPalette[3] = FarmerLit(Rgb(0xE8463F), lantern);
+        _farmerPalette[4] = FarmerLit(Rgb(0x2F62C8), lantern);
+        _farmerPalette[5] = FarmerLit(Rgb(0x3A2418), lantern);
         _farmerPalette[6] = Rgb(0x2A1A10);
         bool walking = _doing is Doing.Walking or Doing.GoingHome;
         var art = walking ? ((_frame / 4) % 2 == 0 ? FarmerStepA : FarmerStepB) : FarmerStand;
         int x = (int)MathF.Round(_farmerX), y = PathY - 5 - (walking && (_frame / 4) % 2 == 0 ? 1 : 0) + 0;
         bool flip = _facing < 0;
-        c.Sprite(x, y, art, _farmerPalette, flip);
-
-        int front = flip ? x - 1 : x + 4;
+        int front = flip ? x - 1 : x + 4, back = flip ? x + 4 : x - 1;
         int dir = flip ? -1 : 1;
+
+        if (lantern > 0)
+        {
+            // A flickering pool of light around the lantern in the back hand, drawn under the farmer.
+            int flicker = 220 + (int)((uint)(_frame * 2654435761u) >> 27); // 220..251
+            for (int dy = -6; dy <= 6; dy++)
+                for (int dx = -6; dx <= 6; dx++)
+                {
+                    int d2 = dx * dx + dy * dy;
+                    if (d2 <= 36) c.Set(back + dx, y + 4 + dy, Rgba(0xFFB848, (36 - d2) * 5 * lantern / 256 * flicker / 256));
+                }
+        }
+        // A dark rim keeps the small farmer readable against the flowers, the grass and the path.
+        Outline(c, x, y, art, flip, Rgba(0x1A120C, 150));
+        c.Sprite(x, y, art, _farmerPalette, flip);
+        if (lantern > 0)
+        {
+            c.Set(back, y + 3, Rgb(0x2A1A10));
+            c.Set(back, y + 4, (_frame / 3) % 5 == 0 ? Rgb(0xFFE080) : Rgb(0xFFF8D0));
+            c.Set(back, y + 5, Rgb(0xFFB040));
+        }
+
         if (_doing == Doing.Watering)
         {
             int can = Lit(Rgb(0x8FA4B8));
@@ -597,6 +619,21 @@ public sealed class FarmScene : IScene
             c.Set(front, y + 2, _farmerPalette[3]);
             c.Set(front + dir * up, y + 1, hand);
         }
+    }
+
+    /// <summary>The farmer's color as the light shows it, warmed and brightened by their lantern (0..256).</summary>
+    int FarmerLit(int color, int lantern) =>
+        PixelCanvas.Lerp(Lit(color), PixelCanvas.Lerp(color, Rgb(0xFFB050), 60), lantern * 170 / 256);
+
+    /// <summary>Colors the pixels next to <paramref name="art"/>'s shape (above, below and beside it) that it leaves empty.</summary>
+    static void Outline(PixelCanvas c, int x, int y, string[] art, bool flip, int color)
+    {
+        int w = art[0].Length;
+        bool Solid(int col, int row) => row >= 0 && row < art.Length && col >= 0 && col < w && art[row][flip ? w - 1 - col : col] != '.';
+        for (int row = -1; row <= art.Length; row++)
+            for (int col = -1; col <= w; col++)
+                if (!Solid(col, row) && (Solid(col - 1, row) || Solid(col + 1, row) || Solid(col, row - 1) || Solid(col, row + 1)))
+                    c.Set(x + col, y + row, color);
     }
 
     void DrawCritters(PixelCanvas c)
