@@ -73,7 +73,8 @@ public sealed class SystemConnector : ITileConnector
             _last = reading;
             _lastAt = DateTime.Now;
             var elapsed = Stopwatch.GetElapsedTime(_startedAt);
-            ctx.Update(SystemView.Tile(reading, _history, _shown, _rotating, SystemView.Rotated(_shown, elapsed, _rotateEvery)));
+            var current = SystemView.Rotated(SystemView.Stats(_shown, reading), elapsed, _rotateEvery);
+            ctx.Update(SystemView.Tile(reading, _history, _shown, _rotating, current));
         }
         catch (Exception ex)
         {

@@ -170,13 +170,25 @@ public class SystemMonitorTests
     // --- title and subtitle ---------------------------------------------------------------------------------------
 
     [Fact]
-    public void All_five_split_two_and_three()
+    public void All_at_once_lists_every_drive_and_splits_the_items_over_two_lines()
     {
         var tile = SystemView.Tile(Reading(), new SystemHistory(), All, false, Metric.Cpu);
-        Assert.Equal("CPU 12% · RAM 48%", tile.Title);
-        Assert.Equal("GPU 5% · ↓1.2 MB/s · C: 71%", tile.Subtitle);
+        Assert.Equal("CPU 12% · RAM 48% · GPU 5%", tile.Title);
+        Assert.Equal("↓1.2 MB/s · C: 71% · D: 10%", tile.Subtitle);
+        Assert.Equal("activity", tile.Icon!.Glyph);
         Assert.Null(tile.Sparkline);
         Assert.Null(tile.Progress);
+    }
+
+    [Fact]
+    public void Disk_is_one_stat_per_drive()
+    {
+        var r = Reading();
+        Assert.Equal([new Stat(Metric.Cpu), new Stat(Metric.Disk, "C:"), new Stat(Metric.Disk, "D:")],
+            SystemView.Stats([Metric.Cpu, Metric.Disk], r));
+        Assert.Equal([new Stat(Metric.Disk)], SystemView.Stats([Metric.Disk], Reading() with { Disks = [] }));
+        Assert.Equal("D: 10%", SystemView.Describe(new Stat(Metric.Disk, "d:"), r).Value);
+        Assert.Equal("E: n/a", SystemView.Describe(new Stat(Metric.Disk, "E:"), r).Compact);
     }
 
     [Theory]
@@ -201,7 +213,7 @@ public class SystemMonitorTests
     }
 
     [Fact]
-    public void A_single_metric_has_its_detail_chart_and_progress()
+    public void A_single_metric_has_its_icon_detail_and_chart_from_0_to_100_without_a_progress_bar()
     {
         var history = new SystemHistory();
         history.Push(Reading(ramPercent: 40));
@@ -211,8 +223,10 @@ public class SystemMonitorTests
 
         Assert.Equal("RAM 48%", tile.Title);
         Assert.Equal("7.7 of 16 GB", tile.Subtitle);
+        Assert.Equal("memory", tile.Icon!.Glyph);
         Assert.Equal(2, tile.Sparkline!.Count);
-        Assert.Equal(0.48, tile.Progress!.Value, 3);
+        Assert.Equal(100, tile.SparklineMax);
+        Assert.Null(tile.Progress);
     }
 
     [Fact]
@@ -249,7 +263,7 @@ public class SystemMonitorTests
     }
 
     [Fact]
-    public void Rotated_tile_shows_the_current_metric_with_name_value_detail_chart_and_progress()
+    public void Rotated_tile_shows_the_current_metric_with_its_icon_name_value_detail_and_chart()
     {
         var history = new SystemHistory();
         history.Push(Reading(cpu: 30));
@@ -259,8 +273,9 @@ public class SystemMonitorTests
 
         Assert.Equal("CPU 60%", tile.Title);
         Assert.Equal("16 logical cores", tile.Subtitle);
+        Assert.Equal("cpu", tile.Icon!.Glyph);
         Assert.Equal([30.0, 60.0], tile.Sparkline);
-        Assert.Equal(0.6, tile.Progress!.Value, 3);
+        Assert.Null(tile.Progress);
     }
 
     [Fact]
@@ -275,7 +290,27 @@ public class SystemMonitorTests
         Assert.Equal("Network ↓1.2 MB/s", tile.Title);
         Assert.Equal("↑84 KB/s", tile.Subtitle);
         Assert.Equal([1000.0, 2000.0], tile.Sparkline);
+        Assert.Null(tile.SparklineMax); // a rate has no top: the chart scales to its own range
+        Assert.Equal("network", tile.Icon!.Glyph);
         Assert.Null(tile.Progress);
+    }
+
+    [Fact]
+    public void Rotating_shows_each_drive_with_its_own_chart_and_level()
+    {
+        var history = new SystemHistory();
+        history.Push(Reading());
+        history.Push(Reading(disks: [new DiskReading("C:", 100 * Gib, 50 * Gib), new DiskReading("D:", 100 * Gib, 3 * Gib)]));
+        var r = Reading(disks: [new DiskReading("C:", 100 * Gib, 50 * Gib), new DiskReading("D:", 100 * Gib, 3 * Gib)]);
+
+        var stats = SystemView.Stats(All, r);
+        var tile = SystemView.Tile(r, history, All, true, stats[^1]);
+
+        Assert.Equal(6, stats.Count);
+        Assert.Equal("Disk D: 97%", tile.Title);
+        Assert.Equal("disk", tile.Icon!.Glyph);
+        Assert.Equal(TileColor.Bad, tile.Icon.Color);
+        Assert.Equal([10.0, 97.0], tile.Sparkline);
     }
 
     [Fact]
@@ -304,6 +339,7 @@ public class SystemMonitorTests
         Assert.Equal("85% · 14 of 16 GB", flyout.Rows[1].Value);
         Assert.Equal(TileColor.Warn, flyout.Rows[1].Icon!.Color);
         Assert.Equal("↓1.2 MB/s ↑84 KB/s", flyout.Rows[3].Value);
+        Assert.Equal(TileColor.Ok, flyout.Rows[3].Icon!.Color);
         Assert.Equal("138 GB free of 476 GB (71%)", flyout.Rows[4].Value);
         Assert.Equal(TileColor.Ok, flyout.Rows[4].Icon!.Color);
         Assert.Equal(new FlyoutAction(SystemView.TaskManagerAction, "Task Manager"), Assert.Single(flyout.Actions));

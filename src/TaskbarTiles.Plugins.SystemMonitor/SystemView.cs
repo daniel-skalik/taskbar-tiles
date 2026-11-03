@@ -3,7 +3,7 @@ using TaskbarTiles.Contracts;
 
 namespace TaskbarTiles.Plugins.SystemMonitor;
 
-/// <summary>One metric as text: Name "RAM", Value "48%", Detail "7.7 of 16 GB". Percent is null where there is none.</summary>
+/// <summary>One stat as text: Name "RAM", Value "48%", Detail "7.7 of 16 GB". Percent is null where there is none.</summary>
 public sealed record MetricText(Metric Metric, string Name, string Value, string? Detail, double? Percent, string Compact);
 
 /// <summary>Turns readings into the tile and its popup, and parses the tile's settings. Pure.</summary>
@@ -73,8 +73,14 @@ public static class SystemView
         return DefaultRotate;
     }
 
-    /// <summary>The metric on show when rotating: the selected ones in turn, each for <paramref name="every"/>.</summary>
-    public static Metric Rotated(IReadOnlyList<Metric> selected, TimeSpan elapsed, TimeSpan every)
+    /// <summary>The stats the tile shows for the shown metrics: Disk becomes one stat per drive (one without a drive: n/a).</summary>
+    public static IReadOnlyList<Stat> Stats(IReadOnlyList<Metric> shown, SystemReading r) =>
+        shown.SelectMany(m => m == Metric.Disk && r.Disks.Count > 0
+            ? r.Disks.Select(d => new Stat(Metric.Disk, d.Name))
+            : [new Stat(m)]).ToList();
+
+    /// <summary>The stat on show when rotating: the selected ones in turn, each for <paramref name="every"/>.</summary>
+    public static T Rotated<T>(IReadOnlyList<T> selected, TimeSpan elapsed, TimeSpan every)
     {
         if (every <= TimeSpan.Zero) return selected[0];
         var step = (long)Math.Max(0, elapsed.Ticks / every.Ticks);
@@ -108,9 +114,6 @@ public static class SystemView
 
     static string Gb(long bytes) => Number(bytes / (1024.0 * 1024 * 1024), 1);
 
-    /// <summary>"C: 71%" for the fullest drive; null without a drive.</summary>
-    static string? DiskCompact(DiskReading? d) => d is null ? null : $"{d.Name} {Pct(d.Percent)}";
-
     public static string DiskDetail(DiskReading d) => $"{Size(d.FreeBytes)} free of {Size(d.TotalBytes)}";
 
     // --- levels ---------------------------------------------------------------------------------------------------
@@ -125,12 +128,14 @@ public static class SystemView
     };
 
     /// <summary>The tile icon's color: the worst level among the shown percentages, calm (Neutral) when none is high.</summary>
-    public static TileColor IconColor(SystemReading r, IReadOnlyList<Metric> shown)
+    public static TileColor IconColor(SystemReading r, IReadOnlyList<Metric> shown) => IconColor(r, Stats(shown, r));
+
+    static TileColor IconColor(SystemReading r, IReadOnlyList<Stat> stats)
     {
         var worst = TileColor.Neutral;
-        foreach (var metric in shown)
+        foreach (var stat in stats)
         {
-            var color = Level(Describe(metric, r).Percent);
+            var color = Level(Describe(stat, r).Percent);
             if (color is TileColor.Bad) return color;
             if (color is TileColor.Warn) worst = color;
         }
@@ -139,8 +144,19 @@ public static class SystemView
 
     // --- text -----------------------------------------------------------------------------------------------------
 
-    public static MetricText Describe(Metric metric, SystemReading r)
+    /// <summary>The icon of a stat shown alone: what it measures.</summary>
+    public static string Glyph(Metric metric) => metric switch
     {
+        Metric.Cpu => "cpu",
+        Metric.Ram => "memory",
+        Metric.Gpu => "gpu",
+        Metric.Network => "network",
+        _ => "disk",
+    };
+
+    public static MetricText Describe(Stat stat, SystemReading r)
+    {
+        var metric = stat.Metric;
         switch (metric)
         {
             case Metric.Cpu:
@@ -154,9 +170,9 @@ public static class SystemView
                 var down = "↓" + Rate(r.DownBytesPerSecond);
                 return new(metric, "Network", down, "↑" + Rate(r.UpBytesPerSecond), null, down);
             default:
-                var disk = r.FullestDisk;
-                if (disk is null) return new(metric, "Disk", "n/a", null, null, "Disk n/a");
-                return new(metric, "Disk", $"{disk.Name} {Pct(disk.Percent)}", DiskDetail(disk), disk.Percent, DiskCompact(disk)!);
+                var disk = r.Disk(stat.Drive);
+                if (disk is null) return new(metric, "Disk", "n/a", null, null, $"{stat.Drive ?? "Disk"} n/a");
+                return new(metric, "Disk", $"{disk.Name} {Pct(disk.Percent)}", DiskDetail(disk), disk.Percent, $"{disk.Name} {Pct(disk.Percent)}");
         }
     }
 
@@ -174,30 +190,33 @@ public static class SystemView
 
     // --- tile -----------------------------------------------------------------------------------------------------
 
-    /// <summary>The tile for one reading. <paramref name="rotating"/> shows <paramref name="current"/> alone with its chart.</summary>
-    public static TileState Tile(SystemReading r, SystemHistory history, IReadOnlyList<Metric> shown, bool rotating, Metric current)
+    /// <summary>
+    /// The tile for one reading. <paramref name="rotating"/> (or a single stat) shows <paramref name="current"/> alone,
+    /// with its icon and its chart behind the text (0 to 100% for percentages); otherwise every stat on two lines.
+    /// </summary>
+    public static TileState Tile(SystemReading r, SystemHistory history, IReadOnlyList<Metric> shown, bool rotating, Stat current)
     {
-        var icon = new TileIcon("sync", IconColor(r, shown));
-        var tooltip = string.Join("\n", shown.Select(m => Line(Describe(m, r))));
+        var stats = Stats(shown, r);
+        var tooltip = string.Join("\n", stats.Select(s => Line(Describe(s, r))));
 
-        if (shown.Count == 1 || rotating)
+        if (stats.Count == 1 || rotating)
         {
-            var metric = shown.Count == 1 ? shown[0] : current;
-            var text = Describe(metric, r);
-            var spark = history.Get(metric);
+            var stat = stats.Count == 1 ? stats[0] : current;
+            var text = Describe(stat, r);
+            var spark = history.Get(stat);
             return new TileState
             {
                 Title = $"{text.Name} {text.Value}",
                 Subtitle = text.Detail,
-                Icon = icon,
-                Progress = text.Percent is { } p ? Math.Clamp(p / 100, 0, 1) : null,
+                Icon = new TileIcon(Glyph(stat.Metric), IconColor(r, [stat])),
                 Sparkline = spark.Count > 1 ? spark : null,
+                SparklineMax = stat.Metric == Metric.Network ? null : 100,
                 Tooltip = tooltip,
             };
         }
 
-        var (title, subtitle) = Split(shown.Select(m => Describe(m, r).Compact).ToList());
-        return new TileState { Title = title, Subtitle = subtitle, Icon = icon, Tooltip = tooltip };
+        var (title, subtitle) = Split(stats.Select(s => Describe(s, r).Compact).ToList());
+        return new TileState { Title = title, Subtitle = subtitle, Icon = new TileIcon("activity", IconColor(r, stats)), Tooltip = tooltip };
     }
 
     static string Line(MetricText t) => t.Detail is null ? $"{t.Name}: {t.Value}" : $"{t.Name}: {t.Value} ({t.Detail})";
@@ -218,7 +237,7 @@ public static class SystemView
             rows.Add(new FlyoutRow(t.Name, metric == Metric.Ram ? $"{t.Value} · {t.Detail}" : t.Value, Dot(t.Percent)));
         }
         var net = Describe(Metric.Network, r);
-        rows.Add(new FlyoutRow("Network", $"{net.Value} {net.Detail}", Dot(null)));
+        rows.Add(new FlyoutRow("Network", $"{net.Value} {net.Detail}", new TileIcon("info", TileColor.Ok))); // it has no level to reach
         foreach (var disk in r.Disks)
             rows.Add(new FlyoutRow(disk.Name, $"{DiskDetail(disk)} ({Pct(disk.Percent)})", Dot(disk.Percent)));
         return new FlyoutState("System", $"Updated {now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}", rows, actions);

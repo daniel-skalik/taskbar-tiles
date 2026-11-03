@@ -120,7 +120,7 @@ The bundled `clipboard` kind shows the last thing you copied: text as one line w
 
 ### System monitor
 
-The bundled `system` kind shows CPU, memory, GPU, network speed and the fullest disk, sampled every second. **Settings…** → Show ticks which (setting `"show"`, e.g. `["CPU", "RAM"]`; all five without it). Layout `"All at once"` fits them on two lines; `"Rotate"` shows one at a time with its chart, switching every `"rotate"` (default `"5s"`). The icon turns orange at 80% and red at 95%. Click it for every metric and each drive's free space; **Task Manager** opens it.
+The bundled `system` kind shows CPU, memory, GPU, network speed and every drive's used space, sampled every second. **Settings…** → Show ticks which (setting `"show"`, e.g. `["CPU", "RAM"]`; all five without it; `"Disk"` means every fixed drive). Layout `"All at once"` fits them on two lines; `"Rotate"` shows one at a time, each drive on its own, with its own icon and its last minute as a chart behind the text, switching every `"rotate"` (default `"5s"`). The icon turns orange at 80% and red at 95%. Click it for every metric and each drive's free space; **Task Manager** opens it.
 
 ### Pixel scenes
 

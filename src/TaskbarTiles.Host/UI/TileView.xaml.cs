@@ -18,6 +18,8 @@ public partial class TileView : UserControl
     readonly TileCommands _commands;
     readonly ITileLog _log;
     bool _urgent;
+    IReadOnlyList<double>? _spark;
+    double? _sparkMax;
     bool _compact;
     bool _clickInFlight;
     SolidColorBrush? _pulse;
@@ -28,6 +30,8 @@ public partial class TileView : UserControl
         // Inner radius: the Root's 6 less its 1px border.
         ProgressClip.SizeChanged += (_, e) => ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SceneClip.SizeChanged += (_, e) => SceneClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+        SparkClip.SizeChanged += (_, e) => SparkClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+        SparkHost.SizeChanged += (_, _) => RenderSparkline();
         Runtime = runtime;
         _isLightTheme = isLightTheme;
         _commands = commands;
@@ -102,6 +106,7 @@ public partial class TileView : UserControl
         Root.Padding = _compact ? new Thickness(5, 0, 5, 0) : new Thickness(6, 0, 6, 0); // 5 + 28 + 5 + 2 border = 40 DIP
         ProgressClip.Margin = new Thickness(-Root.Padding.Left, 0, -Root.Padding.Right, 0); // the bar runs edge to edge
         SceneClip.Margin = ProgressClip.Margin;
+        SparkClip.Margin = ProgressClip.Margin;
         Scene.Source = Theme.FromPixels(s.Canvas);
         TextPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
         ExtrasPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
@@ -127,7 +132,9 @@ public partial class TileView : UserControl
             ButtonPanel.Children.Add(button);
         }
 
-        RenderSparkline(s.Sparkline);
+        _spark = s.Sparkline;
+        _sparkMax = s.SparklineMax;
+        RenderSparkline();
 
         if (s.Progress is { } p)
         {
@@ -148,24 +155,32 @@ public partial class TileView : UserControl
         UpdateBackground();
     }
 
-    void RenderSparkline(IReadOnlyList<double>? values)
+    /// <summary>
+    /// The sparkline across the whole tile, behind the icon and text, with a faint fill below it: scaled 0..SparklineMax when the state
+    /// gives one (a percentage stays low when low), else from its own minimum to maximum. Redrawn when the tile resizes.
+    /// </summary>
+    void RenderSparkline()
     {
+        var values = _spark;
         if (values is not { Count: > 1 })
         {
             SparkHost.Visibility = Visibility.Collapsed;
             return;
         }
+        SparkHost.Visibility = Visibility.Visible;
+        double w = SparkHost.ActualWidth, h = SparkHost.ActualHeight;
+        if (w <= 0 || h <= 0) return; // SizeChanged draws it once laid out
 
-        double min = values.Min(), max = values.Max(), range = max - min;
-        double w = SparkHost.Width, h = SparkHost.Height;
-        var points = new PointCollection(values.Count);
+        double min = _sparkMax is null ? values.Min() : 0, max = _sparkMax ?? values.Max(), range = max - min;
+        var line = new PointCollection(values.Count);
         for (var i = 0; i < values.Count; i++)
         {
-            var y = range <= 0 ? h / 2 : h - 2 - (values[i] - min) / range * (h - 4);
-            points.Add(new Point(i * w / (values.Count - 1), y));
+            var y = range <= 0 ? h / 2 : h - 1 - Math.Clamp((values[i] - min) / range, 0, 1) * (h - 4); // 3 px headroom at the top edge
+            line.Add(new Point(i * w / (values.Count - 1), y));
         }
-        Spark.Points = points;
-        SparkHost.Visibility = Visibility.Visible;
+        var area = new PointCollection(line) { new Point(w, h), new Point(0, h) };
+        Spark.Points = line;
+        SparkArea.Points = area;
     }
 
     void StartPulse()
