@@ -11,7 +11,7 @@ public enum FieldType { Text, Number, Toggle, Choice, Duration, Pick }
 /// <summary>
 /// One input of the settings dialog, from tile.json's "fields": the settings key it edits, how it is shown and the
 /// values it accepts. Min/Max bound numbers; MinDuration/MaxDuration bound durations; Choices lists a choice's values,
-/// or a pick's fixed ones (the connector adds its own when the dialog opens).
+/// a pick's fixed ones, or a text field's suggestions (for picks and text the connector adds its own when the dialog opens).
 /// </summary>
 public sealed record TileField(string Key, string Label, FieldType Type, string? Help = null, double? Min = null, double? Max = null,
     TimeSpan? MinDuration = null, TimeSpan? MaxDuration = null, IReadOnlyList<string>? Choices = null);
@@ -63,8 +63,8 @@ public static class TileFields
                         return ([], Error("needs \"choices\": a list of strings."));
                     field = field with { Choices = ch.EnumerateArray().Select(x => x.GetString()!).ToList() };
                     break;
-                case FieldType.Pick:
-                    if (!el.TryGetProperty("choices", out var pc)) { field = field with { Choices = [] }; break; }
+                case FieldType.Pick or FieldType.Text:
+                    if (!el.TryGetProperty("choices", out var pc)) { if (type == FieldType.Pick) field = field with { Choices = [] }; break; }
                     if (pc.ValueKind != JsonValueKind.Array || pc.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String))
                         return ([], Error("has \"choices\" that are not a list of strings."));
                     field = field with { Choices = pc.EnumerateArray().Select(x => x.GetString()!).ToList() };
@@ -137,6 +137,17 @@ public static class TileFields
         return live.Concat(field.Choices ?? []).Concat(saved).Where(c => !string.IsNullOrWhiteSpace(c))
             .Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
     }
+
+    /// <summary>
+    /// The suggestions a text field shows for <paramref name="typed"/>: those containing it (ignoring case), first the
+    /// ones starting with it, without the one already typed; at most <paramref name="max"/>.
+    /// </summary>
+    public static IReadOnlyList<string> Suggest(IReadOnlyList<string> suggestions, string typed, int max = 8) =>
+        suggestions
+            .Where(s => s.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !s.Equals(typed, StringComparison.CurrentCultureIgnoreCase))
+            .OrderBy(s => s.StartsWith(typed, StringComparison.CurrentCultureIgnoreCase) ? 0 : 1)
+            .Take(max)
+            .ToList();
 
     static string NumberHint(TileField f) => (f.Min, f.Max) switch
     {

@@ -1,6 +1,7 @@
 {
   "name": "Clipboard peek",
   "description": "The last thing you copied, and your recent copies to copy again",
+  "group": "Productivity",
   "connector": "clipboard",
   "width": 200,
   "fields": [

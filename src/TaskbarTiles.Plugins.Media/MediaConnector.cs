@@ -12,7 +12,7 @@ namespace TaskbarTiles.Plugins.Media;
 /// The song's position shows as a thin bar along the tile's bottom edge, moved every second while it plays.
 /// </summary>
 [TileConnector("media", Width = 268)]
-public sealed class MediaConnector : ITileConnector
+public sealed class MediaConnector : ITileConnector, ITileChoices
 {
     readonly SemaphoreSlim _gate = new(1, 1);
     ITileContext? _ctx;
@@ -49,6 +49,33 @@ public sealed class MediaConnector : ITileConnector
         }
         await PublishAsync();
         _ticker = TickAsync(_stop.Token);
+    }
+
+    /// <summary>The apps with a media session now, as names "app" matches, for the settings dialog's suggestions.</summary>
+    public Task<IReadOnlyList<string>> GetChoicesAsync(string key, CancellationToken ct)
+    {
+        if (key != "app" || _manager is not { } manager) return Task.FromResult<IReadOnlyList<string>>([]);
+        IReadOnlyList<string> names = manager.GetSessions().Select(s => AppName(s.SourceAppUserModelId))
+            .Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return Task.FromResult(names);
+    }
+
+    /// <summary>
+    /// A short name for an app's media session id that still matches it: "Spotify.exe" is "Spotify", a packaged app's
+    /// "Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic" is "Microsoft.ZuneMusic", a path its file name.
+    /// </summary>
+    public static string AppName(string? aumid)
+    {
+        var id = (aumid ?? "").Trim();
+        var bang = id.IndexOf('!');
+        if (bang >= 0)
+        {
+            id = id[..bang];
+            var underscore = id.LastIndexOf('_'); // the package family's publisher hash
+            if (underscore > 0) id = id[..underscore];
+        }
+        id = Path.GetFileName(id);
+        return id.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? id[..^4] : id;
     }
 
     /// <summary>

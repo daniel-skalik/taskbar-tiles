@@ -26,4 +26,16 @@ public class MediaTests
     [Fact]
     public void No_length_means_no_bar() =>
         Assert.Null(MediaConnector.Progress(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, Updated, true, Updated));
+
+    [Theory]
+    [InlineData("Spotify.exe", "Spotify")]
+    [InlineData("Chrome", "Chrome")]
+    [InlineData("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic", "Microsoft.ZuneMusic")]
+    [InlineData("C:/Program Files/VideoLAN/vlc.EXE", "vlc")]
+    [InlineData("", "")]
+    public void App_names_are_short_and_still_match_the_session(string aumid, string name)
+    {
+        Assert.Equal(name, MediaConnector.AppName(aumid));
+        Assert.Contains(name, aumid, StringComparison.OrdinalIgnoreCase); // "app" matches by containment
+    }
 }

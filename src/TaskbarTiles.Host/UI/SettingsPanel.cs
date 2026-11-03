@@ -235,6 +235,8 @@ public static class SettingsPanel
                     Input = () => box.Text;
                     _set = text => box.Text = text;
                     stack.Children.Add(box);
+                    if (field.Type == FieldType.Text && field.Choices is { Count: > 0 } suggestions)
+                        stack.Children.Add(Suggestions(box, suggestions));
                     break;
                 }
             }
@@ -257,6 +259,37 @@ public static class SettingsPanel
         }
 
         public TileField Field { get; }
+
+        /// <summary>A text field's suggestions under its box, narrowed to the ones containing what is typed; a click fills the box.</summary>
+        static WrapPanel Suggestions(TextBox box, IReadOnlyList<string> suggestions)
+        {
+            var pills = new WrapPanel { Margin = new Thickness(0, 6, 0, -6) };
+            void Fill()
+            {
+                pills.Children.Clear();
+                var typed = box.Text.Trim();
+                foreach (var suggestion in TileFields.Suggest(suggestions, typed))
+                {
+                    var pill = new Button
+                    {
+                        Content = suggestion,
+                        Margin = new Thickness(0, 0, 6, 6),
+                        Padding = new Thickness(10, 3, 10, 3),
+                        Style = (Style)Application.Current.FindResource("FlyoutButton"),
+                    };
+                    pill.Click += (_, _) =>
+                    {
+                        box.Text = suggestion;
+                        box.CaretIndex = suggestion.Length;
+                        box.Focus();
+                    };
+                    pills.Children.Add(pill);
+                }
+            }
+            box.TextChanged += (_, _) => Fill();
+            Fill();
+            return pills;
+        }
 
         /// <summary>The field's line in the card; the panel sets the hairline above it.</summary>
         public Border Element { get; }

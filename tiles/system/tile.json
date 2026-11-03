@@ -1,6 +1,7 @@
 {
   "name": "System monitor",
   "description": "CPU, memory, GPU, network and disk space",
+  "group": "System",
   "connector": "system",
   "width": 200,
   "fields": [

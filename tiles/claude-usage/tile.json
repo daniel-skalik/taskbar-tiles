@@ -1,6 +1,7 @@
 {
   "name": "Claude usage",
   "description": "Your Claude plan's 5-hour and weekly usage limits",
+  "group": "Productivity",
   "connector": "script",
   "width": 220,
   "fields": [
