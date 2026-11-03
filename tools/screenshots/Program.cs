@@ -1,6 +1,10 @@
 // Renders every bundled tile with made-up sample data, the way the taskbar draws it, to <out>\tile-<kind>.png
 // (default docs\images). Nothing reads this machine: no media session, clipboard, devices or Claude account.
 //   dotnet run --project tools/screenshots [-- <out folder>]
+//
+// --preview runs a script kind folder for real, as the app would, and renders what it prints: for checking a new tile
+// without installing it. It reports tile.json and script problems, the popup, and where the picture went.
+//   dotnet run --project tools/screenshots -- --preview <kind folder> [<out.png>]
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -18,6 +22,9 @@ using TaskbarTiles.Plugins.SystemMonitor;
 
 const double Scale = 2;        // output pixels per DIP
 const double TaskbarGap = 4;   // taskbar around the tile, in DIP
+if (args is ["--preview", var kindFolder, ..])
+    return await Preview(Path.GetFullPath(kindFolder), args.Length > 2 ? Path.GetFullPath(args[2]) : null);
+
 var repo = FindRepo();
 var outDir = Path.GetFullPath(args.Length > 0 ? args[0] : Path.Combine(repo, "docs", "images"));
 Directory.CreateDirectory(outDir);
@@ -43,11 +50,8 @@ await Task.WhenAll(scenes.Select(async scene =>
     lock (frames) frames[scene.Kind] = ctx.Last ?? throw new InvalidOperationException($"{scene.Kind} drew nothing");
 }));
 
-var thread = new Thread(() =>
+RunSta(() =>
 {
-    var app = new Application();
-    app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/TaskbarTiles;component/UI/Styles.xaml") });
-
     var tiles = new List<(string Kind, double Width, TileState State)>
     {
         ("media", 268, Media()),
@@ -70,10 +74,63 @@ var thread = new Thread(() =>
     };
     foreach (var (kind, width, state) in tiles) Save(Render(width, state), Path.Combine(outDir, $"tile-{kind}.png"));
 });
-thread.SetApartmentState(ApartmentState.STA);
-thread.Start();
-thread.Join();
 Console.WriteLine($"Wrote 12 tiles to {outDir}");
+return 0;
+
+// Exit code 0 when the tile drew without errors, 1 otherwise.
+static async Task<int> Preview(string folder, string? output)
+{
+    var kind = Path.GetFileName(folder);
+    var jsonPath = Path.Combine(folder, "tile.json");
+    if (!File.Exists(jsonPath)) { Console.WriteLine($"No tile.json in {folder}."); return 1; }
+    var json = TaskbarTiles.Host.Plugins.TileJson.Parse(File.ReadAllText(jsonPath), $@"tiles\{kind}\tile.json");
+    if (json.Error is { } error) { Console.WriteLine($"tile.json: {error}"); return 1; }
+    Console.WriteLine($"tile.json: \"{json.Name}\" ({json.Connector}), width {json.Width?.ToString() ?? "default"}, group \"{json.Group}\", {json.Fields?.Count ?? 0} settings fields");
+    if (json.Connector != "script")
+    {
+        Console.WriteLine("Only script kinds run here; a DLL kind is checked by its unit tests and in the app.");
+        return 0;
+    }
+
+    var ctx = new Capture(kind, json.Settings, folder, echo: true);
+    var connector = new ScriptConnector();
+    await connector.StartAsync(ctx, CancellationToken.None);
+    var waited = TimeSpan.Zero;
+    while (ctx.Last is null && ctx.Error is null && waited < TimeSpan.FromSeconds(30))
+    {
+        await Task.Delay(100);
+        waited += TimeSpan.FromMilliseconds(100);
+    }
+    var flyout = ctx.Error is null ? await connector.GetFlyoutAsync(CancellationToken.None) : null;
+    await connector.DisposeAsync();
+
+    if (ctx.Error is { } failed) { Console.WriteLine($"Error look: {failed}"); return 1; }
+    if (ctx.Last is not { } state) { Console.WriteLine("Nothing printed within 30 s (a tile with only click, flyout or action hooks shows its id)."); return 1; }
+    Console.WriteLine($"Tile: title \"{state.Title}\", subtitle \"{state.Subtitle}\"");
+    if (flyout is not null)
+    {
+        Console.WriteLine($"Popup: \"{flyout.Title}\" / \"{flyout.Subtitle}\"");
+        foreach (var row in flyout.Rows) Console.WriteLine($"  {row.Text}: {row.Value}");
+        foreach (var action in flyout.Actions) Console.WriteLine($"  [{action.Label}] runs action:{action.Id}");
+    }
+    output ??= Path.Combine(Path.GetTempPath(), $"tile-preview-{kind}.png");
+    RunSta(() => Save(Render(json.Width ?? 132, state), output));
+    Console.WriteLine($"Picture: {output}");
+    return ctx.Warnings > 0 ? 1 : 0;
+}
+
+static void RunSta(Action draw)
+{
+    var thread = new Thread(() =>
+    {
+        var app = new Application();
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/TaskbarTiles;component/UI/Styles.xaml") });
+        draw();
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+}
 
 static TileState Script(string json) =>
     ScriptOutput.ParseTile(json).Value ?? throw new InvalidOperationException("bad sample: " + json);
@@ -157,16 +214,27 @@ sealed class Fixed(TileState state) : ITileConnector
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
-sealed class Capture(string id) : ITileContext
+sealed class Capture(string id, JsonElement? settings = null, string? folder = null, bool echo = false) : ITileContext
 {
     public volatile TileState? Last;
+    public volatile string? Error;
     public string TileId => id;
-    public JsonElement Settings { get; } = JsonDocument.Parse("{}").RootElement.Clone();
+    public JsonElement Settings { get; } = settings ?? JsonDocument.Parse("{}").RootElement.Clone();
     public string ConfigDirectory => Path.GetTempPath();
+    public string TileDirectory => folder ?? ConfigDirectory;
     public void Update(TileState state) => Last = state;
-    public void ReportError(string message, string? details = null) => throw new InvalidOperationException($"{id}: {message}");
+    public void ReportError(string message, string? details = null) => Error = details is null ? message : $"{message}\n{details}";
     public event EventHandler? Resumed { add { } remove { } }
-    public ITileLog Log { get; } = new NoLog();
+    public ITileLog Log => _log ??= echo ? new ConsoleLog(this) : new NoLog();
+    ITileLog? _log;
+    public int Warnings;
+}
+
+sealed class ConsoleLog(Capture owner) : ITileLog
+{
+    public void Info(string m) { }
+    public void Warn(string m) { Interlocked.Increment(ref owner.Warnings); Console.WriteLine($"Warning: {m}"); }
+    public void Error(string m, Exception? e = null) { Interlocked.Increment(ref owner.Warnings); Console.WriteLine($"Error: {m} {e?.Message}"); }
 }
 
 sealed class Inline : IUiDispatcher { public void Post(Action action) => action(); }

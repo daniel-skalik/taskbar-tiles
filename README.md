@@ -50,6 +50,16 @@ The pictures use made-up sample data; `dotnet run --project tools/screenshots` d
 
 Your layout and settings live in `%LOCALAPPDATA%\TaskbarTiles\config.json`. You rarely need to touch it, but it's all described in [docs/configuration.md](docs/configuration.md). To write your own tile with a PowerShell (or any) script, see [docs/script-connectors.md](docs/script-connectors.md).
 
+## Make your own tile
+
+A tile is a folder with a `tile.json` and a script (or a .NET DLL), described in [docs/script-connectors.md](docs/script-connectors.md). With an AI coding agent such as Claude Code, open this repository and ask for the tile you want ("a tile that shows my GitHub notifications"): the [new-tile skill](.claude/skills/new-tile/SKILL.md) walks it through writing, checking and installing it. To check a tile folder yourself:
+
+```bat
+dotnet run --project tools/screenshots -- --preview my-tiles\my-tile
+```
+
+It runs the script as the app would, lists any problems and renders the tile to a PNG.
+
 ## Update
 
 Download the new release and run its `install.cmd`. It replaces the app and the bundled tiles. Your config, logs and your own tiles are kept.
