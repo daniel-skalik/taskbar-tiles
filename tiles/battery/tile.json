@@ -1,6 +1,7 @@
 {
   "name": "Device batteries",
   "description": "Battery of your mouse, keyboard and headphones",
+  "group": "System",
   "connector": "battery",
   "fields": [
     { "key": "interval", "label": "Read every", "type": "duration", "min": "10s", "max": "1h", "help": "How often the batteries are read." },

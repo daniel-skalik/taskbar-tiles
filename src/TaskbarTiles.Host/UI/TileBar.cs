@@ -466,10 +466,10 @@ public sealed class TileBar : Window, ITileBarView
     {
         var tileId = runtime.TileId;
         if (SettingsFor(tileId) is not { } form) return;
-        // A pick field offers what the running tile knows (e.g. its devices) plus what is saved.
+        // A pick field offers what the running tile knows (e.g. its devices) plus what is saved; a text field suggests it.
         var fields = new List<TileField>();
         foreach (var field in form.Fields)
-            fields.Add(field.Type == FieldType.Pick
+            fields.Add(field.Type is FieldType.Pick or FieldType.Text
                 ? field with { Choices = TileFields.PickChoices(field, await runtime.GetChoicesAsync(field.Key), OwnValue(form, field.Key)) }
                 : field);
         form = form with { Fields = fields };

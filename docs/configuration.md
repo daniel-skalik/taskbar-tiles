@@ -54,7 +54,6 @@ tiles\
   uptime\  tile.json, uptime.ps1              bundled: replaced on install
   ping\    tile.json, ping.ps1                bundled: replaced on install
   media\   tile.json, TaskbarTiles.Plugins.Media.dll   bundled: replaced on install
-  claude\  tile.json, claude.ps1              bundled: replaced on install
   battery\ tile.json, TaskbarTiles.Plugins.Battery.dll  bundled: replaced on install
   meeting\ tile.json, urgent.ps1              yours: never touched
 ```
@@ -98,7 +97,7 @@ Right-click a tile → **Settings…** changes that tile's own settings without 
 
 - Each field edits one top-level settings key; its default is the kind's `settings` value for that key.
   - `"key"`, `"label"` and `"type"` are required; `"help"` is shown under the input.
-  - Types: `text`; `number` (optional `"min"`/`"max"` numbers); `toggle` (true or false); `choice` (`"choices": ["a", "b"]`); `duration` (written like `"60s"`, optional `"min"`/`"max"` such as `"10s"` and `"1h"`); `pick` (a checkbox per value, saved as a list of the ticked ones; the values are the running tile's own, e.g. its devices, any fixed `"choices"`, and those saved earlier; with nothing saved every box is ticked).
+  - Types: `text` (optional `"choices"`: suggestions shown under the box, narrowed as you type; the running tile adds its own, e.g. the media tile the apps playing now); `number` (optional `"min"`/`"max"` numbers); `toggle` (true or false); `choice` (`"choices": ["a", "b"]`); `duration` (written like `"60s"`, optional `"min"`/`"max"` such as `"10s"` and `"1h"`); `pick` (a checkbox per value, saved as a list of the ticked ones; the values are the running tile's own, e.g. its devices, any fixed `"choices"`, and those saved earlier; with nothing saved every box is ticked).
   - A field may not edit `hooks`, and each key appears once. A list with a mistake makes the kind broken, with the message naming the field.
 - The dialog opens above the tile. A text, number or duration box holds the tile's own value; empty means the kind's default, shown dim behind it. A value that does not fit shows why under its field, and **Save** stays off. **Reset to defaults** empties every box. Esc or a click elsewhere closes it without saving.
 - **Save** writes `tiles.<id>.settings` in `config.json`, the same way edit mode saves (see "Saving rewrites config.json"). A value equal to the default, or empty, removes its key, so the tile follows the kind's default again; other keys stay. The tile restarts with the new settings.

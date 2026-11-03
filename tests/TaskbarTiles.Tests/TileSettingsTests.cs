@@ -250,4 +250,23 @@ public class TileSettingsTests
         Assert.Empty(await (await Running(new Choosing(_ => throw new InvalidOperationException("boom")))).GetChoicesAsync("show"));
         Assert.Empty(await (await Running(new FakeConnector())).GetChoicesAsync("show"));
     }
+
+    [Fact]
+    public void A_text_field_may_list_suggestions()
+    {
+        var (fields, error) = Parse("""[ { "key": "app", "label": "App", "type": "text", "choices": ["Spotify", "Chrome"] }, { "key": "x", "label": "X", "type": "text" } ]""");
+        Assert.Null(error);
+        Assert.Equal(["Spotify", "Chrome"], fields[0].Choices!);
+        Assert.Null(fields[1].Choices);
+    }
+
+    [Fact]
+    public void Suggestions_contain_the_typed_text_and_those_starting_with_it_come_first()
+    {
+        string[] all = ["Microsoft.ZuneMusic", "Spotify", "Chrome", "MSEdge"];
+        Assert.Equal(all, TileFields.Suggest(all, ""));
+        Assert.Equal(["Microsoft.ZuneMusic", "MSEdge", "Chrome"], TileFields.Suggest(all, "m"));
+        Assert.Empty(TileFields.Suggest(all, "spotify")); // already typed
+        Assert.Equal(2, TileFields.Suggest(all, "", max: 2).Count);
+    }
 }

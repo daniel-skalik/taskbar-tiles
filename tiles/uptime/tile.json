@@ -1,6 +1,7 @@
 {
   "name": "Clock and uptime",
   "description": "The time, and how long Windows has been up",
+  "group": "System",
   "connector": "script",
   "settings": {
     "hooks": {

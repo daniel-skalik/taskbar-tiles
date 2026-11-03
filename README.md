@@ -24,7 +24,6 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 |---|---|
 | <img src="docs/images/tile-media.png" alt="Media tile" height="48"> | **Media**<br>Now playing in Spotify (or any app with media controls), with playback buttons. |
 | <img src="docs/images/tile-claude-usage.png" alt="Claude usage tile" height="48"> | **Claude usage**<br>Your Claude plan's 5-hour and weekly limits. |
-| <img src="docs/images/tile-claude.png" alt="Claude sessions tile" height="48"> | **Claude sessions**<br>Which Claude Code sessions are working, idle or waiting for you. |
 | <img src="docs/images/tile-system.png" alt="System monitor tile" height="48"> | **System monitor**<br>CPU, memory, GPU, network and every drive, one at a time with a chart, or all at once. |
 | <img src="docs/images/tile-battery.png" alt="Device batteries tile" height="48"> | **Device batteries**<br>The lowest battery of your mouse, keyboard and headphones. |
 | <img src="docs/images/tile-clipboard.png" alt="Clipboard peek tile" height="48"> | **Clipboard peek**<br>The last thing you copied; click for recent copies to copy again. |
