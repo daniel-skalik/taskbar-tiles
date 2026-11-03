@@ -2,11 +2,9 @@
 
 Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, a ping, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
 
-<img src="docs/images/tile-media.png" alt="Media tile: the song playing in Spotify with playback buttons" height="40">
-<img src="docs/images/tile-claude-usage.png" alt="Claude usage tile: 5-hour and weekly limits" height="40">
-<img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile: a pixel farm under the real sky" height="40">
-<img src="docs/images/tile-system.png" alt="System monitor tile: CPU load with a chart" height="40">
-<img src="docs/images/tile-battery.png" alt="Device batteries tile: mouse battery level" height="40">
+<img src="docs/images/tile-media.png" alt="Media tile: a song with playback buttons" height="48">
+<img src="docs/images/tile-system.png" alt="System monitor tile: CPU load with its chart behind the text" height="48">
+<img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile: a pixel farm under the real sky" height="48">
 
 Made for Windows 11 (64-bit).
 
@@ -20,6 +18,25 @@ That's it: no .NET to install first. The app is copied to `%LOCALAPPDATA%\Taskba
 
 The app is not code-signed, so Windows may warn before running `install.cmd` or the app the first time ("Windows protected your PC"). Choose **More info**, then **Run anyway**. If you'd rather not, build it yourself from source (below).
 
+## Tiles
+
+| | |
+|---|---|
+| <img src="docs/images/tile-media.png" alt="Media tile" height="48"> | **Media**<br>Now playing in Spotify (or any app with media controls), with playback buttons. |
+| <img src="docs/images/tile-claude-usage.png" alt="Claude usage tile" height="48"> | **Claude usage**<br>Your Claude plan's 5-hour and weekly limits. |
+| <img src="docs/images/tile-claude.png" alt="Claude sessions tile" height="48"> | **Claude sessions**<br>Which Claude Code sessions are working, idle or waiting for you. |
+| <img src="docs/images/tile-system.png" alt="System monitor tile" height="48"> | **System monitor**<br>CPU, memory, GPU, network and every drive, one at a time with a chart, or all at once. |
+| <img src="docs/images/tile-battery.png" alt="Device batteries tile" height="48"> | **Device batteries**<br>The lowest battery of your mouse, keyboard and headphones. |
+| <img src="docs/images/tile-clipboard.png" alt="Clipboard peek tile" height="48"> | **Clipboard peek**<br>The last thing you copied; click for recent copies to copy again. |
+| <img src="docs/images/tile-uptime.png" alt="Clock and uptime tile" height="48"> | **Clock and uptime**<br>The time, and how long Windows has been up. |
+| <img src="docs/images/tile-ping.png" alt="Ping a host tile" height="48"> | **Ping a host**<br>Pings a host every 15 s. |
+| <img src="docs/images/tile-aquarium.png" alt="Aquarium tile" height="48"> | **Aquarium**<br>Fish and bubbles; click to feed them. |
+| <img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile" height="48"> | **Cozy farm**<br>A farm that follows your clock and the real sunrise and sunset. |
+| <img src="docs/images/tile-snake.png" alt="Snake tile" height="48"> | **Snake**<br>A snake that plays itself; click to start over. |
+| <img src="docs/images/tile-racers.png" alt="Racers tile" height="48"> | **Racers**<br>Pixel cars race; click for a new race. |
+
+The pictures use made-up sample data; `dotnet run --project tools/screenshots` draws them again.
+
 ## Use
 
 - **Add a tile:** the **+** button at the end of your tiles. Tiles are grouped in folders, for example **Fun › Games**.
@@ -30,9 +47,18 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 - **Move or remove tiles:** right-click a tile › **Edit layout**, then drag tiles or click their ×. Right-click › **Create stack…** puts several tiles in one slot.
 - **Exit:** right-click a tile › **More** › **Exit Taskbar Tiles**.
 
-Bundled tiles: Media (Spotify by default), Claude usage, Claude sessions, System monitor, Device batteries, Clipboard peek, Clock and uptime, Ping a host, and the pixel scenes Aquarium, Cozy farm, Snake and Racers.
 
 Your layout and settings live in `%LOCALAPPDATA%\TaskbarTiles\config.json`. You rarely need to touch it, but it's all described in [docs/configuration.md](docs/configuration.md). To write your own tile with a PowerShell (or any) script, see [docs/script-connectors.md](docs/script-connectors.md).
+
+## Make your own tile
+
+A tile is a folder with a `tile.json` and a script (or a .NET DLL), described in [docs/script-connectors.md](docs/script-connectors.md). With an AI coding agent such as Claude Code, open this repository and ask for the tile you want ("a tile that shows my GitHub notifications"): the [new-tile skill](.claude/skills/new-tile/SKILL.md) walks it through writing, checking and installing it. To check a tile folder yourself:
+
+```bat
+dotnet run --project tools/screenshots -- --preview my-tiles\my-tile
+```
+
+It runs the script as the app would, lists any problems and renders the tile to a PNG.
 
 ## Update
 
