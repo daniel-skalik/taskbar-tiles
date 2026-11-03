@@ -219,9 +219,17 @@
                 <ControlTemplate TargetType="TextBox">
                     <Border x:Name="Bd" CornerRadius="5" BorderThickness="1" Padding="{TemplateBinding Padding}"
                             Background="{DynamicResource TileFill}" BorderBrush="{DynamicResource TileOutline}">
-                        <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                            <!-- Tag: dim text shown while the box is empty, e.g. the default; 2,0 is where the text view starts -->
+                            <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="2,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TileDim}" IsHitTestVisible="False" Visibility="Collapsed"/>
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value="">
+                            <Setter TargetName="Placeholder" Property="Visibility" Value="Visible"/>
+                        </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush" Value="#4C7CE0"/>
                         </Trigger>
