@@ -6,6 +6,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Layout;
+using TaskbarTiles.Host.Plugins;
 using TaskbarTiles.Host.Runtime;
 
 namespace TaskbarTiles.Host.UI;
@@ -13,8 +14,9 @@ namespace TaskbarTiles.Host.UI;
 /// <summary>
 /// One slot on a bar: a single tile, or a stack that shows one member at a time with position dots. A stack rotates
 /// every "rotate", pauses while hovered, cycles on the mouse wheel, and lets an urgent member take over until it is clicked.
-/// In edit mode it gets a dashed outline, a shield that keeps clicks away from the tile (the bar turns them into drags)
-/// and a × button.
+/// In edit mode it gets a dashed outline, a shield that keeps clicks away from the tile (the bar turns them into drags),
+/// a × button and, when its tiles may be resized, a grip on its outer edge: dragging it previews the new width, letting
+/// go asks for it to be saved, a double-click asks for the kinds' widths again.
 /// </summary>
 public sealed class SlotView : Grid
 {
@@ -26,6 +28,10 @@ public sealed class SlotView : Grid
     readonly DispatcherTimer? _timer;
     readonly Rectangle _outline;
     readonly Border _shield;
+    readonly Border _grip;
+    double? _previewWidth;
+    bool _resizing, _gripOnLeft;
+    double _resizeStartX, _resizeStartWidth;
     bool _compact;
     bool _editing;
     bool _dropHighlight;
@@ -96,8 +102,25 @@ public sealed class SlotView : Grid
                 Style = TryFindResource("RemoveButton") as Style,
             };
             RemoveButton.Click += (_, _) => RemoveRequested?.Invoke(this, EventArgs.Empty);
+            var notch = new Rectangle { Width = 2, Height = 14, RadiusX = 1, RadiusY = 1, Opacity = 0.7, IsHitTestVisible = false };
+            notch.SetResourceReference(Shape.FillProperty, "TileForeground");
+            _grip = new Border
+            {
+                Width = 8,
+                Background = Frozen(Color.FromArgb(1, 0, 0, 0)), // hit-testable but invisible
+                Cursor = Cursors.SizeWE,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                ToolTip = "Drag to resize · double-click for the default width",
+                Visibility = Visibility.Collapsed,
+                Child = notch,
+            };
+            _grip.MouseLeftButtonDown += OnGripDown;
+            _grip.MouseMove += OnGripMove;
+            _grip.MouseLeftButtonUp += OnGripUp;
+            _grip.LostMouseCapture += (_, _) => { if (_resizing) { _resizing = false; ClearPreview(); } };
             Children.Add(_outline);
             Children.Add(_shield);
+            Children.Add(_grip);
             Children.Add(RemoveButton);
 
             ApplyWidths();
@@ -122,7 +145,72 @@ public sealed class SlotView : Grid
     /// <summary>The × was clicked: remove this slot, or for a stack the member shown.</summary>
     public event EventHandler? RemoveRequested;
 
+    /// <summary>The grip moved: <see cref="FullWidth"/> is the width being previewed, so the bar should lay out again.</summary>
+    public event EventHandler? ResizePreview;
+
+    /// <summary>The grip was let go at a new width (whole DIP), or double-clicked (null: the kinds' widths).</summary>
+    public event EventHandler<double?>? ResizeCommitted;
+
+    /// <summary>The grip sits on the left edge: on the right-side bar, which grows leftwards from the tray.</summary>
+    public bool GripOnLeft
+    {
+        set
+        {
+            _gripOnLeft = value;
+            _grip.HorizontalAlignment = value ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        }
+    }
+
+    /// <summary>Drops the previewed width, e.g. when saving it failed.</summary>
+    public void ClearPreview()
+    {
+        if (_previewWidth is null) return;
+        _previewWidth = null;
+        ApplyWidths();
+        ResizePreview?.Invoke(this, EventArgs.Empty);
+    }
+
+    void OnGripDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true; // not a drag of the whole slot
+        if (e.ClickCount == 2)
+        {
+            ResizeCommitted?.Invoke(this, null);
+            return;
+        }
+        _resizing = true;
+        _resizeStartX = ScreenX(e);
+        _resizeStartWidth = FullWidth;
+        _grip.CaptureMouse();
+    }
+
+    void OnGripMove(object sender, MouseEventArgs e)
+    {
+        if (!_resizing) return;
+        var dx = ScreenX(e) - _resizeStartX;
+        var width = Math.Round(Math.Clamp(_resizeStartWidth + (_gripOnLeft ? -dx : dx), TileJson.MinWidth, TileJson.MaxWidth));
+        if (width == FullWidth) return;
+        _previewWidth = width;
+        ApplyWidths();
+        ResizePreview?.Invoke(this, EventArgs.Empty);
+    }
+
+    void OnGripUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_resizing) return;
+        e.Handled = true;
+        _resizing = false;
+        _grip.ReleaseMouseCapture();
+        if (_previewWidth is { } width && width != Slot.FullWidth) ResizeCommitted?.Invoke(this, width);
+        else ClearPreview();
+    }
+
+    // In DIP from the screen's left edge: the bar window itself moves and grows while the tile is resized.
+    double ScreenX(MouseEventArgs e) => PointToScreen(e.GetPosition(this)).X / VisualTreeHelper.GetDpi(this).DpiScaleX;
+
     internal Button RemoveButton { get; }
+
+    internal Border ResizeGrip => _grip;
 
     public bool Editing
     {
@@ -159,7 +247,7 @@ public sealed class SlotView : Grid
 
     public TileView Current => _members[CurrentMember];
 
-    public double FullWidth => Slot.FullWidth;
+    public double FullWidth => _previewWidth ?? Slot.FullWidth;
 
     public bool Compact
     {
@@ -169,6 +257,7 @@ public sealed class SlotView : Grid
             if (_compact == value) return;
             _compact = value;
             ApplyWidths();
+            ApplyEditLook();
         }
     }
 
@@ -189,6 +278,9 @@ public sealed class SlotView : Grid
     {
         if (!slot.SameContent(Slot)) throw new ArgumentException("Retarget needs a slot with the same content.", nameof(slot));
         Slot = slot;
+        if (!_resizing) _previewWidth = null; // the saved width has arrived
+        ApplyWidths();
+        ApplyEditLook();
     }
 
     public void Detach()
@@ -234,6 +326,7 @@ public sealed class SlotView : Grid
         _outline.Visibility = edit;
         _shield.Visibility = edit;
         RemoveButton.Visibility = edit;
+        _grip.Visibility = _editing && Slot.Resizable && !_compact ? Visibility.Visible : Visibility.Collapsed;
         if (_dropHighlight)
         {
             _outline.Stroke = Accent;

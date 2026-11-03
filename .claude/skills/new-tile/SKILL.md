@@ -66,8 +66,9 @@ Script rules that save a round trip:
   (one per line for `watch`). Start PowerShell scripts with `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`
   and keep the file ASCII (write `[char]0x00B7` for a middle dot) so Windows PowerShell 5.1 reads it too.
 - Read options from `$env:TILE_SETTINGS_JSON | ConvertFrom-Json`; never hard-code what a field can change.
-- The title and subtitle are short: a tile is 132 DIP wide unless `"width"` says otherwise (up to 640). Put the
-  most important part first; the end is cut off.
+- The title and subtitle are short: a tile is 132 DIP wide unless `"width"` says otherwise (up to 640), and users can
+  resize it in edit mode unless `tile.json` says `"resizable": false` (for a layout that only works at one width).
+  Put the most important part first; the end is cut off.
 - Failures: let the script exit non-zero with a short one-line message on stderr; the app shows the error look and
   the message. Do not print an error as a normal tile. A state that is normal, such as "not connected" or "no
   meetings today", is a normal tile, not a failure.
