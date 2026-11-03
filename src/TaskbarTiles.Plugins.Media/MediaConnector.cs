@@ -7,7 +7,8 @@ using Windows.Storage.Streams;
 namespace TaskbarTiles.Plugins.Media;
 
 /// <summary>
-/// Now-playing tile for one app's Windows media session (Spotify by default).
+/// Now-playing tile for an app's Windows media session (Spotify by default). Setting "app" names one app, several
+/// ("Spotify, Firefox": the one playing, else the first listed) or "Any"; see <see cref="AppFilter"/>.
 /// Ported from SpotifyTaskbar: no Spotify API or login, just the system media controls.
 /// The song's position shows as a thin bar along the tile's bottom edge, moved every second while it plays.
 /// </summary>
@@ -16,8 +17,8 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
 {
     readonly SemaphoreSlim _gate = new(1, 1);
     ITileContext? _ctx;
-    string _app = "Spotify";
-    string _launch = "spotify:";
+    AppFilter _filter = AppFilter.Parse("Spotify");
+    string _launch = "spotify:"; // empty: nothing to open (with "Any")
     GlobalSystemMediaTransportControlsSessionManager? _manager;
     readonly object _pickLock = new();
     volatile GlobalSystemMediaTransportControlsSession? _session;
@@ -33,10 +34,10 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
     public async Task StartAsync(ITileContext ctx, CancellationToken ct)
     {
         _ctx = ctx;
-        if (ctx.Settings.TryGetProperty("app", out var app) && app.ValueKind == JsonValueKind.String) _app = app.GetString()!;
+        if (ctx.Settings.TryGetProperty("app", out var app) && app.ValueKind == JsonValueKind.String) _filter = AppFilter.Parse(app.GetString());
         _launch = ctx.Settings.TryGetProperty("launch", out var launch) && launch.ValueKind == JsonValueKind.String
             ? launch.GetString()!
-            : _app.ToLowerInvariant() + ":";
+            : _filter.Any ? "" : _filter.Apps[0].ToLowerInvariant() + ":";
 
         var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
         lock (_pickLock)
@@ -109,6 +110,13 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
+                // With several apps, another one may have started playing: the tile follows it within a second.
+                if (_filter.Several && !_disposed)
+                {
+                    bool switched;
+                    lock (_pickLock) switched = PickSession(byApp: true);
+                    if (switched) await PublishAsync();
+                }
                 await _gate.WaitAsync(ct);
                 try
                 {
@@ -154,10 +162,10 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
         if (timeline.EndTime > TimeSpan.Zero) rows.Add(new FlyoutRow("Position", $"{Format(timeline.Position)} / {Format(timeline.EndTime)}"));
 
         return new FlyoutState(
-            string.IsNullOrEmpty(props.Title) ? _app : props.Title,
+            string.IsNullOrEmpty(props.Title) ? SessionName(s) : props.Title,
             props.Artist,
             rows,
-            [new FlyoutAction("open", $"Open {_app}", Primary: true)],
+            _launch.Length > 0 ? [new FlyoutAction("open", $"Open {(_filter.Any ? "app" : _filter.Apps[0])}", Primary: true)] : [],
             _art);
     }
 
@@ -174,13 +182,24 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
 
     void OnResumed(object? sender, EventArgs e) => _ = PublishAsync();
 
-    // Caller must hold _pickLock.
-    void PickSession()
+    /// <summary>The app a session belongs to, as people know it: "Firefox" rather than its id.</summary>
+    static string SessionName(GlobalSystemMediaTransportControlsSession s) =>
+        AppNames.DisplayName(s.SourceAppUserModelId) ?? AppName(s.SourceAppUserModelId);
+
+    // Caller must hold _pickLock. True when the tile now follows another session. The once-a-second look (byApp) keeps
+    // the session of the same app; a change in the sessions list takes the new object even for the same app.
+    bool PickSession(bool byApp = false)
     {
-        if (_disposed) return;
-        var match = _manager?.GetSessions()
-            .FirstOrDefault(x => AppNames.Matches(x.SourceAppUserModelId, AppNames.DisplayName(x.SourceAppUserModelId), _app));
-        if (match == _session) return;
+        if (_disposed || _manager is not { } manager) return false;
+        var sessions = manager.GetSessions();
+        var current = manager.GetCurrentSession();
+        var infos = sessions.Select(x => new SessionInfo(x.SourceAppUserModelId, AppNames.DisplayName(x.SourceAppUserModelId),
+            x.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+            current is not null && x.SourceAppUserModelId == current.SourceAppUserModelId)).ToList();
+        var chosen = _filter.Choose(infos);
+        var match = chosen < 0 ? null : sessions[chosen];
+        if (ReferenceEquals(match, _session)) return false;
+        if (byApp && match is not null && _session is not null && match.SourceAppUserModelId == _session.SourceAppUserModelId) return false;
 
         if (_session is not null)
         {
@@ -196,6 +215,7 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
             _session.PlaybackInfoChanged += OnPlaybackChanged;
             _session.TimelinePropertiesChanged += OnTimelineChanged;
         }
+        return true;
     }
 
     void OnMediaChanged(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => SafePublish();
@@ -223,10 +243,10 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
                 _shown = null;
                 ctx.Update(new TileState
                 {
-                    Title = _app,
-                    Subtitle = "Not running",
+                    Title = _filter.Label,
+                    Subtitle = _filter.Any ? "Nothing playing" : "Not running",
                     Icon = new TileIcon("music"),
-                    Tooltip = $"Click to open {_app}",
+                    Tooltip = _launch.Length > 0 ? $"Click to open {_filter.Apps.FirstOrDefault() ?? _launch}" : "Plays here when an app plays media",
                     Buttons =
                     [
                         new TileButton("prev", "previous", "Previous", false),
@@ -254,7 +274,7 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
             if (_disposed) return;
             _shown = new TileState
             {
-                Title = string.IsNullOrEmpty(props.Title) ? _app : props.Title,
+                Title = string.IsNullOrEmpty(props.Title) ? SessionName(s) : props.Title,
                 Subtitle = props.Artist,
                 Image = _art,
                 Icon = new TileIcon("music"),
@@ -290,6 +310,7 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
 
     void Launch()
     {
+        if (_launch.Length == 0) return;
         try { using var _ = Process.Start(new ProcessStartInfo(_launch) { UseShellExecute = true }); }
         catch (Exception ex) { _ctx?.Log.Warn($"Could not open {_launch}: {ex.Message}"); }
     }

@@ -52,4 +52,45 @@ public class MediaTests
     [Fact]
     public void An_id_the_shell_does_not_know_has_no_name() =>
         Assert.Null(AppNames.DisplayName("TaskbarTiles.NoSuchApp.4F2A"));
+
+    [Theory]
+    [InlineData("Spotify", false, new[] { "Spotify" })]
+    [InlineData(" Spotify , firefox;Chrome ", false, new[] { "Spotify", "firefox", "Chrome" })]
+    [InlineData("Any", true, new string[0])]
+    [InlineData("Spotify, *", true, new string[0])]
+    [InlineData("", true, new string[0])]
+    public void The_app_setting_is_one_app_several_or_any(string setting, bool any, string[] apps)
+    {
+        var filter = AppFilter.Parse(setting);
+        Assert.Equal(any, filter.Any);
+        Assert.Equal(apps, filter.Apps);
+    }
+
+    static readonly SessionInfo Spotify = new("Spotify.exe", null, Playing: false, Current: false);
+    static readonly SessionInfo Firefox = new("308046B0AF4A39CB", "Firefox", Playing: false, Current: false);
+    static readonly SessionInfo Chrome = new("Chrome", "Google Chrome", Playing: false, Current: false);
+
+    [Fact]
+    public void Of_several_apps_the_one_playing_wins_then_the_one_listed_first()
+    {
+        var filter = AppFilter.Parse("Spotify, Firefox");
+
+        Assert.Equal(0, filter.Choose([Spotify, Firefox]));                           // neither plays: listed first
+        Assert.Equal(1, filter.Choose([Spotify, Firefox with { Playing = true }]));   // Firefox plays
+        Assert.Equal(1, filter.Choose([Chrome with { Playing = true }, Spotify]));    // Chrome is not listed
+        Assert.Equal(-1, filter.Choose([Chrome]));
+        Assert.True(filter.Several);
+        Assert.False(AppFilter.Parse("Spotify").Several);
+    }
+
+    [Fact]
+    public void Any_follows_whatever_plays_else_the_current_session()
+    {
+        var any = AppFilter.Parse("Any");
+
+        Assert.Equal(2, any.Choose([Spotify, Firefox, Chrome with { Playing = true }]));
+        Assert.Equal(1, any.Choose([Spotify, Firefox with { Current = true }]));
+        Assert.Equal(-1, any.Choose([]));
+        Assert.Equal("Media", any.Label);
+    }
 }

@@ -236,7 +236,7 @@ public static class SettingsPanel
                     _set = text => box.Text = text;
                     stack.Children.Add(box);
                     if (field.Type == FieldType.Text && field.Choices is { Count: > 0 } suggestions)
-                        stack.Children.Add(Suggestions(box, suggestions));
+                        stack.Children.Add(field.Multiple ? Toggles(box, suggestions) : Suggestions(box, suggestions));
                     break;
                 }
             }
@@ -259,6 +259,35 @@ public static class SettingsPanel
         }
 
         public TileField Field { get; }
+
+        /// <summary>
+        /// A "multiple" field's suggestions: every one, those in the list lit up; a click adds it to the list or takes it out.
+        /// </summary>
+        static WrapPanel Toggles(TextBox box, IReadOnlyList<string> suggestions)
+        {
+            var pills = new WrapPanel { Margin = new Thickness(0, 6, 0, -6) };
+            var buttons = new List<Button>();
+            void Light()
+            {
+                var chosen = TileFields.ListItems(box.Text).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var b in buttons)
+                    b.Style = (Style)Application.Current.FindResource(chosen.Contains((string)b.Content) ? "FlyoutPrimaryButton" : "FlyoutButton");
+            }
+            foreach (var suggestion in suggestions)
+            {
+                var pill = new Button { Content = suggestion, Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(10, 3, 10, 3) };
+                pill.Click += (_, _) =>
+                {
+                    box.Text = TileFields.Toggle(box.Text, suggestion);
+                    box.CaretIndex = box.Text.Length;
+                };
+                buttons.Add(pill);
+                pills.Children.Add(pill);
+            }
+            box.TextChanged += (_, _) => Light();
+            Light();
+            return pills;
+        }
 
         /// <summary>A text field's suggestions under its box, narrowed to the ones containing what is typed; a click fills the box.</summary>
         static WrapPanel Suggestions(TextBox box, IReadOnlyList<string> suggestions)

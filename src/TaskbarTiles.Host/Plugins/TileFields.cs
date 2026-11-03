@@ -12,9 +12,10 @@ public enum FieldType { Text, Number, Toggle, Choice, Duration, Pick }
 /// One input of the settings dialog, from tile.json's "fields": the settings key it edits, how it is shown and the
 /// values it accepts. Min/Max bound numbers; MinDuration/MaxDuration bound durations; Choices lists a choice's values,
 /// a pick's fixed ones, or a text field's suggestions (for picks and text the connector adds its own when the dialog opens).
+/// Multiple: a text field holding a comma-separated list, whose suggestions add or remove an item instead of replacing it.
 /// </summary>
 public sealed record TileField(string Key, string Label, FieldType Type, string? Help = null, double? Min = null, double? Max = null,
-    TimeSpan? MinDuration = null, TimeSpan? MaxDuration = null, IReadOnlyList<string>? Choices = null);
+    TimeSpan? MinDuration = null, TimeSpan? MaxDuration = null, IReadOnlyList<string>? Choices = null, bool Multiple = false);
 
 public static class TileFields
 {
@@ -64,6 +65,11 @@ public static class TileFields
                     field = field with { Choices = ch.EnumerateArray().Select(x => x.GetString()!).ToList() };
                     break;
                 case FieldType.Pick or FieldType.Text:
+                    if (type == FieldType.Text && el.TryGetProperty("multiple", out var m))
+                    {
+                        if (m.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return ([], Error("has a \"multiple\" that is not true or false."));
+                        field = field with { Multiple = m.GetBoolean() };
+                    }
                     if (!el.TryGetProperty("choices", out var pc)) { if (type == FieldType.Pick) field = field with { Choices = [] }; break; }
                     if (pc.ValueKind != JsonValueKind.Array || pc.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String))
                         return ([], Error("has \"choices\" that are not a list of strings."));
@@ -131,9 +137,12 @@ public static class TileFields
     /// </summary>
     public static IReadOnlyList<string> PickChoices(TileField field, IEnumerable<string> live, JsonElement? own)
     {
-        var saved = own is { ValueKind: JsonValueKind.Array } list
-            ? list.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!)
-            : [];
+        IEnumerable<string> saved = own switch
+        {
+            { ValueKind: JsonValueKind.Array } list => list.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!),
+            { ValueKind: JsonValueKind.String } text when field.Multiple => ListItems(text.GetString()!), // so each can be taken out again
+            _ => [],
+        };
         return live.Concat(field.Choices ?? []).Concat(saved).Where(c => !string.IsNullOrWhiteSpace(c))
             .Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
     }
@@ -148,6 +157,19 @@ public static class TileFields
             .OrderBy(s => s.StartsWith(typed, StringComparison.CurrentCultureIgnoreCase) ? 0 : 1)
             .Take(max)
             .ToList();
+
+    /// <summary>The items of a comma-separated list, trimmed, without empty ones.</summary>
+    public static IReadOnlyList<string> ListItems(string text) =>
+        text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>A "multiple" field's suggestion clicked: <paramref name="item"/> leaves the list when it is in it (ignoring case), else joins its end.</summary>
+    public static string Toggle(string text, string item)
+    {
+        var items = ListItems(text).ToList();
+        var removed = items.RemoveAll(i => i.Equals(item, StringComparison.CurrentCultureIgnoreCase)) > 0;
+        if (!removed) items.Add(item);
+        return string.Join(", ", items);
+    }
 
     static string NumberHint(TileField f) => (f.Min, f.Max) switch
     {

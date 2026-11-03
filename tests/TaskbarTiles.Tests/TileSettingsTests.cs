@@ -269,4 +269,30 @@ public class TileSettingsTests
         Assert.Empty(TileFields.Suggest(all, "spotify")); // already typed
         Assert.Equal(2, TileFields.Suggest(all, "", max: 2).Count);
     }
+
+    [Fact]
+    public void A_text_field_may_hold_a_list()
+    {
+        var (fields, error) = Parse("""[ { "key": "app", "label": "Apps", "type": "text", "multiple": true, "choices": ["Any"] } ]""");
+        Assert.Null(error);
+        Assert.True(fields[0].Multiple);
+        Assert.Equal("t.json: field 1 has a \"multiple\" that is not true or false.",
+            Parse("""[ { "key": "app", "label": "Apps", "type": "text", "multiple": "yes" } ]""").Error);
+    }
+
+    [Theory]
+    [InlineData("", "Spotify", "Spotify")]
+    [InlineData("Spotify", "Firefox", "Spotify, Firefox")]
+    [InlineData("Spotify, firefox", "Firefox", "Spotify")]
+    [InlineData(" Spotify ,, Edge ", "Chrome", "Spotify, Edge, Chrome")]
+    public void A_suggestion_toggles_its_item_in_a_list(string text, string item, string expected) =>
+        Assert.Equal(expected, TileFields.Toggle(text, item));
+
+    [Fact]
+    public void A_list_saved_earlier_offers_each_of_its_items()
+    {
+        var field = new TileField("app", "Apps", FieldType.Text, Choices: ["Any", "Spotify"], Multiple: true);
+        Assert.Equal(["Firefox", "Any", "Spotify", "VLC"],
+            TileFields.PickChoices(field, ["Firefox"], Json("\"Spotify, VLC\"")));
+    }
 }
