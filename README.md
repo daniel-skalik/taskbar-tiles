@@ -2,6 +2,8 @@
 
 Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, a ping, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
 
+![Tiles on the taskbar: Spotify, Claude usage, the cozy farm, CPU and a mouse battery](docs/images/tiles.png)
+
 Made for Windows 11 (64-bit).
 
 ## Install
@@ -18,6 +20,9 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 
 - **Add a tile:** the **+** button at the end of your tiles. Tiles are grouped in folders, for example **Fun › Games**.
 - **Details:** click a tile for its popup, with actions and a ⚙ for its settings (also right-click › **Settings…**).
+
+  <img src="docs/images/popup.png" alt="The Claude usage tile's popup: 5-hour and weekly limits with reset times" width="320">
+
 - **Move or remove tiles:** right-click a tile › **Edit layout**, then drag tiles or click their ×. Right-click › **Create stack…** puts several tiles in one slot.
 - **Exit:** right-click a tile › **More** › **Exit Taskbar Tiles**.
 
