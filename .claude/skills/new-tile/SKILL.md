@@ -147,6 +147,8 @@ A DLL kind is a class library with a connector:
   referencing `src/TaskbarTiles.Contracts` with `Private="false"` (the host provides it), a connector class marked
   `[TileConnector("<connector-id>", Width = 200)]` implementing `ITileConnector`, and the logic that turns data into
   a `TileState` and `FlyoutState` in a pure static class (`ClipboardView`, `SystemView`) so it can be unit-tested.
+- A connector that draws to fit the tile (a `TileState.Canvas`) reads `ctx.Width` (DIP) and redraws for the new
+  width on `ctx.Resized`, as `src/TaskbarTiles.Plugins.Scenes/SceneConnector.cs` does.
 - Call `ctx.Update` from any thread; it is cheap and only the latest state is drawn. Throw from connector methods
   only for fatal failures (the host restarts the connector with backoff); use `ctx.ReportError` or `ctx.Log.Warn`
   for the rest. Dispose everything in `DisposeAsync`.

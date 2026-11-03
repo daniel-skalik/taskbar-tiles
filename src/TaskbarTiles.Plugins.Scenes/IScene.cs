@@ -9,6 +9,9 @@ public interface IScene
     /// <summary>Shown first in the tooltip, e.g. "Snake".</summary>
     string Name { get; }
 
+    /// <summary>The width of the frames it draws, in pixels (<see cref="PixelCanvas.Height"/> high).</summary>
+    int Width { get; }
+
     /// <summary>A short, fun line for the tooltip, e.g. "score 14 · best 31". Scenes rebuild it only when it changes.</summary>
     string Status { get; }
 

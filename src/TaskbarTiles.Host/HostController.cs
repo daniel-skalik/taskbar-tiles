@@ -375,7 +375,11 @@ public sealed class HostController(
 
         foreach (var (id, entry) in _runtimes.ToList())
         {
-            if (plans.TryGetValue(id, out var plan) && plan.Fingerprint == entry.Fingerprint) continue;
+            if (plans.TryGetValue(id, out var plan) && plan.Fingerprint == entry.Fingerprint)
+            {
+                entry.Runtime.Resize(plan.Width); // a resized tile keeps running and is told its new width
+                continue;
+            }
             _runtimes.Remove(id);
             _ = entry.Runtime.DisposeAsync().AsTask();
         }

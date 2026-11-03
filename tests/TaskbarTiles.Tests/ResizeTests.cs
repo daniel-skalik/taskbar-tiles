@@ -154,4 +154,31 @@ public class ResizeTests
         Assert.Equal(200, view.Width);
         view.Detach();
     });
+
+    [Fact]
+    public async Task A_resized_tile_tells_its_connector_the_new_width()
+    {
+        var connector = new FakeConnector();
+        var runtime = new TileRuntime("a", "fake", 132, () => connector, JsonDocument.Parse("{}").RootElement.Clone(), new ImmediateDispatcher(), new CollectingLog());
+        await runtime.StartAsync();
+        var resized = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.Context!.Resized += (_, _) => resized.TrySetResult(connector.Context.Width);
+
+        Assert.Equal(132, connector.Context.Width);
+        runtime.Resize(250);
+
+        Assert.Equal(250, await resized.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public void Resizing_a_kept_tile_in_config_resizes_its_runtime()
+    {
+        var (host, _, bars) = Host();
+        var runtime = bars["MAIN"].Slots[0].Members[0];
+
+        Assert.Null(host.ResizeTiles(["a"], 300));
+
+        Assert.Equal(300, runtime.Width);
+    }
 }

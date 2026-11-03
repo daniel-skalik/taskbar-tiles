@@ -7,7 +7,8 @@ namespace TaskbarTiles.Plugins.Scenes;
 /// </summary>
 public sealed class AquariumScene : IScene
 {
-    const int W = PixelCanvas.Width, H = PixelCanvas.Height, SandTop = 16, ChestX = 80;
+    const int H = PixelCanvas.Height, SandTop = 16;
+    readonly int W, ChestX; // the chest sits 20 pixels from the right edge
 
     // Sprites face right. 1 body, 2 fins and tail, 3 eye, 4 belly, 5 stripe.
     static readonly string[][] FishArt =
@@ -85,13 +86,16 @@ public sealed class AquariumScene : IScene
     readonly int[] _weedX, _weedH;
     readonly float[] _weedPhase;
     readonly int[] _pebbleX, _pebbleY, _pebbleColor;
-    readonly int[] _sandTop = new int[W];
+    readonly int[] _sandTop;
     int _frame, _eaten, _chestOpen;
     string _status = "";
 
-    public AquariumScene(Random rng)
+    public AquariumScene(Random rng, int width = PixelCanvas.DefaultWidth)
     {
-        int count = 3 + rng.Next(4);
+        W = width;
+        ChestX = W - 20;
+        _sandTop = new int[W];
+        int count = Math.Clamp((3 + rng.Next(4)) * W / PixelCanvas.DefaultWidth, 2, 16); // as many per stretch of water as on the default tile
         _fish = new Fish[count];
         for (int i = 0; i < count; i++)
         {
@@ -100,7 +104,7 @@ public sealed class AquariumScene : IScene
             {
                 Kind = kind,
                 Palette = (i + rng.Next(Palettes.Length)) % Palettes.Length,
-                X = 4 + rng.Next(W - 14),
+                X = 4 + rng.Next(Math.Max(1, W - 14)),
                 Y = 1 + rng.Next(SandTop - 6),
                 Dir = rng.Next(2) == 0 ? -1 : 1,
                 Speed = 0.12f + (float)rng.NextDouble() * 0.18f + (2 - kind) * 0.04f,
@@ -112,19 +116,19 @@ public sealed class AquariumScene : IScene
         for (int x = 0; x < W; x++)
             _sandTop[x] = SandTop + (Math.Sin(x * 0.11) + Math.Sin(x * 0.29 + 1) * 0.5 > 0.9 ? -1 : 0);
 
-        int weeds = 5;
+        int[] spots = [6, 21, 47, 63, 92]; // on the default tile; wider ones repeat the pattern
+        int weeds = Math.Max(2, spots.Length * W / PixelCanvas.DefaultWidth);
         _weedX = new int[weeds];
         _weedH = new int[weeds];
         _weedPhase = new float[weeds];
-        int[] spots = [6, 21, 47, 63, 92];
         for (int i = 0; i < weeds; i++)
         {
-            _weedX[i] = spots[i] + rng.Next(3) - 1;
+            _weedX[i] = (spots[i % spots.Length] + i / spots.Length * PixelCanvas.DefaultWidth) * W / (weeds * PixelCanvas.DefaultWidth / spots.Length) + rng.Next(3) - 1;
             _weedH[i] = 6 + rng.Next(7);
             _weedPhase[i] = (float)rng.NextDouble() * 6.28f;
         }
 
-        int pebbles = 10;
+        int pebbles = Math.Max(4, W / 10);
         _pebbleX = new int[pebbles];
         _pebbleY = new int[pebbles];
         _pebbleColor = new int[pebbles];
@@ -139,6 +143,7 @@ public sealed class AquariumScene : IScene
     }
 
     public string Name => "Aquarium";
+    public int Width => W;
     public string Status => _status;
 
     public int FishCount => _fish.Length;
@@ -151,7 +156,7 @@ public sealed class AquariumScene : IScene
 
     public void OnClick(DateTime now, Random rng)
     {
-        int x = 10 + rng.Next(W - 20);
+        int x = 10 + rng.Next(Math.Max(1, W - 20));
         int added = 0;
         for (int i = 0; i < _flakes.Length && added < 6; i++)
         {
@@ -273,7 +278,7 @@ public sealed class AquariumScene : IScene
                 r.X += 0.03f;
                 if (r.Age >= r.Life) r.Life = 0;
             }
-            else if (rng.Next(250) == 0) r = new Ray { X = rng.Next(W - 10), Age = 0, Life = 80 + rng.Next(80) };
+            else if (rng.Next(250) == 0) r = new Ray { X = rng.Next(Math.Max(1, W - 10)), Age = 0, Life = 80 + rng.Next(80) };
         }
     }
 

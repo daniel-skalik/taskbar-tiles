@@ -25,8 +25,11 @@ public sealed class SnakeScene : IScene
     bool _won;
     string _status = "";
 
-    /// <summary>A 50 × 9 board that moves every second frame. Tests use small boards and one move per step.</summary>
-    public SnakeScene(Random rng, int width = PixelCanvas.Width / Cell, int height = PixelCanvas.Height / Cell, int framesPerMove = 2)
+    /// <summary>
+    /// A board <paramref name="width"/> × <paramref name="height"/> cells of 2 × 2 pixels (50 × 9 for the default tile)
+    /// that moves every second frame. Tests use small boards and one move per step.
+    /// </summary>
+    public SnakeScene(Random rng, int width = PixelCanvas.DefaultWidth / Cell, int height = PixelCanvas.Height / Cell, int framesPerMove = 2)
     {
         if (width < 4 || height < 2) throw new ArgumentOutOfRangeException(nameof(width), "The board is too small.");
         _w = width;
@@ -42,6 +45,7 @@ public sealed class SnakeScene : IScene
     }
 
     public string Name => "Snake";
+    public int Width => _w * Cell;
     public string Status => _status;
 
     public int GridWidth => _w;
@@ -275,7 +279,7 @@ public sealed class SnakeScene : IScene
     {
         var canvas = new PixelCanvas(pixels);
         canvas.Clear(Border);
-        int ox = (PixelCanvas.Width - _w * Cell) / 2, oy = 0;
+        int ox = (canvas.Width - _w * Cell) / 2, oy = 0;
         for (int y = 0; y < _h; y++)
             for (int x = 0; x < _w; x++)
                 canvas.Fill(ox + x * Cell, oy + y * Cell, Cell, Cell, ((x + y) & 1) == 0 ? BoardA : BoardB);

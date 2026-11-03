@@ -108,7 +108,7 @@ public sealed class TileRuntime : IAsyncDisposable
     {
         TileId = tileId;
         ConnectorId = connectorId;
-        Width = width;
+        _width = width;
         _createConnector = createConnector;
         _settings = settings;
         _ui = ui;
@@ -118,7 +118,19 @@ public sealed class TileRuntime : IAsyncDisposable
 
     public string TileId { get; }
     public string ConnectorId { get; }
-    public double Width { get; }
+    /// <summary>The tile's width in DIP; connectors read it through ITileContext.Width, on their own threads.</summary>
+    public double Width => Volatile.Read(ref _width);
+    double _width;
+
+    /// <summary>The user resized the tile: connectors hear it through ITileContext.Resized, on the thread pool.</summary>
+    public void Resize(double width)
+    {
+        if (width == Width) return;
+        Volatile.Write(ref _width, width);
+        if (IsDisposed || Volatile.Read(ref _current) is not { } instance) return;
+        _ = Task.Run(() => instance.Context.RaiseResized(ex =>
+            _log.Warn($"Tile '{TileId}' ({ConnectorId}) failed in a Resized handler: {ex.Message}")));
+    }
 
     /// <summary>Whether the bar may shrink this tile to an icon when space runs out.</summary>
     public bool CanCompact => _options.CanCompact;

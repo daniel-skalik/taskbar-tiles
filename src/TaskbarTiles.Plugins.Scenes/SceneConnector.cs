@@ -39,15 +39,32 @@ public abstract class SceneConnector : ITileConnector
         _ctx = ctx;
         lock (_gate)
         {
-            _scene = CreateScene(ctx, _rng);
+            _scene = CreateScene(ctx, _rng, PixelCanvas.WidthFor(ctx.Width));
             Frame();
         }
+        ctx.Resized += OnResized;
         if (!_disposed) _loop = LoopAsync(_stopping);
         return Task.CompletedTask;
     }
 
-    /// <summary>The scene this tile shows, made once per start (the host restarts the connector when settings change).</summary>
-    protected abstract IScene CreateScene(ITileContext ctx, Random rng);
+    /// <summary>
+    /// The scene this tile shows, drawing frames <paramref name="width"/> pixels wide; made once per start (the host
+    /// restarts the connector when settings change) and again when the tile is resized.
+    /// </summary>
+    protected abstract IScene CreateScene(ITileContext ctx, Random rng, int width);
+
+    // A scene is laid out for its width, so a resized tile starts a fresh one: the fish, farm or race as wide as the tile.
+    void OnResized(object? sender, EventArgs e)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _ctx is not { } ctx || _scene is null) return;
+            var width = PixelCanvas.WidthFor(ctx.Width);
+            if (width == _scene.Width) return;
+            _scene = CreateScene(ctx, _rng, width);
+            Frame();
+        }
+    }
 
     async Task LoopAsync(CancellationToken ct)
     {
@@ -77,7 +94,7 @@ public abstract class SceneConnector : ITileConnector
     void Frame()
     {
         var scene = _scene!;
-        var pixels = PixelCanvas.NewFrame();
+        var pixels = PixelCanvas.NewFrame(scene.Width);
         scene.Render(pixels);
         var status = scene.Status;
         if (!ReferenceEquals(scene.Name, _lastName) || !ReferenceEquals(status, _lastStatus))
@@ -86,7 +103,7 @@ public abstract class SceneConnector : ITileConnector
             _lastStatus = status;
             _tooltip = string.IsNullOrEmpty(status) ? scene.Name : $"{scene.Name} · {status}";
         }
-        _ctx?.Update(new TileState { Canvas = new TileCanvas(PixelCanvas.Width, PixelCanvas.Height, pixels), Tooltip = _tooltip });
+        _ctx?.Update(new TileState { Canvas = new TileCanvas(scene.Width, PixelCanvas.Height, pixels), Tooltip = _tooltip });
     }
 
     public Task OnActionAsync(string actionId, CancellationToken ct)
@@ -108,6 +125,7 @@ public abstract class SceneConnector : ITileConnector
     {
         if (_disposed) return;
         _disposed = true;
+        if (_ctx is { } ctx) ctx.Resized -= OnResized;
         _stop.Cancel();
         if (_loop is not null) await _loop;
         _stop.Dispose();
@@ -119,7 +137,7 @@ public sealed class AquariumConnector : SceneConnector
 {
     public AquariumConnector() { }
     public AquariumConnector(Random rng, Func<DateTime> clock) : base(rng, clock) { }
-    protected override IScene CreateScene(ITileContext ctx, Random rng) => new AquariumScene(rng);
+    protected override IScene CreateScene(ITileContext ctx, Random rng, int width) => new AquariumScene(rng, width);
 }
 
 [TileConnector("snake", Width = 200)]
@@ -127,7 +145,7 @@ public sealed class SnakeConnector : SceneConnector
 {
     public SnakeConnector() { }
     public SnakeConnector(Random rng, Func<DateTime> clock) : base(rng, clock) { }
-    protected override IScene CreateScene(ITileContext ctx, Random rng) => new SnakeScene(rng);
+    protected override IScene CreateScene(ITileContext ctx, Random rng, int width) => new SnakeScene(rng, width / 2);
 }
 
 [TileConnector("racers", Width = 200)]
@@ -135,7 +153,7 @@ public sealed class RacersConnector : SceneConnector
 {
     public RacersConnector() { }
     public RacersConnector(Random rng, Func<DateTime> clock) : base(rng, clock) { }
-    protected override IScene CreateScene(ITileContext ctx, Random rng) => new RacersScene(rng);
+    protected override IScene CreateScene(ITileContext ctx, Random rng, int width) => new RacersScene(rng, width);
 }
 
 /// <summary>Settings: "latitude", "longitude", "workStart", "workEnd"; see <see cref="FarmOptions"/>.</summary>
@@ -146,5 +164,6 @@ public sealed class FarmConnector : SceneConnector
 
     public FarmConnector() { }
     public FarmConnector(Random rng, Func<DateTime> clock, Func<(double, double)?>? region = null) : base(rng, clock) => _region = region;
-    protected override IScene CreateScene(ITileContext ctx, Random rng) => new FarmScene(rng, FarmOptions.FromSettings(ctx.Settings, ctx.Log, _region));
+    protected override IScene CreateScene(ITileContext ctx, Random rng, int width) =>
+        new FarmScene(rng, FarmOptions.FromSettings(ctx.Settings, ctx.Log, _region), width);
 }
