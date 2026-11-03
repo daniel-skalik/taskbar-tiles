@@ -1,13 +1,16 @@
 <#
 .SYNOPSIS
-    Builds Taskbar Tiles and installs it for the current user. install.cmd in the repository root runs this script.
+    Installs Taskbar Tiles for the current user: builds it from the repository, or copies it from a release zip.
+    install.cmd next to this tools folder runs this script.
 
 .DESCRIPTION
     Run it from your own terminal or by double-clicking install.cmd (not from an agent session: the Claude desktop app
     redirects an agent's writes under %LOCALAPPDATA% to a private copy). Safe to run again; each run replaces the
     installed app and the bundled tile kinds.
 
-    1. Publishes src\TaskbarTiles.Host (Release) into a staging folder next to the install folder and verifies it.
+    1. Puts the new build into a staging folder next to the install folder and verifies it. In a release zip (an app
+       folder next to tools, see package.ps1) it copies app\; in the repository it publishes src\TaskbarTiles.Host
+       (Release), which needs the .NET 9 SDK.
     2. Stops TaskbarTiles.exe if it runs from the install folder.
     3. Swaps the staging folder in for the install folder.
     4. Replaces the bundled tile kinds uptime, ping, media, claude, claude-usage, battery, clipboard, system, aquarium, snake,
@@ -15,7 +18,7 @@
     5. Creates or updates the TaskbarTiles shortcut in the Startup folder.
     6. Starts the installed app.
 
-    If the publish fails, the running app and the installed copy are left untouched.
+    If the publish or copy fails, the running app and the installed copy are left untouched. uninstall.cmd removes it.
 
     Your config.json, logs and every other folder in tiles\ (your own kinds) are never touched. To change a bundled
     kind, copy its folder under a new name first: install replaces tiles\uptime, tiles\ping, tiles\media, tiles\claude-usage,
@@ -50,6 +53,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repo 'src\TaskbarTiles.Host\TaskbarTiles.Host.csproj'
+$packaged = Join-Path $repo 'app' # a release zip ships the published app here instead of the sources
 $AppDir = [System.IO.Path]::GetFullPath($AppDir).TrimEnd('\')
 $exe = Join-Path $AppDir 'TaskbarTiles.exe'
 $stage = "$AppDir.new"
@@ -58,17 +62,32 @@ $TilesDir = [System.IO.Path]::GetFullPath($TilesDir).TrimEnd('\')
 $bundledKinds = @('uptime', 'ping', 'media', 'claude', 'claude-usage', 'battery', 'clipboard', 'system', 'aquarium', 'snake', 'racers', 'cozy-farm') # replaced on every install; other folders in tiles\ are the user's
 $retiredKinds = @('pixel-scene') # bundled once, now split up or gone; removed on install
 
-if (-not (Test-Path -LiteralPath $project)) { throw "Cannot find $project. Run this script from the repository's tools folder." }
+$fromZip = Test-Path -LiteralPath (Join-Path $packaged 'TaskbarTiles.exe')
+if (-not $fromZip -and -not (Test-Path -LiteralPath $project)) {
+    throw "Cannot find $packaged\TaskbarTiles.exe or $project. Run install.cmd from the unzipped release or the repository."
+}
 
-# 1. Publish into a staging folder and verify it. A failure here leaves the running app and the install untouched.
+# 1. Stage the new build and verify it. A failure here leaves the running app and the install untouched.
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-Write-Host "Publishing Release into $stage ..."
-# --disable-build-servers: a build node left running by another process (for example an agent session, whose
-# writes the Claude desktop app redirects) would otherwise do the copy, and the files land somewhere else.
-& dotnet publish $project -c Release -o $stage --nologo --disable-build-servers
-if ($LASTEXITCODE -ne 0) {
-    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-    throw "dotnet publish failed with exit code $LASTEXITCODE. The installed app was not changed."
+if ($fromZip) {
+    Write-Host "Copying $packaged into $stage ..."
+    try { Copy-Item -LiteralPath $packaged -Destination $stage -Recurse }
+    catch {
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        throw "Could not copy the app: $($_.Exception.Message) The installed app was not changed."
+    }
+} else {
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        throw 'Building from source needs the .NET 9 SDK (https://dotnet.microsoft.com/download). Or install from a release zip.'
+    }
+    Write-Host "Publishing Release into $stage ..."
+    # --disable-build-servers: a build node left running by another process (for example an agent session, whose
+    # writes the Claude desktop app redirects) would otherwise do the copy, and the files land somewhere else.
+    & dotnet publish $project -c Release -o $stage --nologo --disable-build-servers
+    if ($LASTEXITCODE -ne 0) {
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        throw "dotnet publish failed with exit code $LASTEXITCODE. The installed app was not changed."
+    }
 }
 foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
         (Join-Path $stage 'plugins\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.dll'),
@@ -87,10 +106,10 @@ foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
         (Join-Path $stage 'tiles\cozy-farm\TaskbarTiles.Plugins.Scenes.dll'))) {
     if (-not (Test-Path -LiteralPath $required)) {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-        throw "Publish output is missing $required. The installed app was not changed."
+        throw "The new build is missing $required. The installed app was not changed."
     }
 }
-Write-Host 'Published and verified the new build.'
+Write-Host 'Verified the new build.'
 
 # 2. Stop the installed copy so its folder can be replaced. Copies running from elsewhere are left alone.
 $running = @(Get-Process -Name TaskbarTiles -ErrorAction SilentlyContinue)

@@ -5,7 +5,10 @@
     The MSBuild task copies the item's metadata (Kind) onto its TargetOutputs.
   -->
   <Target Name="_ResolvePluginOutputs" Condition="'@(PluginProject)' != ''">
-    <MSBuild Projects="@(PluginProject)" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+    <!-- Plugins are runtime-neutral libraries, built so by their ProjectReference: a self-contained publish (-r win-x64)
+         must not look for them in a RID folder. -->
+    <MSBuild Projects="@(PluginProject)" Targets="GetTargetPath" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained">
       <Output TaskParameter="TargetOutputs" ItemName="_PluginTargetPath" />
     </MSBuild>
     <ItemGroup>
