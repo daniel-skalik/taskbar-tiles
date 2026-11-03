@@ -7,7 +7,7 @@ using Windows.Storage.Streams;
 namespace TaskbarTiles.Plugins.Media;
 
 /// <summary>
-/// Now-playing tile for an app's Windows media session (Spotify by default). Setting "app" names one app, several
+/// Now-playing tile for an app's Windows media session (any app by default). Setting "app" names one app, several
 /// ("Spotify, Firefox": the one playing, else the first listed) or "Any"; see <see cref="AppFilter"/>.
 /// Ported from SpotifyTaskbar: no Spotify API or login, just the system media controls.
 /// The song's position shows as a thin bar along the tile's bottom edge, moved every second while it plays.
@@ -17,8 +17,8 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
 {
     readonly SemaphoreSlim _gate = new(1, 1);
     ITileContext? _ctx;
-    AppFilter _filter = AppFilter.Parse("Spotify");
-    string _launch = "spotify:"; // empty: nothing to open (with "Any")
+    AppFilter _filter = AppFilter.Parse("Any");
+    string _launch = ""; // empty: nothing to open (with "Any")
     GlobalSystemMediaTransportControlsSessionManager? _manager;
     readonly object _pickLock = new();
     volatile GlobalSystemMediaTransportControlsSession? _session;
@@ -59,9 +59,10 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
     public Task<IReadOnlyList<string>> GetChoicesAsync(string key, CancellationToken ct)
     {
         if (key != "app" || _manager is not { } manager) return Task.FromResult<IReadOnlyList<string>>([]);
+        // "Any" stays the first suggestion, ahead of the apps playing now.
         IReadOnlyList<string> names = manager.GetSessions()
             .Select(s => AppNames.DisplayName(s.SourceAppUserModelId) ?? AppName(s.SourceAppUserModelId))
-            .Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            .Where(n => n.Length > 0).Prepend("Any").Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return Task.FromResult(names);
     }
 

@@ -11,8 +11,8 @@ anything; they are the reference and this skill does not repeat them:
 
 - `docs/script-connectors.md`: hooks, environment variables, tile and popup JSON, glyphs, colors, errors.
 - `docs/configuration.md`, section "Tile kinds" and "Tile settings": every `tile.json` key and the Settings dialog fields.
-- A bundled kind close to what you need, as a model: `tiles/uptime` (simplest), `tiles/ping` (setting, button,
-  popup, action), `tiles/claude-usage` (fields, image, cache, web request).
+- A bundled kind close to what you need, as a model: `tiles/uptime` (simplest, with a popup),
+  `tiles/claude-usage` (fields, image, cache, web request); buttons and actions are in `docs/script-connectors.md`.
 
 ## 1. Settle what it is
 
@@ -30,8 +30,8 @@ From the user's words, decide and say in one or two lines (ask only what you can
 
 Pick a short lowercase kind id with dashes (`github-notifications`), a `name` for the picker, a one-line
 `description`, and a `group` folder for the picker. Reuse a group the bundled kinds use when one fits
-(`grep '"group"' tiles/*/tile.json`; for example `"Fun/Games"`, `"Fun/Scenes"`); otherwise pick a short plain one
-such as `"Network"` or `"Dev"`.
+(`grep '"group"' tiles/*/tile.json`; for example `"Fun"`, `"System"`); otherwise pick a short plain one
+such as `"Network"` or `"Dev"`. A group with only one tile is shown flat, not as a folder.
 
 ## 2. Write it in `my-tiles\<id>\`
 
