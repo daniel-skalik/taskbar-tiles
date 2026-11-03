@@ -218,12 +218,13 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="Bd" CornerRadius="5" BorderThickness="1" Padding="{TemplateBinding Padding}"
+                    <!-- The TextBox hands Padding to its text view itself; padding the border too would indent the text twice. -->
+                    <Border x:Name="Bd" CornerRadius="5" BorderThickness="1" Padding="0,5"
                             Background="{DynamicResource TileFill}" BorderBrush="{DynamicResource TileOutline}">
                         <Grid>
                             <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
-                            <!-- Tag: dim text shown while the box is empty, e.g. the default; 2,0 is where the text view starts -->
-                            <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="2,0" VerticalAlignment="Center"
+                            <!-- Tag: dim text shown while the box is empty, e.g. the default; laid out like the text view (Padding, then 2 for the caret) -->
+                            <TextBlock x:Name="Placeholder" Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}" Padding="2,0" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TileDim}" IsHitTestVisible="False" Visibility="Collapsed"/>
                         </Grid>
                     </Border>
