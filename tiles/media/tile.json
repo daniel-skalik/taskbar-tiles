@@ -5,7 +5,7 @@
   "connector": "media",
   "compact": false,
   "fields": [
-    { "key": "app", "label": "App", "type": "text", "choices": ["Spotify", "Chrome", "MSEdge"], "help": "The app whose media controls the tile follows, matched by name. Apps playing now are suggested first." }
+    { "key": "app", "label": "App", "type": "text", "choices": ["Spotify", "Firefox", "Chrome", "Edge"], "help": "The app whose media controls the tile follows, by its name in the Start menu (or part of it). Apps playing now are suggested first." }
   ],
   "settings": { "app": "Spotify" }
 }

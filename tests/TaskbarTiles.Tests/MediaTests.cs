@@ -38,4 +38,18 @@ public class MediaTests
         Assert.Equal(name, MediaConnector.AppName(aumid));
         Assert.Contains(name, aumid, StringComparison.OrdinalIgnoreCase); // "app" matches by containment
     }
+
+    [Theory]
+    [InlineData("308046B0AF4A39CB", "Firefox", "firefox", true)]                 // by its Start menu name
+    [InlineData("Spotify.exe", null, "Spotify", true)]                           // by its id, as before
+    [InlineData("MSEdge", "Microsoft Edge", "Edge", true)]
+    [InlineData("Chrome", "Google Chrome", "Firefox", false)]
+    [InlineData("308046B0AF4A39CB", null, "Firefox", false)]                     // no name known: only the id matches
+    [InlineData("Spotify.exe", null, "", false)]
+    public void A_session_matches_by_id_or_by_name(string aumid, string? name, string app, bool matches) =>
+        Assert.Equal(matches, AppNames.Matches(aumid, name, app));
+
+    [Fact]
+    public void An_id_the_shell_does_not_know_has_no_name() =>
+        Assert.Null(AppNames.DisplayName("TaskbarTiles.NoSuchApp.4F2A"));
 }

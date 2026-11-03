@@ -51,11 +51,15 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
         _ticker = TickAsync(_stop.Token);
     }
 
-    /// <summary>The apps with a media session now, as names "app" matches, for the settings dialog's suggestions.</summary>
+    /// <summary>
+    /// The apps with a media session now, as names "app" matches, for the settings dialog's suggestions: their Start
+    /// menu name ("Firefox", "Media Player") where Windows knows one, else a short form of the session id.
+    /// </summary>
     public Task<IReadOnlyList<string>> GetChoicesAsync(string key, CancellationToken ct)
     {
         if (key != "app" || _manager is not { } manager) return Task.FromResult<IReadOnlyList<string>>([]);
-        IReadOnlyList<string> names = manager.GetSessions().Select(s => AppName(s.SourceAppUserModelId))
+        IReadOnlyList<string> names = manager.GetSessions()
+            .Select(s => AppNames.DisplayName(s.SourceAppUserModelId) ?? AppName(s.SourceAppUserModelId))
             .Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return Task.FromResult(names);
     }
@@ -175,7 +179,7 @@ public sealed class MediaConnector : ITileConnector, ITileChoices
     {
         if (_disposed) return;
         var match = _manager?.GetSessions()
-            .FirstOrDefault(x => x.SourceAppUserModelId.Contains(_app, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(x => AppNames.Matches(x.SourceAppUserModelId, AppNames.DisplayName(x.SourceAppUserModelId), _app));
         if (match == _session) return;
 
         if (_session is not null)
