@@ -30,6 +30,7 @@ public partial class TileView : UserControl
         // Inner radius: the Root's 6 less its 1px border.
         ProgressClip.SizeChanged += (_, e) => ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SceneClip.SizeChanged += (_, e) => SceneClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+        SparkClip.SizeChanged += (_, e) => SparkClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkHost.SizeChanged += (_, _) => RenderSparkline();
         Runtime = runtime;
         _isLightTheme = isLightTheme;
@@ -105,6 +106,7 @@ public partial class TileView : UserControl
         Root.Padding = _compact ? new Thickness(5, 0, 5, 0) : new Thickness(6, 0, 6, 0); // 5 + 28 + 5 + 2 border = 40 DIP
         ProgressClip.Margin = new Thickness(-Root.Padding.Left, 0, -Root.Padding.Right, 0); // the bar runs edge to edge
         SceneClip.Margin = ProgressClip.Margin;
+        SparkClip.Margin = ProgressClip.Margin;
         Scene.Source = Theme.FromPixels(s.Canvas);
         TextPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
         ExtrasPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
@@ -154,7 +156,7 @@ public partial class TileView : UserControl
     }
 
     /// <summary>
-    /// The sparkline across the area behind the text, with a faint fill below it: scaled 0..SparklineMax when the state
+    /// The sparkline across the whole tile, behind the icon and text, with a faint fill below it: scaled 0..SparklineMax when the state
     /// gives one (a percentage stays low when low), else from its own minimum to maximum. Redrawn when the tile resizes.
     /// </summary>
     void RenderSparkline()
@@ -173,7 +175,7 @@ public partial class TileView : UserControl
         var line = new PointCollection(values.Count);
         for (var i = 0; i < values.Count; i++)
         {
-            var y = range <= 0 ? h / 2 : h - 1 - Math.Clamp((values[i] - min) / range, 0, 1) * (h - 2);
+            var y = range <= 0 ? h / 2 : h - 1 - Math.Clamp((values[i] - min) / range, 0, 1) * (h - 4); // 3 px headroom at the top edge
             line.Add(new Point(i * w / (values.Count - 1), y));
         }
         var area = new PointCollection(line) { new Point(w, h), new Point(0, h) };

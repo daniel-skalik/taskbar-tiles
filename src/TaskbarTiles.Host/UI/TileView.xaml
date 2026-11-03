@@ -17,6 +17,14 @@
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
 
+            <!-- TileState.Sparkline across the whole tile behind the icon and text, edge to edge like the scene. -->
+            <Grid x:Name="SparkClip" Grid.ColumnSpan="3" Margin="-6,0" IsHitTestVisible="False">
+                <Canvas x:Name="SparkHost" Visibility="Collapsed">
+                    <Polygon x:Name="SparkArea" Fill="#337AA2F7"/>
+                    <Polyline x:Name="Spark" StrokeThickness="1.5" Stroke="#B37AA2F7" StrokeLineJoin="Round"/>
+                </Canvas>
+            </Grid>
+
             <Grid x:Name="IconHost" Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center">
                 <Border x:Name="IconBackground" CornerRadius="5"/>
                 <TextBlock x:Name="IconGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
@@ -27,13 +35,6 @@
                     </Image.Clip>
                 </Image>
             </Grid>
-
-            <!-- TileState.Sparkline behind the text, from the text's left edge to the tile's right edge. -->
-            <Canvas x:Name="SparkHost" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,5,0,4" ClipToBounds="True"
-                    IsHitTestVisible="False" Visibility="Collapsed">
-                <Polygon x:Name="SparkArea" Fill="#337AA2F7"/>
-                <Polyline x:Name="Spark" StrokeThickness="1.5" Stroke="#B37AA2F7" StrokeLineJoin="Round"/>
-            </Canvas>
 
             <StackPanel x:Name="TextPanel" Grid.Column="1" VerticalAlignment="Center" Margin="0,0,4,0">
                 <TextBlock x:Name="TitleText" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
