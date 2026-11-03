@@ -1,0 +1,36 @@
+# Pushing a tag such as v1.0.0 tests the tagged commit, builds the release zip (tools\package.ps1) and publishes it
+# as a GitHub release with notes generated from the commits since the previous release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release and upload the zip
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Test
+        run: dotnet test -c Release --disable-build-servers
+
+      - name: Package
+        shell: pwsh
+        run: ./tools/package.ps1 -Version '${{ github.ref_name }}'
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $zip = "artifacts/package/TaskbarTiles-$version-win-x64.zip"
+          gh release create '${{ github.ref_name }}' $zip --title "Taskbar Tiles $version" --generate-notes
