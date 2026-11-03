@@ -356,16 +356,42 @@ public sealed class TileBar : Window, ITileBarView
         catch (Exception ex) { _log.Error("Could not show the save notice", ex); }
     }
 
-    /// <summary>The + button: tiles this display does not show yet, a new tile per plugin, and the sample scripts.</summary>
-    void ShowGallery()
+    /// <summary>
+    /// The + button: tiles this display does not show yet and a new tile per kind, in the folder <paramref name="path"/>
+    /// of the kinds' groups ("" for the top level). A folder button opens that folder in a new panel.
+    /// </summary>
+    void ShowGallery(string path = "")
     {
         if (Gallery() is not { } items) return;
-        var panel = PanelHeader("Add a tile", items.Count == 0
+        var panel = PanelHeader(FolderTitle("Add a tile", path), items.Count == 0
             ? "Nothing to add: every tile is on this display already."
-            : "It is added at the end of this display's tiles.");
-        panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
-            (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, side: Side)))))));
+            : "It is added at the end of this display's tiles.", BackFrom(path, ShowGallery));
+        panel.Children.Add(Buttons(FolderButtons(items, path, ShowGallery, item => Save(() => _editor.AddFromGallery(DisplayId, item, side: Side)))));
         FlyoutWindow.ShowPanel(_addButton, panel, _light ?? false, _log);
+    }
+
+    static string FolderTitle(string title, string path) => path.Length == 0 ? title : $"{title} · {path.Replace("/", " › ")}";
+
+    /// <summary>Below the top level: what the header's back button runs, opening the folder above.</summary>
+    static (string Tip, Action Click)? BackFrom(string path, Action<string> open)
+    {
+        if (path.Length == 0) return null;
+        var parent = TileGallery.Parent(path);
+        return ("Back to " + (parent.Length == 0 ? "all tiles" : parent.Replace("/", " › ")), () => open(parent));
+    }
+
+    /// <summary>
+    /// The buttons of one picker folder: its subfolders (opened with <paramref name="open"/>), then its choices (run
+    /// with <paramref name="pick"/>).
+    /// </summary>
+    static IEnumerable<(string Title, string Subtitle, Action Click)> FolderButtons(IReadOnlyList<GalleryItem> items, string path,
+        Action<string> open, Action<GalleryItem> pick)
+    {
+        var (folders, here) = TileGallery.Open(items, path);
+        foreach (var folder in folders)
+            yield return ($"{folder.Name} ›", folder.Count == 1 ? "1 tile" : $"{folder.Count} tiles", () => open(folder.Path));
+        foreach (var item in here)
+            yield return (item.Title, item.Subtitle, () => pick(item));
     }
 
     /// <summary>
@@ -373,15 +399,17 @@ public sealed class TileBar : Window, ITileBarView
     /// plain tiles (not in the clicked stack) first. The picked tile joins the clicked slot: a new stack where the clicked
     /// tile is, or the end of the clicked stack.
     /// </summary>
-    void ShowStackPicker(SlotView view)
+    void ShowStackPicker(SlotView view, string path = "")
     {
         if (Gallery() is not { } items) return;
         var target = view.Slot.Index;
         var clicked = view.Slot.Members[0].TileId;
         var choices = StackChoicesFor(view);
-        var panel = PanelHeader(view.Slot.IsStack ? "Add to stack" : "Create a stack", choices.Count + items.Count == 0
+        if (path.Length > 0) choices = []; // this display's tiles are listed at the top level only
+        var panel = PanelHeader(FolderTitle(view.Slot.IsStack ? "Add to stack" : "Create a stack", path), choices.Count + items.Count == 0
             ? "Nothing to stack with: add another tile first."
-            : view.Slot.IsStack ? "The tile you pick joins the end of this stack." : "The tile you pick is stacked with this one.");
+            : view.Slot.IsStack ? "The tile you pick joins the end of this stack." : "The tile you pick is stacked with this one.",
+            BackFrom(path, p => ShowStackPicker(view, p)));
         if (choices.Count > 0)
         {
             panel.Children.Add(Section("On this display"));
@@ -391,8 +419,8 @@ public sealed class TileBar : Window, ITileBarView
         if (items.Count > 0)
         {
             if (choices.Count > 0) panel.Children.Add(Section("Add a tile"));
-            panel.Children.Add(Buttons(items.Select(item => (item.Title, item.Subtitle,
-                (Action)(() => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target, side: Side)))))));
+            panel.Children.Add(Buttons(FolderButtons(items, path, p => ShowStackPicker(view, p),
+                item => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target, side: Side)))));
         }
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
         FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);
@@ -471,13 +499,38 @@ public sealed class TileBar : Window, ITileBarView
         }
     }
 
-    static StackPanel PanelHeader(string title, string hint)
+    /// <summary>A panel's title and hint; <paramref name="back"/> adds a back button top right, where a popup has its gear.</summary>
+    static StackPanel PanelHeader(string title, string hint, (string Tip, Action Click)? back = null)
     {
         var panel = new StackPanel();
-        panel.Children.Add(FlyoutWindow.Text(title, 14, FontWeights.SemiBold, "TileForeground"));
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var titles = new StackPanel();
+        titles.Children.Add(FlyoutWindow.Text(title, 14, FontWeights.SemiBold, "TileForeground"));
         var text = FlyoutWindow.Text(hint, 12, FontWeights.Normal, "TileDim");
         text.Margin = new Thickness(0, 2, 0, 10);
-        panel.Children.Add(text);
+        titles.Children.Add(text);
+        header.Children.Add(titles);
+        if (back is var (tip, click))
+        {
+            var button = new Button
+            {
+                Content = "", // Back
+                ToolTip = tip,
+                Style = (Style)Application.Current.FindResource("IconButton"),
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(8, -6, -6, 0),
+            };
+            button.Click += (_, _) =>
+            {
+                FlyoutWindow.CloseOpen();
+                click();
+            };
+            Grid.SetColumn(button, 1);
+            header.Children.Add(button);
+        }
+        panel.Children.Add(header);
         return panel;
     }
 
@@ -504,6 +557,7 @@ public sealed class TileBar : Window, ITileBarView
             var button = new Button
             {
                 Content = content,
+                HorizontalContentAlignment = HorizontalAlignment.Left, // short folder names too, not centred
                 Margin = new Thickness(0, 0, 6, 6),
                 Padding = new Thickness(8, 6, 8, 6),
                 Style = TryFindResource("FlyoutButton") as Style,

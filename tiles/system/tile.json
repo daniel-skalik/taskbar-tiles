@@ -1,0 +1,12 @@
+{
+  "name": "System monitor",
+  "description": "CPU, memory, GPU, network and disk space",
+  "connector": "system",
+  "width": 200,
+  "fields": [
+    { "key": "show", "label": "Show", "type": "pick", "choices": ["CPU", "RAM", "GPU", "Network", "Disk"], "help": "What the tile shows." },
+    { "key": "layout", "label": "Layout", "type": "choice", "choices": ["All at once", "Rotate"], "help": "All at once fits everything on two lines; Rotate shows one at a time with its chart." },
+    { "key": "rotate", "label": "Rotate every", "type": "duration", "min": "2s", "max": "1m", "help": "Used by the Rotate layout." }
+  ],
+  "settings": { "layout": "All at once", "rotate": "5s" }
+}

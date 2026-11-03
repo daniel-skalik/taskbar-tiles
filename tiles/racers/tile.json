@@ -1,0 +1,7 @@
+{
+  "name": "Racers",
+  "description": "Pixel cars race for the win; click for a new race",
+  "group": "Fun/Games",
+  "connector": "racers",
+  "width": 200
+}

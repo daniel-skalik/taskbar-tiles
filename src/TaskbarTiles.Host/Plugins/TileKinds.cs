@@ -20,6 +20,7 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// working. Stamp changes when tile.json or a script in the folder changes; DllStamp when a DLL on disk does. Width is
 /// tile.json's "width", which replaces the connector's width when set; Compact is false when tile.json says
 /// "compact": false (its tiles never shrink to an icon). Fields are the settings dialog's inputs (tile.json's "fields").
+/// Group is where the + picker files it, a path such as "Fun/Games" (tile.json's "group"); "" for the top level.
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -34,7 +35,8 @@ public sealed record TileKind(
     string DllStamp,
     double? Width = null,
     bool Compact = true,
-    IReadOnlyList<TileField>? Fields = null)
+    IReadOnlyList<TileField>? Fields = null,
+    string Group = "")
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -76,7 +78,7 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
-    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null)
+    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "")
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -151,9 +153,21 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 fields = parsed;
             }
 
-            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields);
+            var group = "";
+            if (root.TryGetProperty("group", out var g))
+            {
+                if (g.ValueKind != JsonValueKind.String)
+                    return Broken($"{shownPath}: \"group\" must be text such as \"Fun/Games\".");
+                group = NormalizeGroup(g.GetString());
+            }
+
+            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group);
         }
     }
+
+    /// <summary>A group path with its parts trimmed and empty parts dropped: " Fun / /Games/" is "Fun/Games".</summary>
+    public static string NormalizeGroup(string? group) =>
+        string.Join('/', (group ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
     static string? Text(JsonElement root, string key) =>
         root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString())

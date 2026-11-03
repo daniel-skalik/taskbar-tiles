@@ -150,7 +150,12 @@ public static class FlyoutWindow
         if (state.Rows.Count > 0)
         {
             var rows = new StackPanel();
-            for (var i = 0; i < state.Rows.Count; i++) rows.Children.Add(Row(state.Rows[i], first: i == 0));
+            async void Invoke(string id)
+            {
+                try { CloseOpen(); await commands.InvokeAsync(runtime, id); }
+                catch (Exception ex) { log.Error($"Flyout row action '{id}' on tile '{runtime.TileId}' failed", ex); }
+            }
+            for (var i = 0; i < state.Rows.Count; i++) rows.Children.Add(Row(state.Rows[i], first: i == 0, Invoke));
             var card = new Border
             {
                 CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 14, 0, 0),
@@ -189,8 +194,11 @@ public static class FlyoutWindow
         return panel;
     }
 
-    /// <summary>One line of the rows card: dot, text, and the value on the right; a hairline above all but the first.</summary>
-    static Border Row(FlyoutRow row, bool first)
+    /// <summary>
+    /// One line of the rows card: dot, text, and the value on the right; a hairline above all but the first. A row with
+    /// an action highlights under the mouse and runs it on click.
+    /// </summary>
+    static Border Row(FlyoutRow row, bool first, Action<string> invoke)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -221,6 +229,20 @@ public static class FlyoutWindow
             Child = grid,
         };
         line.SetResourceReference(Border.BorderBrushProperty, "FlyoutDivider");
+        if (row.Action is not { } action) return line;
+
+        // The highlight reaches the card's edges; the hairline stays on the outer border.
+        var hover = new Border
+        {
+            Margin = new Thickness(-8, 0, -8, 0), Padding = new Thickness(8, 0, 8, 0), CornerRadius = new CornerRadius(4),
+            Background = Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand, Child = grid,
+        };
+        line.Child = hover;
+        hover.MouseEnter += (_, _) => hover.SetResourceReference(Border.BackgroundProperty, "ButtonHover");
+        hover.MouseLeave += (_, _) => hover.Background = Brushes.Transparent;
+        hover.MouseLeftButtonUp += (_, _) => invoke(action);
+        line.Padding = new Thickness(0, 3, 0, 3);
+        grid.Margin = new Thickness(0, 6, 0, 6);
         return line;
     }
 

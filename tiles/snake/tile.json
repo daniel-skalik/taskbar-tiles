@@ -1,0 +1,7 @@
+{
+  "name": "Snake",
+  "description": "A snake that plays itself; click to start over",
+  "group": "Fun/Games",
+  "connector": "snake",
+  "width": 200
+}

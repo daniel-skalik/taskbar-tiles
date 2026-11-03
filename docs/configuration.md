@@ -63,6 +63,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 {
   "name": "Ping a host",                    // shown in the + / stack picker (required)
   "description": "Pings a host every 15 s", // subtitle in the picker
+  "group": "Network",                       // folder of the + / stack picker, slash separated: "Fun/Games" (default: top level)
   "connector": "script",                    // "script", or a connector id declared by a DLL in this folder (required)
   "width": 132,                             // tile width, 48 to 640 (default: the connector's; 132 for scripts, 268 for media)
   "compact": true,                          // false: its tiles never shrink to an icon when space runs out (default true)
@@ -85,6 +86,7 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 - **DLL connectors:** a DLL in a kind folder is loaded only for that kind; its connector ids are private to the folder, so two kinds may ship a connector with the same id. DLLs load when Taskbar Tiles starts: after adding or changing a DLL, a notice asks you to exit and start Taskbar Tiles again (.NET cannot unload a DLL safely).
 - **Edits apply by themselves:** saving `tile.json` or a script (`.ps1`, `.psm1`, `.py`, `.cmd` or `.bat` directly in the kind folder) restarts only the tiles of that kind. Files a script writes into its own folder (logs, caches) do not restart it.
 - **Mistakes:** a `tile.json` that is not valid JSON or lacks `name` or `connector`, a DLL that does not load, two DLLs declaring the same connector id, or a `connector` no DLL in the folder declares makes the kind broken: its tiles show the error (naming the file, and the line for JSON errors), it is written to `logs\host.log`, and every other kind keeps working. `config.json` is rejected only for its own mistakes: a tile naming a kind with no folder in `tiles\` (or a folder without `tile.json`), `hooks` in a tile's settings, a tile without `kind`, or the old form `{ "connector": … }` (tiles from before tile folders: rewrite them as `{ "kind": "<folder>" }`).
+- **Picker folders:** `group` files new tiles of the kind in a folder of the + / stack picker; slashes nest folders (`"Fun/Games"` is Games inside Fun). Parts are trimmed and empty ones dropped; folders with the same name in a different case are one folder. Your existing tiles are always listed at the top.
 - A folder in `tiles\` without `tile.json` is not a kind.
 
 ### Tile settings
@@ -109,6 +111,27 @@ The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour wind
 - It reads every 5 minutes (setting `"refresh"`, `1m` to `1h`, also in **Settings…**) and on **Refresh now**, from the usage endpoint Claude Code's `/usage` uses, signed in with Claude Code's login in `%USERPROFILE%\.claude\.credentials.json` (or `%CLAUDE_CONFIG_DIR%`; setting `"credentials"` overrides the path). The token goes only to `api.anthropic.com` and is never stored elsewhere. The endpoint is not documented, so a Claude update may change it.
 - Claude Code renews the login while you use it. If it has expired, the tile says so until Claude Code runs again; numbers under an hour old keep showing in the meantime, with the reason in the tooltip.
 - Only Claude Pro and Max plans have these limits.
+
+### Clipboard peek
+
+The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. Copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
+
+### System monitor
+
+The bundled `system` kind shows CPU, memory, GPU, network speed and the fullest disk, sampled every second. **Settings…** → Show ticks which (setting `"show"`, e.g. `["CPU", "RAM"]`; all five without it). Layout `"All at once"` fits them on two lines; `"Rotate"` shows one at a time with its chart, switching every `"rotate"` (default `"5s"`). The icon turns orange at 80% and red at 95%. Click it for every metric and each drive's free space; **Task Manager** opens it.
+
+### Pixel scenes
+
+Four bundled kinds draw a tiny animated world across the whole tile; click to join in, hover for the score or status. In the + picker they are under **Fun**.
+
+- `aquarium` (Fun › Scenes): fish, bubbles and a treasure chest; a click drops food.
+- `cozy-farm` (Fun › Scenes): a farm that follows your clock and the real sun: dawn at sunrise, golden hour before sunset, then a starry night with fireflies. A click makes the farmer wave, or at night sends a shooting star. Settings, also in **Settings…**:
+  - `"workStart"` and `"workEnd"`: when the farmer is out in the field: `"sunrise"`, `"sunset"` or a 24-hour time such as `"7:30"` (default sunrise to sunset). The house sleeps from 23:00 to 5:30 whatever the hours.
+  - `"latitude"` and `"longitude"`: where to compute sunrise and sunset, in degrees (north and east positive). Empty: the middle of the country set in Windows (Settings › Time & language › Region); no location permission is used.
+- `snake` (Fun › Games): plays itself; a click starts over. Keeps its best score.
+- `racers` (Fun › Games): pixel cars race; a click starts a new race. Counts wins per color.
+
+Install removes the `pixel-scene` kind these replace; a tile still using it shows an error until you remove it and add one of these.
 
 ## Stacks
 

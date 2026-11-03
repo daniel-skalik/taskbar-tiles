@@ -245,7 +245,8 @@ public static class ScriptOutput
                 continue;
             }
             var icon = r.TryGetProperty("icon", out var iconEl) ? ReadIcon(iconEl, where + ".icon", w) : null;
-            list.Add(new FlyoutRow(text, Text(r, "value", w, where), icon));
+            var action = Text(r, "action", w, where);
+            list.Add(new FlyoutRow(text, Text(r, "value", w, where), icon, string.IsNullOrWhiteSpace(action) ? null : action));
         }
         return list;
     }

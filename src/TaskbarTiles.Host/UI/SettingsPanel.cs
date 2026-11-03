@@ -229,24 +229,12 @@ public static class SettingsPanel
                 }
                 default:
                 {
-                    var box = new TextBox { Text = current, Style = (Style)Application.Current.FindResource("FlyoutTextBox") };
-                    // The default shows dim behind the box while it is empty.
-                    var placeholder = FlyoutWindow.Text(_default, 13, FontWeights.Normal, "TileDim");
-                    placeholder.Margin = new Thickness(11, 0, 9, 0); // the box's padding and border
-                    placeholder.VerticalAlignment = VerticalAlignment.Center;
-                    placeholder.IsHitTestVisible = false;
-                    placeholder.Visibility = current.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-                    box.TextChanged += (_, _) =>
-                    {
-                        placeholder.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-                        Changed?.Invoke();
-                    };
+                    // The default shows dim in the box while it is empty.
+                    var box = new TextBox { Text = current, Tag = _default, Margin = new Thickness(0, 8, 0, 0), Style = (Style)Application.Current.FindResource("FlyoutTextBox") };
+                    box.TextChanged += (_, _) => Changed?.Invoke();
                     Input = () => box.Text;
                     _set = text => box.Text = text;
-                    var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
-                    grid.Children.Add(box);
-                    grid.Children.Add(placeholder);
-                    stack.Children.Add(grid);
+                    stack.Children.Add(box);
                     break;
                 }
             }

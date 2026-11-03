@@ -1,0 +1,10 @@
+{
+  "name": "Clipboard peek",
+  "description": "The last thing you copied, and your recent copies to copy again",
+  "connector": "clipboard",
+  "width": 200,
+  "fields": [
+    { "key": "history", "label": "Keep", "type": "number", "min": 1, "max": 50, "help": "How many recent copies the popup lists. They stay in memory only and are gone when the app closes." }
+  ],
+  "settings": { "history": 15 }
+}

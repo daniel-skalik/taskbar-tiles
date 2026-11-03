@@ -121,7 +121,7 @@ public static class TileFields
         { ValueKind: JsonValueKind.Number } v => v.GetDouble().ToString(CultureInfo.CurrentCulture),
         { ValueKind: JsonValueKind.True } => "true",
         { ValueKind: JsonValueKind.False } => "false",
-        null => "",
+        null or { ValueKind: JsonValueKind.Null } => "", // a null default: no value, the connector works one out
         var v => v.Value.GetRawText(),
     };
 

@@ -46,6 +46,19 @@ public class TileKindTests
             TileJson.Parse("""{ "name": "A", "connector": "script", "compact": "no" }""", "t.json").Error);
 
     [Theory]
+    [InlineData("""{ "name": "A", "connector": "script" }""", "")]
+    [InlineData("""{ "name": "A", "connector": "script", "group": "Fun/Games" }""", "Fun/Games")]
+    [InlineData("""{ "name": "A", "connector": "script", "group": " Fun / /Games/ " }""", "Fun/Games")]
+    [InlineData("""{ "name": "A", "connector": "script", "group": "  " }""", "")]
+    public void Tile_json_group_is_a_tidied_slash_separated_path(string json, string expected) =>
+        Assert.Equal(expected, TileJson.Parse(json, "t.json").Group);
+
+    [Fact]
+    public void Tile_json_group_that_is_not_text_breaks_the_kind() =>
+        Assert.Equal("t.json: \"group\" must be text such as \"Fun/Games\".",
+            TileJson.Parse("""{ "name": "A", "connector": "script", "group": ["Fun"] }""", "t.json").Error);
+
+    [Theory]
     [InlineData("\"wide\"")]
     [InlineData("10")]
     [InlineData("1000")]

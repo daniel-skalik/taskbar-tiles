@@ -27,6 +27,7 @@ public partial class TileView : UserControl
         InitializeComponent();
         // Inner radius: the Root's 6 less its 1px border.
         ProgressClip.SizeChanged += (_, e) => ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+        SceneClip.SizeChanged += (_, e) => SceneClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         Runtime = runtime;
         _isLightTheme = isLightTheme;
         _commands = commands;
@@ -100,6 +101,8 @@ public partial class TileView : UserControl
         IconHost.Margin = _compact ? new Thickness(0) : new Thickness(0, 0, 8, 0);
         Root.Padding = _compact ? new Thickness(5, 0, 5, 0) : new Thickness(6, 0, 6, 0); // 5 + 28 + 5 + 2 border = 40 DIP
         ProgressClip.Margin = new Thickness(-Root.Padding.Left, 0, -Root.Padding.Right, 0); // the bar runs edge to edge
+        SceneClip.Margin = ProgressClip.Margin;
+        Scene.Source = Theme.FromPixels(s.Canvas);
         TextPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
         ExtrasPanel.Visibility = _compact ? Visibility.Collapsed : Visibility.Visible;
 

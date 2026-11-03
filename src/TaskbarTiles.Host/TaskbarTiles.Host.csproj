@@ -19,6 +19,15 @@
     <PluginProject Include="..\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" Kind="media" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" Kind="battery" />
+    <ProjectReference Include="..\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" Kind="clipboard" />
+    <ProjectReference Include="..\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" Kind="system" />
+    <ProjectReference Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="aquarium" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="snake" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="racers" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="cozy-farm" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
   </ItemGroup>

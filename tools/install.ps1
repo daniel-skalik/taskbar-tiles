@@ -10,7 +10,8 @@
     1. Publishes src\TaskbarTiles.Host (Release) into a staging folder next to the install folder and verifies it.
     2. Stops TaskbarTiles.exe if it runs from the install folder.
     3. Swaps the staging folder in for the install folder.
-    4. Replaces the bundled tile kinds uptime, ping, media, claude, claude-usage and battery in the tiles folder with the new copies.
+    4. Replaces the bundled tile kinds uptime, ping, media, claude, claude-usage, battery, clipboard, system, aquarium, snake,
+       racers and cozy-farm in the tiles folder with the new copies, and removes retired bundled kinds (pixel-scene).
     5. Creates or updates the TaskbarTiles shortcut in the Startup folder.
     6. Starts the installed app.
 
@@ -18,7 +19,7 @@
 
     Your config.json, logs and every other folder in tiles\ (your own kinds) are never touched. To change a bundled
     kind, copy its folder under a new name first: install replaces tiles\uptime, tiles\ping, tiles\media, tiles\claude-usage,
-    tiles\claude and tiles\battery.
+    tiles\claude, tiles\battery, tiles\clipboard, tiles\system, tiles\aquarium, tiles\snake, tiles\racers and tiles\cozy-farm.
 
 .PARAMETER AppDir
     Install folder. Default: %LOCALAPPDATA%\TaskbarTiles\app.
@@ -54,7 +55,8 @@ $exe = Join-Path $AppDir 'TaskbarTiles.exe'
 $stage = "$AppDir.new"
 $old = "$AppDir.old"
 $TilesDir = [System.IO.Path]::GetFullPath($TilesDir).TrimEnd('\')
-$bundledKinds = @('uptime', 'ping', 'media', 'claude', 'claude-usage', 'battery') # replaced on every install; other folders in tiles\ are the user's
+$bundledKinds = @('uptime', 'ping', 'media', 'claude', 'claude-usage', 'battery', 'clipboard', 'system', 'aquarium', 'snake', 'racers', 'cozy-farm') # replaced on every install; other folders in tiles\ are the user's
+$retiredKinds = @('pixel-scene') # bundled once, now split up or gone; removed on install
 
 if (-not (Test-Path -LiteralPath $project)) { throw "Cannot find $project. Run this script from the repository's tools folder." }
 
@@ -76,7 +78,13 @@ foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
         (Join-Path $stage 'tiles\uptime\tile.json'),
         (Join-Path $stage 'tiles\claude\tile.json'),
         (Join-Path $stage 'tiles\battery\TaskbarTiles.Plugins.Battery.dll'),
-        (Join-Path $stage 'tiles\battery\tile.json'))) {
+        (Join-Path $stage 'tiles\battery\tile.json'),
+        (Join-Path $stage 'tiles\clipboard\TaskbarTiles.Plugins.Clipboard.dll'),
+        (Join-Path $stage 'tiles\system\TaskbarTiles.Plugins.SystemMonitor.dll'),
+        (Join-Path $stage 'tiles\aquarium\TaskbarTiles.Plugins.Scenes.dll'),
+        (Join-Path $stage 'tiles\snake\TaskbarTiles.Plugins.Scenes.dll'),
+        (Join-Path $stage 'tiles\racers\TaskbarTiles.Plugins.Scenes.dll'),
+        (Join-Path $stage 'tiles\cozy-farm\TaskbarTiles.Plugins.Scenes.dll'))) {
     if (-not (Test-Path -LiteralPath $required)) {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
         throw "Publish output is missing $required. The installed app was not changed."
@@ -138,6 +146,12 @@ foreach ($kind in $bundledKinds) {
         throw "Could not replace $target : $($_.Exception.Message) The new app is installed but was not started; close whatever uses that folder and run the install again."
     }
     Write-Host "Replaced tile kind $kind in $TilesDir"
+}
+foreach ($kind in $retiredKinds) {
+    $target = Join-Path $TilesDir $kind
+    if (-not (Test-Path -LiteralPath $target)) { continue }
+    try { Remove-Item -LiteralPath $target -Recurse -Force; Write-Host "Removed retired tile kind $kind from $TilesDir" }
+    catch { Write-Warning "Could not remove the retired tile kind $target : $($_.Exception.Message)" }
 }
 
 # 5. Startup shortcut (shows in Task Manager > Startup apps).
