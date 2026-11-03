@@ -88,7 +88,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `image` | string | Base64 PNG or JPEG, shown instead of the icon. A `data:image/png;base64,` prefix is fine. |
 | `buttons` | array | Inline icon buttons: `{ "id": "rerun", "glyph": "refresh", "tooltip": "Run again", "enabled": true }`. `id` is required and runs the `action:<id>` hook; `glyph` defaults to `info`, `enabled` to `true`. |
 | `progress` | number | 0 to 1; a thin bar along the bottom. Must be a finite number: values such as `1e999` are dropped with a warning. |
-| `sparkline` | array of numbers | A small line chart (needs at least two values). Non-finite values are dropped with a warning. |
+| `sparkline` | array of numbers | A line chart behind the title and subtitle, from its lowest value to its highest (needs at least two values). Non-finite values are dropped with a warning. |
 | `urgent` | boolean | Pulsing red outline. |
 
 ```json
@@ -115,7 +115,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 
 ## Glyphs and colors
 
-Glyph names: `play`, `pause`, `previous`, `next`, `check`, `cancel`, `warning`, `refresh`, `music`, `info`, `sync`, `cloud`, `clock`, `mouse`, `keyboard`, `headphones`, `battery-0` to `battery-10` and `battery-charging-0` to `battery-charging-10` (the battery filled to tenths). Names are case-insensitive. An unknown name shows `info`.
+Glyph names: `play`, `pause`, `previous`, `next`, `check`, `cancel`, `warning`, `refresh`, `music`, `info`, `sync`, `cloud`, `clock`, `mouse`, `keyboard`, `headphones`, `cpu`, `memory`, `gpu`, `network`, `disk`, `activity`, `battery-0` to `battery-10` and `battery-charging-0` to `battery-charging-10` (the battery filled to tenths). Names are case-insensitive. An unknown name shows `info`.
 
 Color names (case does not matter): `neutral` (default), `accent` (blue), `ok` (green), `warn` (amber), `bad` (red). An unknown name is `neutral`.
 

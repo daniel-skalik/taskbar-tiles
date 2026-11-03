@@ -308,7 +308,8 @@ public sealed class TileRuntime : IAsyncDisposable
             if (finite.Count >= 2 && double.IsFinite(finite.Max() - finite.Min())) spark = finite;
         }
 
-        return state with { Buttons = buttons, Icon = icon, Progress = progress, Sparkline = spark };
+        double? sparkMax = state.SparklineMax is { } m && double.IsFinite(m) && m > 0 ? m : null;
+        return state with { Buttons = buttons, Icon = icon, Progress = progress, Sparkline = spark, SparklineMax = sparkMax };
     }
 
     /// <summary>Latest wins: only the newest pending state of the current generation is applied.</summary>

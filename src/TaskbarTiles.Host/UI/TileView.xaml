@@ -28,6 +28,13 @@
                 </Image>
             </Grid>
 
+            <!-- TileState.Sparkline behind the text, from the text's left edge to the tile's right edge. -->
+            <Canvas x:Name="SparkHost" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,5,0,4" ClipToBounds="True"
+                    IsHitTestVisible="False" Visibility="Collapsed">
+                <Polygon x:Name="SparkArea" Fill="#337AA2F7"/>
+                <Polyline x:Name="Spark" StrokeThickness="1.5" Stroke="#B37AA2F7" StrokeLineJoin="Round"/>
+            </Canvas>
+
             <StackPanel x:Name="TextPanel" Grid.Column="1" VerticalAlignment="Center" Margin="0,0,4,0">
                 <TextBlock x:Name="TitleText" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TileForeground}"/>
@@ -36,9 +43,6 @@
             </StackPanel>
 
             <StackPanel x:Name="ExtrasPanel" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                <Canvas x:Name="SparkHost" Width="56" Height="26" Visibility="Collapsed">
-                    <Polyline x:Name="Spark" StrokeThickness="1.5" Stroke="#7AA2F7"/>
-                </Canvas>
                 <StackPanel x:Name="ButtonPanel" Orientation="Horizontal"/>
             </StackPanel>
 

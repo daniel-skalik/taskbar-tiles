@@ -31,7 +31,14 @@ public sealed record TileState
     /// <summary>0..1, drawn as a thin bar along the bottom edge.</summary>
     public double? Progress { get; init; }
 
+    /// <summary>Recent values, oldest first, drawn as a chart behind the title and subtitle.</summary>
     public IReadOnlyList<double>? Sparkline { get; init; }
+
+    /// <summary>
+    /// The value at the top of the sparkline, with 0 at the bottom (100 for a percentage). Null: the chart runs from the
+    /// values' own minimum to their maximum.
+    /// </summary>
+    public double? SparklineMax { get; init; }
     public bool Urgent { get; init; }
     public string? Tooltip { get; init; }
 }
