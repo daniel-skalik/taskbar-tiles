@@ -2,7 +2,11 @@
 
 Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, a ping, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
 
-![Tiles on the taskbar: Spotify, Claude usage, the cozy farm, CPU and a mouse battery](docs/images/tiles.png)
+<img src="docs/images/tile-media.png" alt="Media tile: the song playing in Spotify with playback buttons" height="40">
+<img src="docs/images/tile-claude-usage.png" alt="Claude usage tile: 5-hour and weekly limits" height="40">
+<img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile: a pixel farm under the real sky" height="40">
+<img src="docs/images/tile-system.png" alt="System monitor tile: CPU load with a chart" height="40">
+<img src="docs/images/tile-battery.png" alt="Device batteries tile: mouse battery level" height="40">
 
 Made for Windows 11 (64-bit).
 
