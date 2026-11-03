@@ -1,11 +1,11 @@
 {
   "name": "Media",
-  "description": "Now playing in an app's media controls (Spotify by default)",
+  "description": "Now playing in any app's media controls, or the apps you pick",
   "group": "Media",
   "connector": "media",
   "compact": false,
   "fields": [
-    { "key": "app", "label": "Apps", "type": "text", "multiple": true, "choices": ["Any", "Spotify", "Firefox", "Chrome", "Edge"], "help": "Whose media the tile follows: an app's name in the Start menu (or part of it), several separated by commas (the one playing wins, then the first), or Any. Apps playing now come first." }
+    { "key": "app", "label": "Apps", "type": "text", "multiple": true, "choices": ["Any", "Spotify", "Firefox", "Chrome", "Edge"], "help": "Whose media the tile follows: an app's name in the Start menu (or part of it), several separated by commas (the one playing wins, then the first), or Any. Apps playing now are listed after Any." }
   ],
-  "settings": { "app": "Spotify" }
+  "settings": { "app": "Any" }
 }

@@ -47,14 +47,18 @@ public static class TileGallery
 
     /// <summary>
     /// What the picker shows in the folder <paramref name="path"/> ("" for the top level): its subfolders by name, then
-    /// the choices directly in it, in their order.
+    /// the choices directly in it, in their order. A subfolder holding a single choice is no folder: that choice is
+    /// listed here instead.
     /// </summary>
     public static (IReadOnlyList<GalleryFolder> Folders, IReadOnlyList<GalleryItem> Items) Open(IReadOnlyList<GalleryItem> items, string path)
     {
         var prefix = path.Length == 0 ? "" : path + "/";
-        var folders = items
+        var groups = items
             .Where(i => i.Group.Length > prefix.Length && i.Group.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .GroupBy(i => i.Group[prefix.Length..].Split('/')[0], StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var folders = groups
+            .Where(g => g.Count() > 1)
             .Select(g =>
             {
                 var name = g.First().Group[prefix.Length..].Split('/')[0]; // spelled as the first kind in it spells it
@@ -62,7 +66,8 @@ public static class TileGallery
             })
             .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var here = items.Where(i => string.Equals(i.Group, path, StringComparison.OrdinalIgnoreCase)).ToList();
+        var alone = groups.Where(g => g.Count() == 1).Select(g => g.Single()).ToHashSet();
+        var here = items.Where(i => alone.Contains(i) || string.Equals(i.Group, path, StringComparison.OrdinalIgnoreCase)).ToList();
         return (folders, here);
     }
 

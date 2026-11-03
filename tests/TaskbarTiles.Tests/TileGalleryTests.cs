@@ -65,19 +65,31 @@ public class TileGalleryTests
         var items = new[]
         {
             Item("ci", ""), Item("Snake", "Fun/Games"), Item("Racers", "fun/games"), Item("Farm", "Fun/Scenes"),
-            Item("Dice", "Fun"), Item("Ping", "Network"), Item("Deep", "Fun/Games/Retro"),
+            Item("Dice", "Fun"), Item("Deep", "Fun/Games/Retro"), Item("Tea", "Kitchen"), Item("Toast", "Kitchen"),
         };
 
         var (top, topItems) = TileGallery.Open(items, "");
         var (fun, funItems) = TileGallery.Open(items, "Fun");
         var (games, gameItems) = TileGallery.Open(items, "Fun/Games");
 
-        Assert.Equal(new[] { new GalleryFolder("Fun", "Fun", 5), new GalleryFolder("Network", "Network", 1) }, top);
+        Assert.Equal(new[] { new GalleryFolder("Fun", "Fun", 5), new GalleryFolder("Kitchen", "Kitchen", 2) }, top);
         Assert.Equal(new[] { "ci" }, topItems.Select(i => i.Title));
-        Assert.Equal(new[] { new GalleryFolder("Games", "Fun/Games", 3), new GalleryFolder("Scenes", "Fun/Scenes", 1) }, fun);
-        Assert.Equal(new[] { "Dice" }, funItems.Select(i => i.Title));
-        Assert.Equal(new[] { new GalleryFolder("Retro", "Fun/Games/Retro", 1) }, games);
-        Assert.Equal(new[] { "Snake", "Racers" }, gameItems.Select(i => i.Title)); // folders match ignoring case
+        Assert.Equal(new[] { new GalleryFolder("Games", "Fun/Games", 3) }, fun);
+        Assert.Equal(new[] { "Farm", "Dice" }, funItems.Select(i => i.Title));
+        Assert.Empty(games);
+        Assert.Equal(new[] { "Snake", "Racers", "Deep" }, gameItems.Select(i => i.Title)); // folders match ignoring case
+    }
+
+    [Fact]
+    public void A_group_with_one_tile_is_shown_flat()
+    {
+        GalleryItem Item(string title, string group) => new(title, "", title, null, group);
+        var items = new[] { Item("Alpha", "Media"), Item("Ping", "Network"), Item("Zed", "") };
+
+        var (folders, here) = TileGallery.Open(items, "");
+
+        Assert.Empty(folders);
+        Assert.Equal(new[] { "Alpha", "Ping", "Zed" }, here.Select(i => i.Title)); // in their own order
     }
 
     [Theory]

@@ -17,7 +17,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "media", "ping", "racers", "snake", "system", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "media", "racers", "snake", "system", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -78,31 +78,6 @@ public class BundledKindsTests
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
         Assert.Empty(outcome.Warnings);
         Assert.Equal(new[] { "Time", "Booted", "Uptime" }, outcome.Value!.Rows.Select(r => r.Text));
-    }
-
-    [Fact]
-    [Trait("Category", "Integration")]
-    public async Task Ping_prints_a_status_tile_with_a_button()
-    {
-        var outcome = HookResults.ForTile("interval", await RunBundled("ping", "ping.ps1", "interval", """{ "host": "127.0.0.1" }"""), TimeSpan.FromSeconds(30));
-
-        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
-        Assert.Empty(outcome.Warnings);
-        Assert.Equal("127.0.0.1", outcome.Value!.Title);
-        Assert.EndsWith(" ms", outcome.Value.Subtitle);
-        Assert.Equal("ping", Assert.Single(outcome.Value.Buttons).Id);
-    }
-
-    [Fact]
-    [Trait("Category", "Integration")]
-    public async Task Ping_prints_a_popup_with_an_action()
-    {
-        var outcome = HookResults.ForFlyout("flyout", await RunBundled("ping", "ping.ps1", "flyout", """{ "host": "127.0.0.1" }"""), TimeSpan.FromSeconds(30));
-
-        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
-        Assert.Empty(outcome.Warnings);
-        Assert.Equal(4, outcome.Value!.Rows.Count);
-        Assert.Equal("ping", Assert.Single(outcome.Value.Actions).Id);
     }
 
     /// <summary>Runs claude-usage.ps1 on <paramref name="responseJson"/> instead of calling the usage endpoint.</summary>

@@ -184,7 +184,6 @@ public class TileSettingsTests
     {
         var kinds = new KindLoader(new CollectingLog()).Load(Path.Combine(AppContext.BaseDirectory, "tiles"));
 
-        Assert.Equal(new[] { "host" }, kinds.Kinds["ping"].Fields!.Select(f => f.Key));
         Assert.Equal(new[] { "app" }, kinds.Kinds["media"].Fields!.Select(f => f.Key));
         Assert.Equal(new[] { "interval", "show" }, kinds.Kinds["battery"].Fields!.Select(f => f.Key));
         Assert.Empty(kinds.Kinds["uptime"].Fields!);

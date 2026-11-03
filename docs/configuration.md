@@ -8,7 +8,7 @@ Script tiles are described in [script-connectors.md](script-connectors.md).
 
 See the [README](../README.md) for installing from a release zip or from source. Either way it is `install.cmd`: on success its window closes and the app starts; on failure it stays open so you can read the error. (From a terminal: `install.cmd`, or `powershell -ExecutionPolicy Bypass -File tools\install.ps1`.)
 
-It stages the new build next to the install folder and verifies it (a failed copy or build changes nothing): from a release zip it copies the zip's `app` folder, in the repository it publishes a Release build first. Then it stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds in `tiles\` with the new copies (and removes retired ones), creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\ping` to `tiles\my-ping`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
+It stages the new build next to the install folder and verifies it (a failed copy or build changes nothing): from a release zip it copies the zip's `app` folder, in the repository it publishes a Release build first. Then it stops the installed copy, swaps the new folder in for `%LOCALAPPDATA%\TaskbarTiles\app` (so no stale files stay), replaces the bundled tile kinds in `tiles\` with the new copies (and removes retired ones), creates or updates the `TaskbarTiles` shortcut in your Startup folder, and starts the app. Run it again after every update. Your `config.json`, your logs and every other folder in `tiles\` are never touched. To change a bundled kind, copy its folder under a new name first (for example `tiles\uptime` to `tiles\my-uptime`): install replaces the bundled ones. A `scripts` folder left over from an older version is not used any more and is left alone. Do not run it from an agent session in the Claude desktop app: the app redirects an agent's writes under `%LOCALAPPDATA%` to a private copy, so the install would not land where Windows starts it.
 
 `uninstall.cmd` stops and removes the app and its Startup shortcut; your config, logs and tiles stay unless you add `-RemoveSettings`.
 
@@ -52,13 +52,12 @@ Each kind of tile is one folder in `%LOCALAPPDATA%\TaskbarTiles\tiles\`, holding
 ```
 tiles\
   uptime\  tile.json, uptime.ps1              bundled: replaced on install
-  ping\    tile.json, ping.ps1                bundled: replaced on install
   media\   tile.json, TaskbarTiles.Plugins.Media.dll   bundled: replaced on install
   battery\ tile.json, TaskbarTiles.Plugins.Battery.dll  bundled: replaced on install
   meeting\ tile.json, urgent.ps1              yours: never touched
 ```
 
-The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
+The folder name is the kind's id (`"kind": "ping"` for a `tiles\ping` folder). Its `tile.json`, for example:
 
 ```jsonc
 {
@@ -89,12 +88,12 @@ The folder name is the kind's id (`"kind": "ping"`). Its `tile.json`:
 - **DLL connectors:** a DLL in a kind folder is loaded only for that kind; its connector ids are private to the folder, so two kinds may ship a connector with the same id. DLLs load when Taskbar Tiles starts: after adding or changing a DLL, a notice asks you to exit and start Taskbar Tiles again (.NET cannot unload a DLL safely).
 - **Edits apply by themselves:** saving `tile.json` or a script (`.ps1`, `.psm1`, `.py`, `.cmd` or `.bat` directly in the kind folder) restarts only the tiles of that kind. Files a script writes into its own folder (logs, caches) do not restart it.
 - **Mistakes:** a `tile.json` that is not valid JSON or lacks `name` or `connector`, a DLL that does not load, two DLLs declaring the same connector id, or a `connector` no DLL in the folder declares makes the kind broken: its tiles show the error (naming the file, and the line for JSON errors), it is written to `logs\host.log`, and every other kind keeps working. `config.json` is rejected only for its own mistakes: a tile naming a kind with no folder in `tiles\` (or a folder without `tile.json`), `hooks` in a tile's settings, a tile without `kind`, or the old form `{ "connector": … }` (tiles from before tile folders: rewrite them as `{ "kind": "<folder>" }`).
-- **Picker folders:** `group` files new tiles of the kind in a folder of the + / stack picker; slashes nest folders (`"Fun/Games"` is Games inside Fun). Parts are trimmed and empty ones dropped; folders with the same name in a different case are one folder. Your existing tiles are always listed at the top.
+- **Picker folders:** `group` files new tiles of the kind in a folder of the + / stack picker; slashes nest folders (`"Fun/Games"` is Games inside Fun). A folder that would hold a single tile is not shown: that tile is listed one level up. Parts are trimmed and empty ones dropped; folders with the same name in a different case are one folder. Your existing tiles are always listed at the top.
 - A folder in `tiles\` without `tile.json` is not a kind.
 
 ### Tile settings
 
-Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `ping` (Host), `media` (App) `battery` (Read every, Devices) and `claude-usage` (Refresh every) do.
+Right-click a tile → **Settings…** changes that tile's own settings without editing `config.json`. The entry is there when its kind's `tile.json` lists `"fields"`; the bundled `media` (Apps), `battery` (Read every, Devices) and `claude-usage` (Refresh every) do.
 
 - Each field edits one top-level settings key; its default is the kind's `settings` value for that key.
   - `"key"`, `"label"` and `"type"` are required; `"help"` is shown under the input.

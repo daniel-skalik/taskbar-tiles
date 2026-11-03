@@ -1,6 +1,6 @@
 # Taskbar Tiles
 
-Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, a ping, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
+Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
 
 <img src="docs/images/tile-media.png" alt="Media tile: a song with playback buttons" height="48">
 <img src="docs/images/tile-system.png" alt="System monitor tile: CPU load with its chart behind the text" height="48">
@@ -22,13 +22,12 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 
 | | |
 |---|---|
-| <img src="docs/images/tile-media.png" alt="Media tile" height="48"> | **Media**<br>Now playing in Spotify (or any app with media controls), with playback buttons. |
+| <img src="docs/images/tile-media.png" alt="Media tile" height="48"> | **Media**<br>Now playing in any app with media controls (or the ones you pick, such as Spotify), with playback buttons. |
 | <img src="docs/images/tile-claude-usage.png" alt="Claude usage tile" height="48"> | **Claude usage**<br>Your Claude plan's 5-hour and weekly limits. |
 | <img src="docs/images/tile-system.png" alt="System monitor tile" height="48"> | **System monitor**<br>CPU, memory, GPU, network and every drive, one at a time with a chart, or all at once. |
 | <img src="docs/images/tile-battery.png" alt="Device batteries tile" height="48"> | **Device batteries**<br>The lowest battery of your mouse, keyboard and headphones. |
 | <img src="docs/images/tile-clipboard.png" alt="Clipboard peek tile" height="48"> | **Clipboard peek**<br>The last thing you copied; click for recent copies to copy again. |
 | <img src="docs/images/tile-uptime.png" alt="Clock and uptime tile" height="48"> | **Clock and uptime**<br>The time, and how long Windows has been up. |
-| <img src="docs/images/tile-ping.png" alt="Ping a host tile" height="48"> | **Ping a host**<br>Pings a host every 15 s. |
 | <img src="docs/images/tile-aquarium.png" alt="Aquarium tile" height="48"> | **Aquarium**<br>Fish and bubbles; click to feed them. |
 | <img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile" height="48"> | **Cozy farm**<br>A farm that follows your clock and the real sunrise and sunset. |
 | <img src="docs/images/tile-snake.png" alt="Snake tile" height="48"> | **Snake**<br>A snake that plays itself; click to start over. |

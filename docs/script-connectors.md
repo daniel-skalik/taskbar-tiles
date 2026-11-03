@@ -4,7 +4,7 @@ The built-in `script` connector drives a tile from scripts. A script tile kind i
 
 ## Quick start
 
-Two script kinds come with the app: `tiles\uptime` (clock and uptime) and `tiles\ping` (ping a host, with a button and a popup); `tiles\claude-usage` is a fuller example. Install replaces them, so to change one, copy its folder under a new name first. To make your own:
+Two script kinds come with the app: `tiles\uptime` (clock and uptime, with a popup) and `tiles\claude-usage` (settings, an image, a cache and a web request). Install replaces them, so to change one, copy its folder under a new name first. To make your own:
 
 1. Create a folder, e.g. `%LOCALAPPDATA%\TaskbarTiles\tiles\meeting\`, and put your script in it (`urgent.ps1`).
 2. Next to it, write `tile.json`:
@@ -71,7 +71,7 @@ Scripts run hidden, with the kind folder as the working directory and no input (
 | `TILE_ID` | The tile's id from `config.json`, e.g. `ping` |
 | `TILE_HOOK` | `interval`, `watch`, `click`, `flyout`, `action`, `startup` or `resume` |
 | `TILE_ACTION` | The action id for `action:<id>` hooks (e.g. `ping`); empty otherwise |
-| `TILE_SETTINGS_JSON` | The tile's effective settings as JSON: the kind's `settings` from `tile.json` (including `hooks`) with the tile's own `settings` from `config.json` replacing keys of the same name. Put your own options next to `hooks` (like `"host"` in `tiles\ping\tile.json`). |
+| `TILE_SETTINGS_JSON` | The tile's effective settings as JSON: the kind's `settings` from `tile.json` (including `hooks`) with the tile's own `settings` from `config.json` replacing keys of the same name. Put your own options next to `hooks` (like `"host"` in the `ping` example in configuration.md). |
 
 One script can serve several hooks by looking at `TILE_HOOK`, as both bundled kinds do.
 
