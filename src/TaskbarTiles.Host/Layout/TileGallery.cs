@@ -28,7 +28,7 @@ public static class TileGallery
 
         foreach (var (id, tile) in config.Tiles)
             if (!placed.Contains(id))
-                items.Add(new GalleryItem(id, $"Your tile · {kinds.Find(tile.Kind)?.Name ?? tile.Kind}", id, null));
+                items.Add(new GalleryItem(TitleFor(id), $"Your tile · {kinds.Find(tile.Kind)?.Name ?? tile.Kind}", id, null));
 
         foreach (var kind in kinds.Kinds.Values
                      .OrderBy(k => k.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -36,6 +36,13 @@ public static class TileGallery
             items.Add(new GalleryItem(kind.Name, kind.Description, kind.Id, new TileConfig(kind.Id, EmptySettings()), kind.Group));
 
         return items;
+    }
+
+    /// <summary>A tile id as a picker title: dashes and underscores as spaces, first letter upper case ("claude-usage" is "Claude usage").</summary>
+    public static string TitleFor(string id)
+    {
+        var words = string.Join(' ', id.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries));
+        return words.Length == 0 ? id : char.ToUpperInvariant(words[0]) + words[1..];
     }
 
     /// <summary>

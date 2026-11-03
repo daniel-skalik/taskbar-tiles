@@ -36,7 +36,7 @@ public class TileGalleryTests
 
         var items = TileGallery.Build(cfg, cfg.Displays["primary"], Kinds);
 
-        Assert.Equal(new[] { "ci", "uptime", "Clock and uptime", "Media", "Ping a host" }, items.Select(i => i.Title));
+        Assert.Equal(new[] { "Ci", "Uptime", "Clock and uptime", "Media", "Ping a host" }, items.Select(i => i.Title));
         Assert.Null(items[0].NewTile);
         Assert.Equal("Your tile · Ping a host", items[0].Subtitle);
         Assert.Equal("Pings a host every 15 s", items[4].Subtitle);
@@ -55,7 +55,7 @@ public class TileGalleryTests
 
         var items = TileGallery.Build(cfg, DisplayEntry.Empty, kinds);
 
-        Assert.Equal(new[] { ("mine", ""), ("Ping", "Network"), ("Snake", "Fun/Games") }, items.Select(i => (i.Title, i.Group)));
+        Assert.Equal(new[] { ("Mine", ""), ("Ping", "Network"), ("Snake", "Fun/Games") }, items.Select(i => (i.Title, i.Group)));
     }
 
     [Fact]
@@ -85,6 +85,13 @@ public class TileGalleryTests
     [InlineData("Fun", "")]
     [InlineData("", "")]
     public void Parent_is_the_folder_above(string path, string expected) => Assert.Equal(expected, TileGallery.Parent(path));
+
+    [Theory]
+    [InlineData("spotify", "Spotify")]
+    [InlineData("claude-usage", "Claude usage")]
+    [InlineData("grz_visits-2", "Grz visits 2")]
+    [InlineData("--", "--")]
+    public void Your_tiles_are_titled_from_their_id(string id, string expected) => Assert.Equal(expected, TileGallery.TitleFor(id));
 
     [Fact]
     public void An_instance_of_a_kind_that_is_gone_shows_the_kind_id()
@@ -134,13 +141,13 @@ public class TileGalleryTests
     {
         var writer = new FakeConfigWriter(Config);
         var host = Host(writer);
-        var item = host.GalleryFor("MAIN").Single(i => i.Title == "ci");
+        var item = host.GalleryFor("MAIN").Single(i => i.TileId == "ci" && i.NewTile is null);
 
         Assert.Null(host.AddFromGallery("MAIN", item));
 
         Assert.Equal(3, writer.Current.Tiles.Count);
         Assert.Equal(new TileSlot("ci", false), writer.Current.Displays["primary"].Left.Slots[^1]);
-        Assert.DoesNotContain(host.GalleryFor("MAIN"), i => i.Title == "ci");
+        Assert.DoesNotContain(host.GalleryFor("MAIN"), i => i.TileId == "ci");
     }
 
     [Fact]
@@ -165,7 +172,7 @@ public class TileGalleryTests
               "displays": { "primary": { "slots": [ { "tile": "spotify" }, { "tile": "uptime" } ] } } }
             """);
         var host = Host(writer);
-        var item = host.GalleryFor("MAIN").Single(i => i.Title == "ci");
+        var item = host.GalleryFor("MAIN").Single(i => i.TileId == "ci" && i.NewTile is null);
 
         Assert.Null(host.AddFromGallery("MAIN", item, stackWith: 0));
 
