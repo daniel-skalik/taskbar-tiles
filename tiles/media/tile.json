@@ -5,7 +5,7 @@
   "connector": "media",
   "compact": false,
   "fields": [
-    { "key": "app", "label": "App", "type": "text", "choices": ["Spotify", "Firefox", "Chrome", "Edge"], "help": "The app whose media controls the tile follows, by its name in the Start menu (or part of it). Apps playing now are suggested first." }
+    { "key": "app", "label": "Apps", "type": "text", "multiple": true, "choices": ["Any", "Spotify", "Firefox", "Chrome", "Edge"], "help": "Whose media the tile follows: an app's name in the Start menu (or part of it), several separated by commas (the one playing wins, then the first), or Any. Apps playing now come first." }
   ],
   "settings": { "app": "Spotify" }
 }
