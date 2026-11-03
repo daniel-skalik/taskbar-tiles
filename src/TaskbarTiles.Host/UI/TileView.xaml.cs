@@ -32,6 +32,7 @@ public partial class TileView : UserControl
         SceneClip.SizeChanged += (_, e) => SceneClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkClip.SizeChanged += (_, e) => SparkClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkHost.SizeChanged += (_, _) => RenderSparkline();
+        SizeChanged += (_, _) => FitButtons();
         Runtime = runtime;
         _isLightTheme = isLightTheme;
         _commands = commands;
@@ -131,6 +132,7 @@ public partial class TileView : UserControl
             };
             ButtonPanel.Children.Add(button);
         }
+        FitButtons();
 
         _spark = s.Sparkline;
         _sparkMax = s.SparklineMax;
@@ -153,6 +155,22 @@ public partial class TileView : UserControl
         if (_urgent && !wasUrgent) StartPulse();
         else if (!_urgent && wasUrgent) StopPulse();
         UpdateBackground();
+    }
+
+    /// <summary>The narrowest the title may get before a tile's buttons make way for it.</summary>
+    const double MinTextWidth = 72;
+
+    /// <summary>Buttons only where they leave the title room: a tile resized narrow keeps its text and loses its buttons.</summary>
+    void FitButtons()
+    {
+        if (ButtonPanel.Children.Count == 0) return;
+        ButtonPanel.Visibility = Visibility.Visible;
+        ButtonPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var width = double.IsNaN(Width) ? ActualWidth : Width;
+        var icon = IconHost.Visibility == Visibility.Visible ? IconHost.Width + IconHost.Margin.Right : 0;
+        var text = width - Root.Padding.Left - Root.Padding.Right - Root.BorderThickness.Left - Root.BorderThickness.Right - icon
+            - ButtonPanel.DesiredSize.Width;
+        ButtonPanel.Visibility = text >= MinTextWidth ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>

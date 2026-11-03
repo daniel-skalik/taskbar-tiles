@@ -111,10 +111,13 @@ public sealed class HostController(
     /// <summary>How one tile runs; a runtime is kept while its Fingerprint is unchanged.</summary>
     // Width and Resizable are not in the fingerprint: resizing a tile reflows the bars without restarting it.
     sealed record TilePlan(string ConnectorId, double Width, Func<ITileConnector> Create, JsonElement Settings, string Directory, string Fingerprint,
-        bool CanCompact = true, bool Resizable = false);
+        bool CanCompact = true, bool Resizable = false, double WidthMin = TileJson.MinWidth, double WidthMax = TileJson.MaxWidth);
 
     readonly Dictionary<string, (TileRuntime Runtime, string Fingerprint)> _runtimes = new(StringComparer.Ordinal);
-    readonly Dictionary<string, (double Width, bool Resizable)> _sizes = new(StringComparer.Ordinal);
+    readonly Dictionary<string, TileSize> _sizes = new(StringComparer.Ordinal);
+
+    /// <summary>A tile's width on the bar, whether edit mode may resize it, and how far.</summary>
+    readonly record struct TileSize(double Width, bool Resizable, double Min, double Max);
     readonly Dictionary<(string DisplayId, BarSide Side), ITileBarView> _bars = [];
     readonly TileRuntimeOptions _runtimeOptions = new() { ConfigDirectory = configDirectory ?? AppPaths.DataDir };
     bool _disposed;
@@ -349,20 +352,23 @@ public sealed class HostController(
             {
                 case TileSlot t when _runtimes.TryGetValue(t.TileId, out var entry):
                     var size = SizeOf(t.TileId, entry.Runtime);
-                    slots.Add(new BarSlot(i, [entry.Runtime], t.Pin, null, size.Width, size.Resizable));
+                    slots.Add(new BarSlot(i, [entry.Runtime], t.Pin, null, size.Width, size.Resizable, size.Min, size.Max));
                     break;
                 case StackSlot s when s.TileIds.Count > 0 && s.TileIds.All(_runtimes.ContainsKey):
                     // As wide as its widest member; resizing it resizes every member, so each must allow it.
+                    // Each member's range must hold: the widest minimum to the narrowest maximum.
                     var sizes = s.TileIds.Select(id => SizeOf(id, _runtimes[id].Runtime)).ToList();
+                    var min = sizes.Max(z => z.Min);
                     slots.Add(new BarSlot(i, s.TileIds.Select(id => _runtimes[id].Runtime).ToList(), false, s.Rotate,
-                        sizes.Max(z => z.Width), sizes.All(z => z.Resizable)));
+                        sizes.Max(z => z.Width), sizes.All(z => z.Resizable), min, Math.Max(min, sizes.Min(z => z.Max))));
                     break;
             }
         }
         return slots;
     }
 
-    (double Width, bool Resizable) SizeOf(string id, TileRuntime runtime) => _sizes.GetValueOrDefault(id, (runtime.Width, false));
+    TileSize SizeOf(string id, TileRuntime runtime) =>
+        _sizes.GetValueOrDefault(id, new TileSize(runtime.Width, false, TileJson.MinWidth, TileJson.MaxWidth));
 
     void SyncRuntimes(HostConfig cfg, HashSet<string> wanted)
     {
@@ -371,11 +377,15 @@ public sealed class HostController(
         foreach (var id in wanted)
             if (cfg.Tiles.TryGetValue(id, out var tile)) plans[id] = Plan(tile, table);
         _sizes.Clear();
-        foreach (var (id, plan) in plans) _sizes[id] = (plan.Width, plan.Resizable);
+        foreach (var (id, plan) in plans) _sizes[id] = new TileSize(plan.Width, plan.Resizable, plan.WidthMin, plan.WidthMax);
 
         foreach (var (id, entry) in _runtimes.ToList())
         {
-            if (plans.TryGetValue(id, out var plan) && plan.Fingerprint == entry.Fingerprint) continue;
+            if (plans.TryGetValue(id, out var plan) && plan.Fingerprint == entry.Fingerprint)
+            {
+                entry.Runtime.Resize(plan.Width); // a resized tile keeps running and is told its new width
+                continue;
+            }
             _runtimes.Remove(id);
             _ = entry.Runtime.DisposeAsync().AsTask();
         }
@@ -413,15 +423,15 @@ public sealed class HostController(
         // The runtime calls Create on the thread pool (plugin constructors are plugin code) and again for every restart.
         // A throwing constructor shows the error look and is retried with backoff.
         // A tile resized in edit mode keeps its own width, where its kind allows resizing.
-        double Sized(double kindWidth) => kind.Resizable && tile.Width is { } own ? own : kindWidth;
+        double Sized(double kindWidth) => kind.Resizable && tile.Width is { } own ? Math.Clamp(own, kind.WidthMin, kind.WidthMax) : kindWidth;
         if (kind.Plugin is { } plugin)
             return new(plugin.Id, Sized(kind.Width ?? plugin.Width), () => ConnectorCatalog.Instantiate(plugin), settings, kind.Directory, fingerprint,
-                kind.Compact, kind.Resizable);
+                kind.Compact, kind.Resizable, kind.WidthMin, kind.WidthMax);
 
         var connectorId = kind.Connector; // "script": built into the app
         var width = kind.Width ?? (catalog.Connectors.TryGetValue(connectorId, out var d) ? d.Width : PluginLoader.DefaultTileWidth);
         return new(connectorId, Sized(width), () => catalog.Create(connectorId) ?? new UnknownConnector(connectorId), settings,
-            kind.Directory, fingerprint, kind.Compact, kind.Resizable);
+            kind.Directory, fingerprint, kind.Compact, kind.Resizable, kind.WidthMin, kind.WidthMax);
     }
 
     /// <summary>

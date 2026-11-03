@@ -1,3 +1,4 @@
+using TaskbarTiles.Host.Plugins;
 using TaskbarTiles.Host.Runtime;
 
 namespace TaskbarTiles.Host.Layout;
@@ -6,10 +7,11 @@ namespace TaskbarTiles.Host.Layout;
 /// One slot as a bar shows it: a single tile (one member, <see cref="Rotate"/> null) or a stack.
 /// <see cref="Index"/> is the slot's position in the display's config slots, which layout edits refer to;
 /// member i of a stack is the stack's i-th tile id. <see cref="Width"/> is the slot's width with resized tiles' own
-/// widths (null: from its members' kinds); <see cref="Resizable"/> lets edit mode offer the resize grip.
+/// widths (null: from its members' kinds); <see cref="Resizable"/> lets edit mode offer the resize grip, which stays
+/// within <see cref="MinWidth"/> and <see cref="MaxWidth"/>.
 /// </summary>
 public sealed record BarSlot(int Index, IReadOnlyList<TileRuntime> Members, bool Pinned, TimeSpan? Rotate, double? Width = null,
-    bool Resizable = false)
+    bool Resizable = false, double MinWidth = TileJson.MinWidth, double MaxWidth = TileJson.MaxWidth)
 {
     public bool IsStack => Rotate is not null;
 
@@ -25,7 +27,8 @@ public sealed record BarSlot(int Index, IReadOnlyList<TileRuntime> Members, bool
 
     // Records compare lists by reference; compare members so equal slots are equal.
     public bool Equals(BarSlot? other) =>
-        other is not null && Index == other.Index && SameContent(other) && Width == other.Width && Resizable == other.Resizable;
+        other is not null && Index == other.Index && SameContent(other) && Width == other.Width && Resizable == other.Resizable
+        && MinWidth == other.MinWidth && MaxWidth == other.MaxWidth;
 
     public override int GetHashCode() => HashCode.Combine(Index, Members.Count, Pinned, Rotate);
 }

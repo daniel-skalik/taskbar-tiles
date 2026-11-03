@@ -188,7 +188,7 @@ public sealed class SlotView : Grid
     {
         if (!_resizing) return;
         var dx = ScreenX(e) - _resizeStartX;
-        var width = Math.Round(Math.Clamp(_resizeStartWidth + (_gripOnLeft ? -dx : dx), TileJson.MinWidth, TileJson.MaxWidth));
+        var width = Math.Round(Math.Clamp(_resizeStartWidth + (_gripOnLeft ? -dx : dx), Slot.MinWidth, Slot.MaxWidth));
         if (width == FullWidth) return;
         _previewWidth = width;
         ApplyWidths();

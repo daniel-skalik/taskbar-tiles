@@ -9,8 +9,9 @@ public sealed class RacersScene : IScene
 {
     public enum RacePhase { Countdown, Racing, Celebrating }
 
-    const int W = PixelCanvas.Width, H = PixelCanvas.Height;
-    const int TrackTop = 7, LaneHeight = 3, CarWidth = 8, StartX = 2, FinishX = 90;
+    const int H = PixelCanvas.Height;
+    const int TrackTop = 7, LaneHeight = 3, CarWidth = 8, StartX = 2;
+    readonly int W, FinishX; // the finish line is 10 pixels from the right edge
     const int CountdownFrames = 34, CelebrateFrames = 45, AfterWinFrames = 30;
 
     public static readonly string[] CarNames = ["red", "blue", "yellow", "green"];
@@ -38,13 +39,16 @@ public sealed class RacersScene : IScene
     readonly int[] _wins = new int[4];
     readonly Bit[] _dust = new Bit[40];
     readonly Bit[] _confetti = new Bit[48];
-    readonly int[] _crowd = new int[W * 2];
+    readonly int[] _crowd;
     RacePhase _phase;
     int _phaseFrame, _frame, _finished, _winner = -1, _race, _completed;
     string _status = "";
 
-    public RacersScene(Random rng)
+    public RacersScene(Random rng, int width = PixelCanvas.DefaultWidth)
     {
+        W = width;
+        FinishX = Math.Max(StartX + CarWidth + 4, W - 10);
+        _crowd = new int[W * 2];
         for (int i = 0; i < 4; i++)
             _palettes[i] = [CarColors[i], Rgb(0x1A1A1E), Rgb(0x9A9AA6), Rgb(0xBFE8FF), Rgb(0xFFF2A0), PixelCanvas.Scale(CarColors[i], 150)];
         int[] shirts = [0xE84545, 0x3D7BE6, 0xF2C230, 0x46C46A, 0xFFFFFF, 0xC070E0, 0xFF8A3D];
@@ -58,6 +62,7 @@ public sealed class RacersScene : IScene
     }
 
     public string Name => "Racers";
+    public int Width => W;
     public string Status => _status;
 
     public RacePhase Phase => _phase;

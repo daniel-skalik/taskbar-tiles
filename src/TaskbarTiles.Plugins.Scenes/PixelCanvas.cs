@@ -6,19 +6,30 @@ namespace TaskbarTiles.Plugins.Scenes;
 /// </summary>
 public readonly struct PixelCanvas
 {
-    /// <summary>The tile is 200 × 38 DIP inside its border; 100 × 19 gives 2 DIP per pixel.</summary>
-    public const int Width = 100, Height = 19;
+    /// <summary>
+    /// Frames are 19 pixels high, 2 DIP per pixel on a tile 38 DIP high inside its border, and as wide as the tile at
+    /// the same scale: 100 for the default 200 DIP. <see cref="WidthFor"/> turns a tile width into a frame width.
+    /// </summary>
+    public const int DefaultWidth = 100, Height = 19, MinWidth = 20, MaxWidth = 320;
 
     readonly int[] _px;
 
+    /// <summary>A canvas over <paramref name="pixels"/>, rows of <see cref="Height"/>; its width follows from the length.</summary>
     public PixelCanvas(int[] pixels)
     {
         ArgumentNullException.ThrowIfNull(pixels);
-        if (pixels.Length != Width * Height) throw new ArgumentException($"A frame has {Width * Height} pixels.", nameof(pixels));
+        if (pixels.Length == 0 || pixels.Length % Height != 0) throw new ArgumentException($"A frame has {Height} rows of pixels.", nameof(pixels));
         _px = pixels;
+        Width = pixels.Length / Height;
     }
 
-    public static int[] NewFrame() => new int[Width * Height];
+    public int Width { get; }
+
+    public static int[] NewFrame(int width = DefaultWidth) => new int[width * Height];
+
+    /// <summary>The frame width for a tile <paramref name="tileWidth"/> DIP wide (2 DIP per pixel); the default for 0.</summary>
+    public static int WidthFor(double tileWidth) =>
+        tileWidth <= 0 ? DefaultWidth : Math.Clamp((int)Math.Round(tileWidth / 2), MinWidth, MaxWidth);
 
     /// <summary>An opaque color from 0xRRGGBB.</summary>
     public static int Rgb(int rgb) => unchecked((int)0xFF000000) | (rgb & 0xFFFFFF);

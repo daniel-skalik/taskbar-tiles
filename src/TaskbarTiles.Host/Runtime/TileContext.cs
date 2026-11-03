@@ -12,15 +12,21 @@ sealed class TileContext(TileRuntime runtime, int generation, JsonElement settin
     public string TileDirectory => tileDirectory;
     public ITileLog Log => log;
     public event EventHandler? Resumed;
+    public event EventHandler? Resized;
+    public double Width => runtime.Width;
 
     public void Update(TileState state) => runtime.Enqueue(generation, state);
 
     public void ReportError(string message, string? details = null) => runtime.Report(generation, message, details);
 
+    internal void RaiseResumed(Action<Exception> onError) => Raise(Resumed, onError);
+
+    internal void RaiseResized(Action<Exception> onError) => Raise(Resized, onError);
+
     /// <summary>Each handler runs in its own try/catch so one throwing plugin handler cannot skip the others.</summary>
-    internal void RaiseResumed(Action<Exception> onError)
+    void Raise(EventHandler? handlers, Action<Exception> onError)
     {
-        if (Resumed is not { } handlers) return;
+        if (handlers is null) return;
         foreach (var handler in handlers.GetInvocationList().Cast<EventHandler>())
         {
             try { handler(this, EventArgs.Empty); }

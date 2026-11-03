@@ -34,6 +34,15 @@ public interface ITileContext
     /// <summary>Raised after the system resumes from sleep, on a thread-pool thread.</summary>
     event EventHandler? Resumed;
 
+    /// <summary>
+    /// The tile's width in DIP: its kind's width, or the width the user resized it to in edit mode. 0 from hosts that do
+    /// not say. Read it when drawing something that should fit the tile, such as a <see cref="TileState.Canvas"/>.
+    /// </summary>
+    double Width => 0;
+
+    /// <summary>Raised on a thread-pool thread after the user resized the tile; <see cref="Width"/> has the new width.</summary>
+    event EventHandler? Resized { add { } remove { } }
+
     ITileLog Log { get; }
 }
 

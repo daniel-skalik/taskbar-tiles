@@ -177,9 +177,20 @@ public class SlotViewTests
 }
 
 /// <summary>Runs WPF code on a fresh STA thread and rethrows what it threw.</summary>
+/// <summary>
+/// Runs WPF code on a fresh STA thread, one test at a time: xUnit runs test classes in parallel, and WPF's XAML parsing
+/// is not safe on several threads at once (it fails with errors such as "The given key 'Orientation' was not present").
+/// </summary>
 public static class Sta
 {
+    static readonly object OneAtATime = new();
+
     public static void Run(Action action)
+    {
+        lock (OneAtATime) RunAlone(action);
+    }
+
+    static void RunAlone(Action action)
     {
         Exception? error = null;
         var thread = new Thread(() =>

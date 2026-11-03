@@ -2,6 +2,7 @@
   "name": "Cozy farm",
   "description": "A farm that follows your clock and the real sunrise and sunset",
   "group": "Fun/Scenes",
+  "minWidth": 120,
   "connector": "cozy-farm",
   "width": 200,
   "fields": [

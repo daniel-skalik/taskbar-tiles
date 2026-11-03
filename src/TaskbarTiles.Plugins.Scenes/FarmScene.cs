@@ -12,8 +12,9 @@ public sealed class FarmScene : IScene
 {
     enum Doing { Inside, Walking, Watering, Resting, Waving, GoingHome }
 
-    const int W = PixelCanvas.Width, H = PixelCanvas.Height;
-    const int HouseX = 73, HouseY = 6, DoorX = HouseX + 3, PathY = 17, FieldLeft = 14, FieldRight = 60, TreeX = 1, TreeY = 4;
+    const int H = PixelCanvas.Height;
+    const int HouseY = 6, PathY = 17, FieldLeft = 14, TreeX = 1, TreeY = 4;
+    readonly int W, HouseX, DoorX, FieldRight; // the house stands 27 pixels from the right edge, the field ends before it
     const float SleepHour = 23f, RiseHour = 5.5f;
 
     // Sky colors through the day: sky hour (see SkyHour: sunrise is 6:00 and sunset 20:00), top, bottom, daylight
@@ -82,7 +83,7 @@ public sealed class FarmScene : IScene
 
     readonly int[] _housePalette = new int[9], _treePalette = new int[4], _farmerPalette = new int[7], _birdPalette = new int[1];
     readonly int[] _sunPalette = new int[1], _moonPalette = [Rgb(0xF6F2DA)], _cloudPalette = new int[2];
-    readonly int[] _near = new int[W], _mid = new int[W], _far = new int[W];
+    readonly int[] _near, _mid, _far;
     readonly int[] _flowerX, _flowerBase, _flowerHeight, _flowerColor;
     readonly int[] _starX, _starY;
     readonly float[] _cloudX;
@@ -100,8 +101,15 @@ public sealed class FarmScene : IScene
     bool _started;
     string _status = "";
 
-    public FarmScene(Random rng, FarmOptions? options = null)
+    public FarmScene(Random rng, FarmOptions? options = null, int width = PixelCanvas.DefaultWidth)
     {
+        W = width;
+        HouseX = W - 27;
+        DoorX = HouseX + 3;
+        FieldRight = Math.Max(FieldLeft + 8, HouseX - 13);
+        _near = new int[W];
+        _mid = new int[W];
+        _far = new int[W];
         _options = options ?? FarmOptions.Default;
         for (int x = 0; x < W; x++)
         {
@@ -110,7 +118,7 @@ public sealed class FarmScene : IScene
             _near[x] = 14 + (int)MathF.Round(MathF.Sin(x * 0.045f + 0.5f) * 0.8f + MathF.Sin(x * 0.13f) * 0.4f);
         }
 
-        int flowers = 34;
+        int flowers = Math.Max(8, 34 * (FieldRight - FieldLeft) / 46); // as dense as on the default tile
         _flowerX = new int[flowers];
         _flowerBase = new int[flowers];
         _flowerHeight = new int[flowers];
@@ -123,7 +131,7 @@ public sealed class FarmScene : IScene
             _flowerColor[i] = FlowerColors[rng.Next(FlowerColors.Length)];
         }
 
-        int stars = 30;
+        int stars = Math.Max(8, 30 * W / PixelCanvas.DefaultWidth);
         _starX = new int[stars];
         _starY = new int[stars];
         for (int i = 0; i < stars; i++)
@@ -132,15 +140,22 @@ public sealed class FarmScene : IScene
             _starY[i] = rng.Next(9);
         }
 
-        _cloudX = [rng.Next(W), rng.Next(W), rng.Next(W)];
-        _cloudY = [1 + rng.Next(2), 3 + rng.Next(2), rng.Next(2)];
+        int clouds = Math.Max(2, 3 * W / PixelCanvas.DefaultWidth);
+        _cloudX = new float[clouds];
+        _cloudY = new int[clouds];
+        for (int i = 0; i < clouds; i++)
+        {
+            _cloudX[i] = rng.Next(W);
+            _cloudY[i] = (i % 3) switch { 0 => 1 + rng.Next(2), 1 => 3 + rng.Next(2), _ => rng.Next(2) };
+        }
         for (int i = 0; i < _fireflies.Length; i++)
-            _fireflies[i] = new Mote { X = 5 + rng.Next(W - 30), Y = 8 + rng.Next(8), Phase = rng.Next(60) };
+            _fireflies[i] = new Mote { X = 5 + rng.Next(Math.Max(1, W - 30)), Y = 8 + rng.Next(8), Phase = rng.Next(60) };
         for (int i = 0; i < _butterflies.Length; i++)
             _butterflies[i] = new Mote { X = FieldLeft + rng.Next(FieldRight - FieldLeft), Y = 11 + rng.Next(3), Phase = i * 3 };
     }
 
     public string Name => "Cozy farm";
+    public int Width => W;
     public string Status => _status;
 
     /// <summary>Whether the farmer is in the house, for tests.</summary>
@@ -186,7 +201,7 @@ public sealed class FarmScene : IScene
             SendBird(rng);
         }
         else if (_shootingStar.Life <= 0)
-            _shootingStar = new Mote { X = 40 + rng.Next(55), Y = rng.Next(3), Vx = -0.9f, Vy = 0.35f, Life = 16 };
+            _shootingStar = new Mote { X = W * 2 / 5 + rng.Next(Math.Max(1, W * 11 / 20)), Y = rng.Next(3), Vx = -0.9f, Vy = 0.35f, Life = 16 };
     }
 
     /// <summary>Within the farmer's working hours (which may run past midnight when the end is before the start).</summary>
@@ -281,7 +296,7 @@ public sealed class FarmScene : IScene
                 {
                     _doing = Doing.Walking;
                     // Mostly off to another patch of flowers; sometimes a stroll back towards the house.
-                    _targetX = rng.Next(5) == 0 ? 64 + rng.Next(6) : FieldLeft + rng.Next(FieldRight - FieldLeft - 4);
+                    _targetX = rng.Next(5) == 0 ? HouseX - 9 + rng.Next(6) : FieldLeft + rng.Next(FieldRight - FieldLeft - 4);
                 }
                 break;
             case Doing.Waving:
@@ -347,7 +362,7 @@ public sealed class FarmScene : IScene
         {
             ref var f = ref _fireflies[i];
             if (rng.Next(30) == 0) { f.Vx = ((float)rng.NextDouble() - 0.5f) * 0.12f; f.Vy = ((float)rng.NextDouble() - 0.5f) * 0.08f; }
-            f.X = Math.Clamp(f.X + f.Vx, 2, HouseX - 2);
+            f.X = Math.Clamp(f.X + f.Vx, 2, Math.Max(3, HouseX - 2));
             f.Y = Math.Clamp(f.Y + f.Vy, 7, 16);
         }
     }
@@ -444,7 +459,7 @@ public sealed class FarmScene : IScene
         float sunT = (_hour - 6f) / 14f;
         if (sunT is > 0 and < 1)
         {
-            int x = (int)(2 + sunT * 92), y = (int)(13 - MathF.Sqrt(MathF.Sin(sunT * MathF.PI)) * 12);
+            int x = (int)(2 + sunT * (W - 8)), y = (int)(13 - MathF.Sqrt(MathF.Sin(sunT * MathF.PI)) * 12);
             int glow = Rgba(0xFFF2B0, 70);
             for (int dy = -1; dy <= 4; dy++) for (int dx = -1; dx <= 4; dx++)
                 if ((dx is -1 or 4 && dy is >= 0 and <= 3) || (dy is -1 or 4 && dx is >= 0 and <= 3)) c.Set(x + dx, y + dy, glow);
@@ -455,7 +470,7 @@ public sealed class FarmScene : IScene
         float moonT = (moonHour - 19.5f) / 11f;
         if (moonT is > 0 and < 1)
         {
-            int x = (int)(2 + moonT * 92), y = (int)(13 - MathF.Sqrt(MathF.Sin(moonT * MathF.PI)) * 11);
+            int x = (int)(2 + moonT * (W - 8)), y = (int)(13 - MathF.Sqrt(MathF.Sin(moonT * MathF.PI)) * 11);
             c.Fill(x - 1, y - 1, 6, 6, Rgba(0xF6F2DA, 18)); // a faint halo
             c.Fill(x, y, 4, 4, Rgba(0xF6F2DA, 18));
             c.Sprite(x, y, Moon, _moonPalette);
@@ -468,7 +483,7 @@ public sealed class FarmScene : IScene
         body = PixelCanvas.Lerp(body, Rgb(0xFFB89A), _warm * 3 / 4);
         _cloudPalette[0] = PixelCanvas.Rgba(body, 230);
         _cloudPalette[1] = PixelCanvas.Rgba(PixelCanvas.Scale(body, 222), 230);
-        for (int i = 0; i < _cloudX.Length; i++) c.Sprite((int)_cloudX[i], _cloudY[i], Clouds[i], _cloudPalette);
+        for (int i = 0; i < _cloudX.Length; i++) c.Sprite((int)_cloudX[i], _cloudY[i], Clouds[i % Clouds.Length], _cloudPalette);
     }
 
     void DrawLand(PixelCanvas c)

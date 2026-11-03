@@ -22,6 +22,51 @@ public class ScenesTests
     };
     public static TheoryData<string> SceneNames() => new(Scenes.Keys);
 
+    static readonly Dictionary<string, Func<Random, int, IScene>> SizedScenes = new()
+    {
+        ["Aquarium"] = (rng, w) => new AquariumScene(rng, w),
+        ["Snake"] = (rng, w) => new SnakeScene(rng, w / 2),
+        ["Racers"] = (rng, w) => new RacersScene(rng, w),
+        ["Cozy farm"] = (rng, w) => new FarmScene(rng, Prague, w),
+    };
+
+    public static TheoryData<string, int> ScenesAtEveryWidth()
+    {
+        var data = new TheoryData<string, int>();
+        foreach (var name in SizedScenes.Keys)
+            foreach (var width in new[] { PixelCanvas.MinWidth, 24, 37, 55, 80, 100, 180, 260, PixelCanvas.MaxWidth }) data.Add(name, width);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(ScenesAtEveryWidth))]
+    public void Every_scene_runs_and_fills_its_frame_at_any_width(string name, int width)
+    {
+        var rng = new Random(width);
+        var scene = SizedScenes[name](rng, width);
+        var pixels = PixelCanvas.NewFrame(scene.Width);
+
+        for (int step = 0; step < 600; step++)
+        {
+            scene.Step(Noon.AddMinutes(step * 3), rng); // through a whole day, for the farm
+            if (step % 50 == 25) scene.OnClick(Noon, rng);
+            Array.Clear(pixels);
+            scene.Render(pixels);
+        }
+        Assert.InRange(scene.Width, width - 1, width); // the snake board is whole 2-pixel cells
+        Assert.All(pixels, p => Assert.Equal(0xFF, (p >> 24) & 0xFF));
+    }
+
+    [Theory]
+    [InlineData(0, 100)]
+    [InlineData(200, 100)]
+    [InlineData(302, 151)]
+    [InlineData(48, 24)]
+    [InlineData(10, 20)]
+    [InlineData(5000, 320)]
+    public void A_tile_width_maps_to_a_frame_width_of_2_dip_per_pixel(double tileWidth, int frameWidth) =>
+        Assert.Equal(frameWidth, PixelCanvas.WidthFor(tileWidth));
+
     [Theory]
     [MemberData(nameof(SceneNames))]
     public void Every_scene_paints_every_pixel_of_every_frame(string name)
@@ -193,9 +238,9 @@ public class ScenesTests
     static int Brightness(int[] pixels, int row)
     {
         int sum = 0;
-        for (int x = 0; x < PixelCanvas.Width; x++)
+        for (int x = 0; x < PixelCanvas.DefaultWidth; x++)
         {
-            int p = pixels[row * PixelCanvas.Width + x];
+            int p = pixels[row * PixelCanvas.DefaultWidth + x];
             sum += ((p >> 16) & 255) + ((p >> 8) & 255) + (p & 255);
         }
         return sum;
@@ -239,12 +284,12 @@ public class ScenesTests
 
         canvas.Set(0, 0, PixelCanvas.Rgba(0xFFFFFF, 128));
         canvas.Set(-1, 0, PixelCanvas.Rgb(0xFF0000));
-        canvas.Set(PixelCanvas.Width, PixelCanvas.Height - 1, PixelCanvas.Rgb(0xFF0000));
-        canvas.Sprite(PixelCanvas.Width - 2, 1, ["123"], [PixelCanvas.Rgb(0x0000FF), PixelCanvas.Rgb(0x00FF00), PixelCanvas.Rgb(0xFF0000)], flip: true);
+        canvas.Set(PixelCanvas.DefaultWidth, PixelCanvas.Height - 1, PixelCanvas.Rgb(0xFF0000));
+        canvas.Sprite(PixelCanvas.DefaultWidth - 2, 1, ["123"], [PixelCanvas.Rgb(0x0000FF), PixelCanvas.Rgb(0x00FF00), PixelCanvas.Rgb(0xFF0000)], flip: true);
 
         Assert.Equal(PixelCanvas.Rgb(0x808080), pixels[0]);
-        Assert.Equal(PixelCanvas.Rgb(0xFF0000), canvas.Get(PixelCanvas.Width - 2, 1)); // flipped: the last color comes first
-        Assert.Equal(PixelCanvas.Rgb(0x00FF00), canvas.Get(PixelCanvas.Width - 1, 1));
+        Assert.Equal(PixelCanvas.Rgb(0xFF0000), canvas.Get(PixelCanvas.DefaultWidth - 2, 1)); // flipped: the last color comes first
+        Assert.Equal(PixelCanvas.Rgb(0x00FF00), canvas.Get(PixelCanvas.DefaultWidth - 1, 1));
         Assert.Throws<ArgumentException>(() => new PixelCanvas(new int[10]));
     }
 

@@ -67,7 +67,8 @@ Script rules that save a round trip:
   and keep the file ASCII (write `[char]0x00B7` for a middle dot) so Windows PowerShell 5.1 reads it too.
 - Read options from `$env:TILE_SETTINGS_JSON | ConvertFrom-Json`; never hard-code what a field can change.
 - The title and subtitle are short: a tile is 132 DIP wide unless `"width"` says otherwise (up to 640), and users can
-  resize it in edit mode unless `tile.json` says `"resizable": false` (for a layout that only works at one width).
+  resize it in edit mode unless `tile.json` says `"resizable": false` (for a layout that only works at one width);
+  `"minWidth"`/`"maxWidth"` bound the range instead, for a layout that needs some room.
   Put the most important part first; the end is cut off.
 - Failures: let the script exit non-zero with a short one-line message on stderr; the app shows the error look and
   the message. Do not print an error as a normal tile. A state that is normal, such as "not connected" or "no
@@ -147,6 +148,8 @@ A DLL kind is a class library with a connector:
   referencing `src/TaskbarTiles.Contracts` with `Private="false"` (the host provides it), a connector class marked
   `[TileConnector("<connector-id>", Width = 200)]` implementing `ITileConnector`, and the logic that turns data into
   a `TileState` and `FlyoutState` in a pure static class (`ClipboardView`, `SystemView`) so it can be unit-tested.
+- A connector that draws to fit the tile (a `TileState.Canvas`) reads `ctx.Width` (DIP) and redraws for the new
+  width on `ctx.Resized`, as `src/TaskbarTiles.Plugins.Scenes/SceneConnector.cs` does.
 - Call `ctx.Update` from any thread; it is cheap and only the latest state is drawn. Throw from connector methods
   only for fatal failures (the host restarts the connector with backoff); use `ctx.ReportError` or `ctx.Log.Warn`
   for the rest. Dispose everything in `DisposeAsync`.

@@ -5,6 +5,9 @@
 // --preview runs a script kind folder for real, as the app would, and renders what it prints: for checking a new tile
 // without installing it. It reports tile.json and script problems, the popup, and where the picture went.
 //   dotnet run --project tools/screenshots -- --preview <kind folder> [<out.png>]
+//
+// --sizes draws each tile at a range of widths, as edit mode can resize it, to <out>\sizes-<kind>.png.
+//   dotnet run --project tools/screenshots -- --sizes <out folder>
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -26,54 +29,62 @@ if (args is ["--preview", var kindFolder, ..])
     return await Preview(Path.GetFullPath(kindFolder), args.Length > 2 ? Path.GetFullPath(args[2]) : null);
 
 var repo = FindRepo();
+var sizes = args is ["--sizes", ..];
+if (sizes) args = args[1..];
 var outDir = Path.GetFullPath(args.Length > 0 ? args[0] : Path.Combine(repo, "docs", "images"));
 Directory.CreateDirectory(outDir);
 var claudeLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "claude-usage", "claude.png")));
 
-// The scenes animate: run each connector for a moment and keep its last frame.
+// The scenes animate: run each connector for a moment, at each width drawn, and keep its last frame.
 var noon = new DateTime(2026, 6, 21, 17, 30, 0);
+double[] widths = sizes ? SizeWidths() : [200];
 // Seconds each runs for: long enough for a grown snake and a race under way.
-var scenes = new (string Kind, ITileConnector Connector, int Seconds)[]
+var scenes = new (string Kind, Func<ITileConnector> Create, int Seconds)[]
 {
-    ("aquarium", new AquariumConnector(new Random(7), () => noon), 4),
-    ("snake", new SnakeConnector(new Random(7), () => noon), 20),
-    ("racers", new RacersConnector(new Random(7), () => noon), 14),
-    ("cozy-farm", new FarmConnector(new Random(7), () => noon, () => (50.08, 14.42)), 4),
+    ("aquarium", () => new AquariumConnector(new Random(7), () => noon), 4),
+    ("snake", () => new SnakeConnector(new Random(7), () => noon), 20),
+    ("racers", () => new RacersConnector(new Random(7), () => noon), 14),
+    ("cozy-farm", () => new FarmConnector(new Random(7), () => noon, () => (50.08, 14.42)), 4),
 };
-var frames = new Dictionary<string, TileState>();
-await Task.WhenAll(scenes.Select(async scene =>
+var frames = new Dictionary<(string, double), TileState>();
+await Task.WhenAll(scenes.SelectMany(scene => widths.Select(async width =>
 {
-    var ctx = new Capture(scene.Kind);
-    await scene.Connector.StartAsync(ctx, CancellationToken.None);
+    var ctx = new Capture(scene.Kind) { Width = width };
+    var connector = scene.Create();
+    await connector.StartAsync(ctx, CancellationToken.None);
     await Task.Delay(TimeSpan.FromSeconds(scene.Seconds));
-    await scene.Connector.DisposeAsync();
-    lock (frames) frames[scene.Kind] = ctx.Last ?? throw new InvalidOperationException($"{scene.Kind} drew nothing");
-}));
+    await connector.DisposeAsync();
+    lock (frames) frames[(scene.Kind, width)] = ctx.Last ?? throw new InvalidOperationException($"{scene.Kind} drew nothing");
+})));
+Func<double, TileState> Scene(string kind) => width => frames[(kind, sizes ? width : 200)];
 
 RunSta(() =>
 {
-    var tiles = new List<(string Kind, double Width, TileState State)>
+    static Func<double, TileState> Fixed(TileState state) => _ => state;
+    var tiles = new List<(string Kind, double Width, Func<double, TileState> State)>
     {
-        ("media", 268, Media()),
-        ("claude-usage", 220, Script($$"""{ "title": "5h 34% · resets 16:40", "subtitle": "Week 21% · resets Fri", "progress": 0.34, "icon": { "glyph": "clock", "color": "ok" }, "image": "{{claudeLogo}}" }""")),
-        ("system", 200, SystemTile()),
-        ("battery", 132, BatteryView.Tile(BatteryView.Sorted([
+        ("media", 268, Fixed(Media())),
+        ("claude-usage", 220, Fixed(Script($$"""{ "title": "5h 34% · resets 16:40", "subtitle": "Week 21% · resets Fri", "progress": 0.34, "icon": { "glyph": "clock", "color": "ok" }, "image": "{{claudeLogo}}" }"""))),
+        ("system", 200, Fixed(SystemTile())),
+        ("battery", 132, Fixed(BatteryView.Tile(BatteryView.Sorted([
             new DeviceBattery("m", "MX Master 3S", DeviceType.Mouse, 65),
             new DeviceBattery("k", "MX Keys", DeviceType.Keyboard, 90),
-            new DeviceBattery("h", "WH-1000XM5", DeviceType.Headphones, 40, Charging: true)]))),
-        ("clipboard", 200, ClipboardView.Tile([
+            new DeviceBattery("h", "WH-1000XM5", DeviceType.Headphones, 40, Charging: true)])))),
+        ("clipboard", 200, Fixed(ClipboardView.Tile([
             new ClipEntry(2, new ClipItem(ClipKind.Text, "git switch -c feat/new-tile"), noon.AddMinutes(-2)),
-            new ClipEntry(1, new ClipItem(ClipKind.Image, "Image 1280×720", "Image 1280×720"), noon.AddMinutes(-9))])),
-        ("uptime", 132, Script("""{ "title": "17:30", "subtitle": "up 3d 4h", "icon": { "glyph": "clock", "color": "accent" } }""")),
-        ("ping", 132, Script("""{ "title": "1.1.1.1", "subtitle": "12 ms", "icon": { "glyph": "check", "color": "ok" } }""")),
-        ("aquarium", 200, frames["aquarium"]),
-        ("cozy-farm", 200, frames["cozy-farm"]),
-        ("snake", 200, frames["snake"]),
-        ("racers", 200, frames["racers"]),
+            new ClipEntry(1, new ClipItem(ClipKind.Image, "Image 1280×720", "Image 1280×720"), noon.AddMinutes(-9))]))),
+        ("uptime", 132, Fixed(Script("""{ "title": "17:30", "subtitle": "up 3d 4h", "icon": { "glyph": "clock", "color": "accent" } }"""))),
+        ("ping", 132, Fixed(Script("""{ "title": "1.1.1.1", "subtitle": "12 ms", "icon": { "glyph": "check", "color": "ok" } }"""))),
+        ("aquarium", 200, Scene("aquarium")),
+        ("cozy-farm", 200, Scene("cozy-farm")),
+        ("snake", 200, Scene("snake")),
+        ("racers", 200, Scene("racers")),
     };
-    foreach (var (kind, width, state) in tiles) Save(Render(width, state), Path.Combine(outDir, $"tile-{kind}.png"));
+    foreach (var (kind, width, state) in tiles)
+        if (sizes) Save(RenderSizes(state), Path.Combine(outDir, $"sizes-{kind}.png"));
+        else Save(Render(width, state(width)), Path.Combine(outDir, $"tile-{kind}.png"));
 });
-Console.WriteLine($"Wrote 11 tiles to {outDir}");
+Console.WriteLine($"Wrote {(sizes ? "the sizes of " : "")}11 tiles to {outDir}");
 return 0;
 
 // Exit code 0 when the tile drew without errors, 1 otherwise.
@@ -169,6 +180,20 @@ static TileState Media()
     };
 }
 
+// The tile at widths from the smallest edit mode allows to the largest, one under the other.
+static RenderTargetBitmap RenderSizes(Func<double, TileState> state)
+{
+    var column = new StackPanel { Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)) };
+    foreach (var width in SizeWidths())
+        column.Children.Add(new Image { Source = Render(width, state(width)), Width = width + 2 * TaskbarGap, HorizontalAlignment = HorizontalAlignment.Left });
+    column.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+    column.Arrange(new Rect(column.DesiredSize));
+    column.UpdateLayout();
+    var bmp = new RenderTargetBitmap((int)(column.ActualWidth * Scale), (int)(column.ActualHeight * Scale), 96 * Scale, 96 * Scale, PixelFormats.Pbgra32);
+    bmp.Render(column);
+    return bmp;
+}
+
 // The tile as TileView draws it on a dark taskbar, with a little taskbar around it.
 static RenderTargetBitmap Render(double width, TileState state)
 {
@@ -198,6 +223,8 @@ static byte[] Png(BitmapSource bmp)
 
 static void Save(BitmapSource bmp, string path) => File.WriteAllBytes(path, Png(bmp));
 
+static double[] SizeWidths() => [48, 80, 110, 160, 240, 360, 520];
+
 static string FindRepo()
 {
     for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
@@ -216,6 +243,7 @@ sealed class Fixed(TileState state) : ITileConnector
 sealed class Capture(string id, JsonElement? settings = null, string? folder = null, bool echo = false) : ITileContext
 {
     public volatile TileState? Last;
+    public double Width { get; init; }
     public volatile string? Error;
     public string TileId => id;
     public JsonElement Settings { get; } = settings ?? JsonDocument.Parse("{}").RootElement.Clone();

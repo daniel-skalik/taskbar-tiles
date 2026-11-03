@@ -22,7 +22,7 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// "compact": false (its tiles never shrink to an icon). Fields are the settings dialog's inputs (tile.json's "fields").
 /// Group is where the + picker files it, a path such as "Fun/Games" (tile.json's "group"); "" for the top level.
 /// Resizable is false when tile.json says "resizable": false: its tiles keep the kind's width, and edit mode offers no
-/// resize grip.
+/// resize grip. WidthMin and WidthMax (tile.json's "minWidth" and "maxWidth") bound how far the grip goes.
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -39,7 +39,9 @@ public sealed record TileKind(
     bool Compact = true,
     IReadOnlyList<TileField>? Fields = null,
     string Group = "",
-    bool Resizable = true)
+    bool Resizable = true,
+    double WidthMin = TileJson.MinWidth,
+    double WidthMax = TileJson.MaxWidth)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -81,7 +83,8 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
-    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "", bool Resizable = true)
+    double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "", bool Resizable = true,
+    double WidthMin = TileJson.MinWidth, double WidthMax = TileJson.MaxWidth)
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -132,13 +135,15 @@ public sealed record TileJson(string Name, string Description, string Connector,
             else if (s.ValueKind == JsonValueKind.Object) settings = s.Clone();
             else return Broken($"{shownPath}: \"settings\" must be an object.");
 
-            double? width = null;
-            if (root.TryGetProperty("width", out var w))
+            double? width = null, widthMin = null, widthMax = null;
+            foreach (var (key, set) in new (string, Action<double>)[] { ("width", v => width = v), ("minWidth", v => widthMin = v), ("maxWidth", v => widthMax = v) })
             {
+                if (!root.TryGetProperty(key, out var w)) continue;
                 if (w.ValueKind != JsonValueKind.Number || w.GetDouble() is < MinWidth or > MaxWidth)
-                    return Broken($"{shownPath}: \"width\" must be a number from {MinWidth} to {MaxWidth}.");
-                width = w.GetDouble();
+                    return Broken($"{shownPath}: \"{key}\" must be a number from {MinWidth} to {MaxWidth}.");
+                set(w.GetDouble());
             }
+            if (widthMin > widthMax) return Broken($"{shownPath}: \"minWidth\" must not be more than \"maxWidth\".");
 
             var compact = true;
             if (root.TryGetProperty("compact", out var c))
@@ -172,7 +177,8 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 group = NormalizeGroup(g.GetString());
             }
 
-            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group, resizable);
+            return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group, resizable,
+                widthMin ?? MinWidth, widthMax ?? MaxWidth);
         }
     }
 

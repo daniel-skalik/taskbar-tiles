@@ -154,4 +154,70 @@ public class ResizeTests
         Assert.Equal(200, view.Width);
         view.Detach();
     });
+
+    [Fact]
+    public async Task A_resized_tile_tells_its_connector_the_new_width()
+    {
+        var connector = new FakeConnector();
+        var runtime = new TileRuntime("a", "fake", 132, () => connector, JsonDocument.Parse("{}").RootElement.Clone(), new ImmediateDispatcher(), new CollectingLog());
+        await runtime.StartAsync();
+        var resized = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.Context!.Resized += (_, _) => resized.TrySetResult(connector.Context.Width);
+
+        Assert.Equal(132, connector.Context.Width);
+        runtime.Resize(250);
+
+        Assert.Equal(250, await resized.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public void Resizing_a_kept_tile_in_config_resizes_its_runtime()
+    {
+        var (host, _, bars) = Host();
+        var runtime = bars["MAIN"].Slots[0].Members[0];
+
+        Assert.Null(host.ResizeTiles(["a"], 300));
+
+        Assert.Equal(300, runtime.Width);
+    }
+
+    // --- min and max width -----------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Tile_json_may_bound_the_width_a_tile_is_resized_to()
+    {
+        var json = TileJson.Parse("""{ "name": "A", "connector": "script", "minWidth": 120, "maxWidth": 300 }""", "t.json");
+        Assert.Equal((120.0, 300.0), (json.WidthMin, json.WidthMax));
+        var plain = TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json");
+        Assert.Equal((TileJson.MinWidth, TileJson.MaxWidth), (plain.WidthMin, plain.WidthMax));
+    }
+
+    [Theory]
+    [InlineData("""{ "name": "A", "connector": "script", "minWidth": 300, "maxWidth": 120 }""", "t.json: \"minWidth\" must not be more than \"maxWidth\".")]
+    [InlineData("""{ "name": "A", "connector": "script", "maxWidth": 1000 }""", "t.json: \"maxWidth\" must be a number from 48 to 640.")]
+    [InlineData("""{ "name": "A", "connector": "script", "minWidth": "wide" }""", "t.json: \"minWidth\" must be a number from 48 to 640.")]
+    public void A_bad_width_range_breaks_the_kind(string json, string error) =>
+        Assert.Equal(error, TileJson.Parse(json, "t.json").Error);
+
+    [Fact]
+    public void A_saved_width_outside_the_kinds_range_is_kept_within_it()
+    {
+        var kinds = TestKinds.Of(
+            TestKinds.Script("ping", width: 132) with { WidthMin = 100, WidthMax = 250 },
+            TestKinds.Script("wide", width: 200) with { WidthMin = 150 });
+        var writer = new FakeConfigWriter("""
+            { "tiles": { "a": { "kind": "ping", "width": 600 }, "b": { "kind": "ping", "width": 60 }, "c": { "kind": "wide" } },
+              "displays": { "primary": { "slots": [ "a", "b", { "stack": ["b", "c"], "rotate": "5s" } ] } } }
+            """);
+        var bars = new Dictionary<string, FakeBar>();
+        new HostController(ConnectorCatalog.Empty, () => writer.Current,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), FakeBar.Into(bars), writer: writer, kinds: () => kinds).Start();
+        var slots = bars["MAIN"].Slots;
+
+        Assert.Equal((250.0, 100.0, 250.0), (slots[0].FullWidth, slots[0].MinWidth, slots[0].MaxWidth));
+        Assert.Equal(100, slots[1].FullWidth);
+        Assert.Equal((150.0, 250.0), (slots[2].MinWidth, slots[2].MaxWidth)); // a stack: every member's range holds
+    }
 }
