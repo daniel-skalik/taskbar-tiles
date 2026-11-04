@@ -102,12 +102,33 @@ function Get-ExpectedWeek($reset) {
     $days = [Math]::Ceiling(([DateTimeOffset]::Now - $reset.AddDays(-7)).TotalDays)
     return [int][Math]::Round(100.0 / 7 * [Math]::Min(7, [Math]::Max(1, $days)))
 }
+# Where a limit ends up at its reset if use goes on at the rate so far: @{ Percent; RunsOut } with RunsOut the time it
+# reaches 100% when that comes before the reset. Null early in the window (under a tenth of it gone), where a single
+# burst would project far past 100%, and without a reset time.
+function Get-Forecast($percent, $reset, [double]$hours) {
+    if ($null -eq $percent -or -not $reset) { return $null }
+    $now = [DateTimeOffset]::Now
+    $elapsed = $hours - ($reset - $now).TotalHours
+    if ($elapsed -lt $hours / 10) { return $null }
+    $elapsed = [Math]::Min($hours, $elapsed)
+    $projected = $percent * $hours / $elapsed
+    $runsOut = $null
+    if ($percent -ge 100) { $runsOut = $now }
+    elseif ($projected -gt 100 -and $percent -gt 0) { $runsOut = $now.AddHours((100 - $percent) * $elapsed / $percent) }
+    return @{ Percent = [int][Math]::Round($projected); RunsOut = $runsOut }
+}
+# "runs out 15:05" or "65% at reset".
+function Format-Forecast($forecast) {
+    if ($forecast.RunsOut) { return "runs out $(Format-Reset $forecast.RunsOut.LocalDateTime)" }
+    return "$($forecast.Percent)% at reset"
+}
 # "42%/50%": used, then expected by now.
 function Format-Pace($percent, $expected) { if ($null -ne $expected) { "$percent%/$expected%" } else { "$percent%" } }
 
 $hour = Get-Percent $usage.five_hour; $hourReset = ConvertTo-Local $usage.five_hour.resets_at
 $week = Get-Percent $usage.seven_day; $weekReset = ConvertTo-Local $usage.seven_day.resets_at
 $hourPace = Get-Expected5h $hourReset; $weekPace = Get-ExpectedWeek $weekReset
+$hourForecast = Get-Forecast $hour $hourReset 5; $weekForecast = Get-Forecast $week $weekReset (7 * 24)
 $updated = "Updated $($fetchedAt.ToLocalTime().ToString('HH:mm'))"
 if ($stale) { $updated += " ($stale)" }
 
@@ -140,7 +161,9 @@ function Get-LogoImage([string]$dotColor) {
 if ($env:TILE_HOOK -eq 'flyout') {
     $rows = @()
     if ($null -ne $hour) { $rows += @{ text = '5 hours'; value = "$(Format-Pace $hour $hourPace) $dot resets $(Format-Reset $hourReset)"; icon = @{ glyph = 'info'; color = (Get-Color $hour) } } }
+    if ($hourForecast) { $rows += @{ text = 'At this rate'; value = (Format-Forecast $hourForecast) } }
     if ($null -ne $week) { $rows += @{ text = 'Week'; value = "$(Format-Pace $week $weekPace) $dot resets $(Format-Reset $weekReset)"; icon = @{ glyph = 'info'; color = (Get-Color $week) } } }
+    if ($weekForecast) { $rows += @{ text = 'At this rate'; value = (Format-Forecast $weekForecast) } }
     # Weekly limits of one model (e.g. Opus), when the plan has them.
     foreach ($limit in @($usage.limits | Where-Object { $_.kind -eq 'weekly_scoped' -and $_.scope.model.display_name })) {
         $p = [int]$limit.percent
@@ -166,6 +189,7 @@ if ($null -ne $hour) {
     $state.title = "5h $(Format-Pace $hour $hourPace) $dot resets $(Format-Reset $hourReset)"
     $state.progress = [Math]::Min(1.0, [Math]::Max(0.0, $hour / 100.0))
     if ($null -ne $hourPace) { $state.progressMark = $hourPace / 100.0 }
+    if ($hourForecast) { $state.progressForecast = [Math]::Min(1.0, $hourForecast.Percent / 100.0) }
     $state.icon = @{ glyph = 'clock'; color = (Get-Color $hour) }
 } else {
     $state.title = '5h: no limit'

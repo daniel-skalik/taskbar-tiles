@@ -107,6 +107,7 @@ public class BundledKindsTests
         Assert.StartsWith("Week 18%/86% · resets ", outcome.Value.Subtitle); // day 6 of 7 begun
         Assert.Equal(0.42, outcome.Value.Progress!.Value, 3);
         Assert.Equal(0.60, outcome.Value.ProgressMark!.Value, 3);
+        Assert.Equal(0.70, outcome.Value.ProgressForecast!.Value, 3); // 42% in 3 of 5 hours: 70% at the reset
         Assert.Contains("5 hours: 42% used (60% at an even pace)", outcome.Value.Tooltip);
         Assert.Equal(TileColor.Ok, outcome.Value.Icon!.Color);
         Assert.NotNull(outcome.Value.Image); // claude.png from the tile folder
@@ -130,9 +131,40 @@ public class BundledKindsTests
         var outcome = HookResults.ForFlyout("flyout", await RunUsage("flyout", UsageSample(42, 18)), TimeSpan.FromSeconds(30));
 
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
-        Assert.Equal(new[] { "5 hours", "Week", "Week, Opus" }, outcome.Value!.Rows.Select(r => r.Text));
-        Assert.Equal("12%", outcome.Value.Rows[2].Value);
+        Assert.Equal(new[] { "5 hours", "At this rate", "Week", "At this rate", "Week, Opus" }, outcome.Value!.Rows.Select(r => r.Text));
+        Assert.Equal("70% at reset", outcome.Value.Rows[1].Value);
+        Assert.Equal("25% at reset", outcome.Value.Rows[3].Value); // 18% in 120.5 of 168 hours
+        Assert.Equal("12%", outcome.Value.Rows[4].Value);
         Assert.Equal(new[] { "refresh", "open" }, outcome.Value.Actions.Select(a => a.Id));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_says_when_a_limit_runs_out_at_this_rate()
+    {
+        // 90% in 3 of 5 hours: 100% 20 minutes from now, well before the reset.
+        var popup = HookResults.ForFlyout("flyout", await RunUsage("flyout", UsageSample(90, 18)), TimeSpan.FromSeconds(30));
+        var tile = HookResults.ForTile("interval", await RunUsage("interval", UsageSample(90, 18)), TimeSpan.FromSeconds(30));
+
+        Assert.False(popup.Failed, $"{popup.ErrorMessage}\n{popup.ErrorDetails}");
+        var at = DateTime.Now.AddMinutes(20);
+        Assert.Matches(@"^runs out \d\d:\d\d", popup.Value!.Rows[1].Value);
+        var shown = TimeSpan.Parse(popup.Value.Rows[1].Value!["runs out ".Length..]);
+        Assert.True(Math.Abs((shown - at.TimeOfDay).TotalMinutes) is < 2 or > 1438, popup.Value.Rows[1].Value);
+        Assert.Equal(1.0, tile.Value!.ProgressForecast!.Value, 3);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_has_no_forecast_early_in_a_window()
+    {
+        var sample = $$"""{ "five_hour": { "utilization": 3, "resets_at": "{{DateTimeOffset.UtcNow.AddHours(4.8):o}}" } }""";
+        var tile = HookResults.ForTile("interval", await RunUsage("interval", sample), TimeSpan.FromSeconds(30));
+        var popup = HookResults.ForFlyout("flyout", await RunUsage("flyout", sample), TimeSpan.FromSeconds(30));
+
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Null(tile.Value!.ProgressForecast);
+        Assert.Equal(new[] { "5 hours" }, popup.Value!.Rows.Select(r => r.Text));
     }
 
     [Fact]

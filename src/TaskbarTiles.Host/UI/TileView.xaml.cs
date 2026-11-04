@@ -16,6 +16,23 @@ public partial class TileView : UserControl
     static readonly SolidColorBrush PaceBrush = Frozen(Color.FromRgb(0x4C, 0x7C, 0xE0));
     static readonly SolidColorBrush AheadBrush = Frozen(Color.FromRgb(0xF2, 0xA3, 0x3A));
 
+    static readonly Brush PaceDashes = Dashes(PaceBrush.Color);
+    static readonly Brush AheadDashes = Dashes(AheadBrush.Color);
+
+    // 3 px on, 2 px off, a little dimmer than the bar it continues.
+    static Brush Dashes(Color color)
+    {
+        var dash = new GeometryDrawing(Frozen(color), null, new RectangleGeometry(new Rect(0, 0, 3, 2)));
+        var gap = new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(3, 0, 2, 2)));
+        var brush = new DrawingBrush(new DrawingGroup { Children = { dash, gap } })
+        {
+            TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 5, 2), ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None, Opacity = 0.75,
+        };
+        brush.Freeze();
+        return brush;
+    }
+
     static SolidColorBrush Frozen(Color color)
     {
         var brush = new SolidColorBrush(color);
@@ -172,11 +189,25 @@ public partial class TileView : UserControl
                 ProgressFill.Background = PaceBrush;
                 Panel.SetZIndex(PaceTrack, 0);
             }
+            if (s.ProgressForecast is { } f && Math.Clamp(f, 0, 1) > done + 0.005)
+            {
+                var end = Math.Clamp(f, 0, 1);
+                ForecastBefore.Width = new GridLength(done, GridUnitType.Star);
+                ForecastSpan.Width = new GridLength(end - done, GridUnitType.Star);
+                ForecastAfter.Width = new GridLength(1 - end, GridUnitType.Star);
+                ForecastFill.Background = ReferenceEquals(ProgressFill.Background, AheadBrush) ? AheadDashes : PaceDashes;
+                ForecastTrack.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ForecastTrack.Visibility = Visibility.Collapsed;
+            }
         }
         else
         {
             ProgressTrack.Visibility = Visibility.Collapsed;
             PaceTrack.Visibility = Visibility.Collapsed;
+            ForecastTrack.Visibility = Visibility.Collapsed;
         }
 
         var wasUrgent = _urgent;

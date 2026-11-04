@@ -89,6 +89,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `buttons` | array | Inline icon buttons: `{ "id": "rerun", "glyph": "refresh", "tooltip": "Run again", "enabled": true }`. `id` is required and runs the `action:<id>` hook; `glyph` defaults to `info`, `enabled` to `true`. |
 | `progress` | number | 0 to 1; a thin bar along the bottom. Must be a finite number: values such as `1e999` are dropped with a warning. |
 | `progressMark` | number | 0 to 1; where the bar should be by now, drawn as a dim bar under it. While `progress` is past it, the bar is blue up to the mark and orange beyond. Only shown with `progress`. |
+| `progressForecast` | number | 0 to 1; where the bar will be at the end at the current rate, drawn dashed from the bar's end to this point. Only shown with `progress`, and only past it. |
 | `sparkline` | array of numbers | A line chart behind the title and subtitle, from its lowest value to its highest (needs at least two values). Non-finite values are dropped with a warning. |
 | `urgent` | boolean | Pulsing red outline. |
 

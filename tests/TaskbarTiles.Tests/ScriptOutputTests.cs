@@ -29,6 +29,7 @@ public class ScriptOutputTests
               "buttons": [ { "id": "rerun", "glyph": "refresh", "tooltip": "Run again", "enabled": false } ],
               "progress": 0.25,
               "progressMark": 0.5,
+              "progressForecast": 0.75,
               "sparkline": [1, 2.5, 3],
               "urgent": true
             }
@@ -45,6 +46,7 @@ public class ScriptOutputTests
         Assert.Equal(new TileButton("rerun", "refresh", "Run again", Enabled: false), Assert.Single(s.Buttons));
         Assert.Equal(0.25, s.Progress);
         Assert.Equal(0.5, s.ProgressMark);
+        Assert.Equal(0.75, s.ProgressForecast);
         Assert.Equal(new[] { 1, 2.5, 3 }, s.Sparkline);
         Assert.True(s.Urgent);
     }

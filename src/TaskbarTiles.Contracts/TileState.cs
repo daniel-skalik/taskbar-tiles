@@ -37,6 +37,12 @@ public sealed record TileState
     /// </summary>
     public double? ProgressMark { get; init; }
 
+    /// <summary>
+    /// 0..1, where the progress bar will be at the end at the current rate (say, a usage limit at its reset): a dashed
+    /// bar from the progress bar's end to this point. Only drawn with a progress bar, and only past it.
+    /// </summary>
+    public double? ProgressForecast { get; init; }
+
     /// <summary>Recent values, oldest first, drawn as a chart behind the title and subtitle.</summary>
     public IReadOnlyList<double>? Sparkline { get; init; }
 
