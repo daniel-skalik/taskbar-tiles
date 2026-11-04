@@ -17,7 +17,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "media", "racers", "snake", "system", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "media", "racers", "snake", "system", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -143,5 +143,106 @@ public class BundledKindsTests
 
         Assert.True(outcome.Failed);
         Assert.Contains("Pro and Max", outcome.ErrorMessage + outcome.ErrorDetails);
+    }
+
+    /// <summary>Runs docker.ps1 on sample `docker ps` lines ("down": the engine is not running) instead of docker.</summary>
+    static async Task<ScriptResult> RunDocker(string hook, string sample)
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("ps.txt"), sample);
+        return await RunBundled("docker", "docker.ps1", hook,
+            extraEnv: new Dictionary<string, string> { ["TILE_DOCKER_SAMPLE"] = dir.File("ps.txt") });
+    }
+
+    const string DockerSample = """
+        {"Names":"web","State":"running","Status":"Up 2 hours"}
+        {"Names":"api","State":"running","Status":"Up 2 hours (unhealthy)"}
+        {"Names":"db","State":"exited","Status":"Exited (0) 5 hours ago"}
+        """;
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Docker_counts_containers_and_flags_unhealthy_ones()
+    {
+        var outcome = HookResults.ForTile("interval", await RunDocker("interval", DockerSample), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("1 with problems · 2 running · 1 stopped", outcome.Value!.Subtitle);
+        Assert.Equal(new TileIcon("package", TileColor.Warn), outcome.Value.Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Docker_popup_lists_problems_first()
+    {
+        var outcome = HookResults.ForFlyout("flyout", await RunDocker("flyout", DockerSample), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal(new[] { "api", "web", "db" }, outcome.Value!.Rows.Select(r => r.Text));
+        Assert.Equal("open", Assert.Single(outcome.Value.Actions).Id);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Docker_not_running_is_a_normal_tile()
+    {
+        var outcome = HookResults.ForTile("interval", await RunDocker("interval", "down"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal("Not running", outcome.Value!.Subtitle);
+    }
+
+    /// <summary>Runs git.ps1 against <paramref name="repo"/>.</summary>
+    static Task<ScriptResult> RunGit(string hook, string repo) =>
+        RunBundled("git", "git.ps1", hook, JsonSerializer.Serialize(new { repo }));
+
+    static void Git(string repo, string arguments)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo("git", $"-C \"{repo}\" {arguments}") { UseShellExecute = false, CreateNoWindow = true };
+        using var p = System.Diagnostics.Process.Start(info)!;
+        p.WaitForExit();
+        Assert.Equal(0, p.ExitCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Git_shows_the_branch_and_local_changes()
+    {
+        using var dir = new TempDir();
+        var repo = dir.File("my-app");
+        Directory.CreateDirectory(repo);
+        Git(repo, "init -q -b main");
+        File.WriteAllText(Path.Combine(repo, "a.txt"), "one");
+        Git(repo, "add a.txt");
+        Git(repo, "-c user.name=t -c user.email=t@t commit -q -m first");
+        File.WriteAllText(Path.Combine(repo, "a.txt"), "two");
+        File.WriteAllText(Path.Combine(repo, "b.txt"), "new");
+
+        var tile = HookResults.ForTile("interval", await RunGit("interval", repo), TimeSpan.FromSeconds(30));
+        var popup = HookResults.ForFlyout("flyout", await RunGit("flyout", repo), TimeSpan.FromSeconds(30));
+
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Empty(tile.Warnings);
+        Assert.Equal("my-app · main", tile.Value!.Title);
+        Assert.Equal("1 changed, 1 new", tile.Value.Subtitle);
+        Assert.Equal(new TileIcon("branch", TileColor.Accent), tile.Value.Icon);
+        Assert.False(popup.Failed, $"{popup.ErrorMessage}\n{popup.ErrorDetails}");
+        Assert.Contains(popup.Value!.Rows, r => r.Text == "first");
+        Assert.Equal(new[] { "fetch", "folder" }, popup.Value.Actions.Select(a => a.Id));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Git_without_a_repository_asks_for_one_and_fails_on_a_plain_folder()
+    {
+        using var dir = new TempDir();
+
+        var unset = HookResults.ForTile("interval", await RunGit("interval", ""), TimeSpan.FromSeconds(30));
+        var plain = HookResults.ForTile("interval", await RunGit("interval", dir.Path), TimeSpan.FromSeconds(30));
+
+        Assert.Equal("Set a repository in Settings", unset.Value!.Subtitle);
+        Assert.True(plain.Failed);
+        Assert.Contains("is not a Git repository", plain.ErrorDetails);
     }
 }

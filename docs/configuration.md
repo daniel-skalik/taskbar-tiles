@@ -108,7 +108,7 @@ The bundled `battery` kind shows the lowest battery of your wireless devices on 
 
 ### Claude usage
 
-The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour window on the first line ("5h 42% · resets 18:30", with the blue line along the bottom), the week below it. It shows the Claude logo (`claude.png` in its folder), with an orange dot at 80% and a red one at 95%. Click it for both windows with their reset times, plus any per-model weekly limit; **Open usage page** opens claude.ai's usage settings.
+The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour window on the first line ("5h 42%/60% · resets 18:30"), the week below it ("Week 18%/86%"). The second number is what an even pace would have used by now: the 5-hour window evenly from its start to its reset, the week one seventh per day begun. The line along the bottom is the 5-hour use, over a dim line at the even pace; past it, the part beyond the pace turns orange. It shows the Claude logo (`claude.png` in its folder), with an orange dot at 80% and a red one at 95%. Click it for both windows with their reset times, plus any per-model weekly limit; **Refresh now** reads them again at once, and **Open usage page** opens claude.ai's usage settings.
 
 - It reads every 5 minutes (setting `"refresh"`, `1m` to `1h`, also in **Settings…**) and on **Refresh now**, from the usage endpoint Claude Code's `/usage` uses, signed in with Claude Code's login in `%USERPROFILE%\.claude\.credentials.json` (or `%CLAUDE_CONFIG_DIR%`; setting `"credentials"` overrides the path). The token goes only to `api.anthropic.com` and is never stored elsewhere. The endpoint is not documented, so a Claude update may change it.
 - Claude Code renews the login while you use it. If it has expired, the tile says so until Claude Code runs again; numbers under an hour old keep showing in the meantime, with the reason in the tooltip.
@@ -122,16 +122,30 @@ The bundled `clipboard` kind shows the last thing you copied: text as one line w
 
 The bundled `system` kind shows CPU, memory, GPU, network speed and every drive's used space, sampled every second. **Settings…** → Show ticks which (setting `"show"`, e.g. `["CPU", "RAM"]`; all five without it; `"Disk"` means every fixed drive). Layout `"All at once"` fits them on two lines; `"Rotate"` shows one at a time, each drive on its own, with its own icon and its last minute as a chart behind the text, switching every `"rotate"` (default `"5s"`). The icon turns orange at 80% and red at 95%. Click it for every metric and each drive's free space; **Task Manager** opens it.
 
+### Docker
+
+The bundled `docker` kind shows how many of your Docker containers run and how many are stopped, read with the `docker` command Docker Desktop installs every 15 seconds (setting `"refresh"`, `5s` to `10m`, also in **Settings…**; setting `"docker"` names another `docker.exe`). The icon is green while any container runs, orange while one restarts, is paused or reports unhealthy (the tile then counts those first), and grey with none running. Click it for every container with its status, problems first, then running ones; **Open Docker Desktop** opens it. While Docker Desktop is not running the tile says so, and the popup offers **Start Docker Desktop**.
+
+### Git repository
+
+The bundled `git` kind follows one repository: its folder and branch on the first line, its local changes (staged, changed, new files, conflicts) and how far it is ahead of (`↑`) or behind (`↓`) its upstream below, or "Clean". Settings, also in **Settings…**:
+
+- `"repo"`: the repository's folder. Until it is set the tile asks for one. Add the tile several times for several repositories.
+- `"autoFetch"`: fetch from the remote every 5 minutes, so the behind count stays current (default off: behind counts are as of your last fetch).
+- `"refresh"`: how often it reads `git status` (default `"15s"`, `5s` to `10m`). Setting `"git"` names another `git.exe`.
+
+The icon is green when the branch is clean and up to date, blue with local changes or commits to push, orange when it is behind its upstream, and red with conflicts. Click it for the branch, upstream, change counts and last commit; **Fetch** fetches now and **Open folder** opens the repository in Explorer. It reads without taking Git's index lock, so it never gets in the way of your own Git commands.
+
 ### Pixel scenes
 
 Four bundled kinds draw a tiny animated world across the whole tile; click to join in, hover for the score or status. In the + picker they are under **Fun**.
 
-- `aquarium` (Fun › Scenes): fish, bubbles and a treasure chest; a click drops food.
-- `cozy-farm` (Fun › Scenes): a farm that follows your clock and the real sun: dawn at sunrise, golden hour before sunset, then a starry night with fireflies. A click makes the farmer wave, or at night sends a shooting star. Settings, also in **Settings…**:
+- `aquarium`: fish, bubbles and a treasure chest; a click drops food.
+- `cozy-farm`: a farm that follows your clock and the real sun: dawn at sunrise, golden hour before sunset, then a starry night with fireflies. A click makes the farmer wave, or at night sends a shooting star. Settings, also in **Settings…**:
   - `"workStart"` and `"workEnd"`: when the farmer is out in the field: `"sunrise"`, `"sunset"` or a 24-hour time such as `"7:30"` (default sunrise to sunset). The house sleeps from 23:00 to 5:30 whatever the hours.
   - `"latitude"` and `"longitude"`: where to compute sunrise and sunset, in degrees (north and east positive). Empty: the middle of the country set in Windows (Settings › Time & language › Region); no location permission is used.
-- `snake` (Fun › Games): plays itself; a click starts over. Keeps its best score.
-- `racers` (Fun › Games): pixel cars race; a click starts a new race. Counts wins per color.
+- `snake`: plays itself; a click starts over. Keeps its best score.
+- `racers`: pixel cars race; a click starts a new race. Counts wins per color.
 
 Install removes the `pixel-scene` kind these replace; a tile still using it shows an error until you remove it and add one of these.
 

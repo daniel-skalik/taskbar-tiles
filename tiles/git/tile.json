@@ -1,0 +1,23 @@
+{
+  "name": "Git repository",
+  "description": "A repository's branch, changes, and how far it is ahead of or behind its upstream",
+  "group": "Dev",
+  "connector": "script",
+  "width": 220,
+  "fields": [
+    { "key": "repo", "label": "Repository", "type": "text", "help": "The repository's folder, for example D:\\Projects\\my-app." },
+    { "key": "autoFetch", "label": "Fetch automatically", "type": "toggle", "help": "Fetch from the remote every 5 minutes, so behind counts stay current." },
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "5s", "max": "10m", "help": "How often the status is read." }
+  ],
+  "settings": {
+    "repo": "",
+    "autoFetch": false,
+    "refresh": "15s",
+    "hooks": {
+      "interval":      { "every": "$refresh", "run": "git.ps1", "timeout": "30s" },
+      "flyout":        { "run": "git.ps1" },
+      "action:fetch":  { "run": "git.ps1" },
+      "action:folder": { "run": "git.ps1" }
+    }
+  }
+}
