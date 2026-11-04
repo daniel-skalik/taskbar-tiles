@@ -29,7 +29,6 @@ public partial class TileView : UserControl
     bool _urgent;
     IReadOnlyList<double>? _spark;
     double? _sparkMax;
-    double? _mark;
     bool _compact;
     bool _clickInFlight;
     SolidColorBrush? _pulse;
@@ -38,11 +37,7 @@ public partial class TileView : UserControl
     {
         InitializeComponent();
         // Inner radius: the Root's 6 less its 1px border.
-        ProgressClip.SizeChanged += (_, e) =>
-        {
-            ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
-            PlaceTick();
-        };
+        ProgressClip.SizeChanged += (_, e) => ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SceneClip.SizeChanged += (_, e) => SceneClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkClip.SizeChanged += (_, e) => SparkClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkHost.SizeChanged += (_, _) => RenderSparkline();
@@ -158,15 +153,31 @@ public partial class TileView : UserControl
             ProgressDone.Width = new GridLength(done, GridUnitType.Star);
             ProgressLeft.Width = new GridLength(1 - done, GridUnitType.Star);
             ProgressTrack.Visibility = Visibility.Visible;
-            _mark = s.ProgressMark is { } m ? Math.Clamp(m, 0, 1) : null;
-            ProgressFill.Background = _mark is { } ahead && done > ahead + 0.005 ? AheadBrush : PaceBrush;
+            if (s.ProgressMark is { } m)
+            {
+                var pace = Math.Clamp(m, 0, 1);
+                PaceDone.Width = new GridLength(pace, GridUnitType.Star);
+                PaceLeft.Width = new GridLength(1 - pace, GridUnitType.Star);
+                PaceTrack.Visibility = Visibility.Visible;
+                // Behind the pace: the real bar over a dim one reaching the pace. Ahead of it: the real bar in orange
+                // under a solid blue one up to the pace, so the part past the pace shows orange.
+                bool ahead = done > pace + 0.005;
+                ProgressFill.Background = ahead ? AheadBrush : PaceBrush;
+                PaceFill.Opacity = ahead ? 1 : 0.4;
+                Panel.SetZIndex(PaceTrack, ahead ? 1 : 0);
+            }
+            else
+            {
+                PaceTrack.Visibility = Visibility.Collapsed;
+                ProgressFill.Background = PaceBrush;
+                Panel.SetZIndex(PaceTrack, 0);
+            }
         }
         else
         {
             ProgressTrack.Visibility = Visibility.Collapsed;
-            _mark = null;
+            PaceTrack.Visibility = Visibility.Collapsed;
         }
-        PlaceTick();
 
         var wasUrgent = _urgent;
         _urgent = s.Urgent;
@@ -195,19 +206,6 @@ public partial class TileView : UserControl
     /// The sparkline across the whole tile, behind the icon and text, with a faint fill below it: scaled 0..SparklineMax when the state
     /// gives one (a percentage stays low when low), else from its own minimum to maximum. Redrawn when the tile resizes.
     /// </summary>
-    /// <summary>Puts the progress mark's tick where it belongs along the bar, or hides it.</summary>
-    void PlaceTick()
-    {
-        double width = ProgressClip.ActualWidth;
-        if (_mark is not { } mark || ProgressTrack.Visibility != Visibility.Visible || width <= 0)
-        {
-            ProgressTick.Visibility = Visibility.Collapsed;
-            return;
-        }
-        ProgressTick.Margin = new Thickness(Math.Clamp(mark * width - ProgressTick.Width / 2, 0, width - ProgressTick.Width), 0, 0, 0);
-        ProgressTick.Visibility = Visibility.Visible;
-    }
-
     void RenderSparkline()
     {
         var values = _spark;

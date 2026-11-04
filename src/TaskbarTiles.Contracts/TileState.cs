@@ -32,8 +32,8 @@ public sealed record TileState
     public double? Progress { get; init; }
 
     /// <summary>
-    /// 0..1, where the progress bar should be by now (say, an even pace through a usage limit): a tick on the bar, which
-    /// turns orange while <see cref="Progress"/> is past it. Only drawn with a progress bar.
+    /// 0..1, where the progress bar should be by now (say, an even pace through a usage limit): a dim bar under the
+    /// progress bar. While <see cref="Progress"/> is past it, the bar is blue up to the mark and orange beyond. Only drawn with a progress bar.
     /// </summary>
     public double? ProgressMark { get; init; }
 

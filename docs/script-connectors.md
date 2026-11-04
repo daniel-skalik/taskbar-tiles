@@ -88,7 +88,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `image` | string | Base64 PNG or JPEG, shown instead of the icon. A `data:image/png;base64,` prefix is fine. |
 | `buttons` | array | Inline icon buttons: `{ "id": "rerun", "glyph": "refresh", "tooltip": "Run again", "enabled": true }`. `id` is required and runs the `action:<id>` hook; `glyph` defaults to `info`, `enabled` to `true`. |
 | `progress` | number | 0 to 1; a thin bar along the bottom. Must be a finite number: values such as `1e999` are dropped with a warning. |
-| `progressMark` | number | 0 to 1; where the bar should be by now, drawn as a tick on it. The bar turns orange while `progress` is past it. Only shown with `progress`. |
+| `progressMark` | number | 0 to 1; where the bar should be by now, drawn as a dim bar under it. While `progress` is past it, the bar is blue up to the mark and orange beyond. Only shown with `progress`. |
 | `sparkline` | array of numbers | A line chart behind the title and subtitle, from its lowest value to its highest (needs at least two values). Non-finite values are dropped with a warning. |
 | `urgent` | boolean | Pulsing red outline. |
 
