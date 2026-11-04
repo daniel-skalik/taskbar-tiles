@@ -132,7 +132,7 @@ public class BundledKindsTests
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
         Assert.Equal(new[] { "5 hours", "Week", "Week, Opus" }, outcome.Value!.Rows.Select(r => r.Text));
         Assert.Equal("12%", outcome.Value.Rows[2].Value);
-        Assert.Equal("open", Assert.Single(outcome.Value.Actions).Id);
+        Assert.Equal(new[] { "refresh", "open" }, outcome.Value.Actions.Select(a => a.Id));
     }
 
     [Fact]

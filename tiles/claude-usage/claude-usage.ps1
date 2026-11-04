@@ -151,7 +151,8 @@ if ($env:TILE_HOOK -eq 'flyout') {
         subtitle = $updated
         tint     = '#D97757' # Claude's clay
         rows     = $rows
-        actions  = @(@{ id = 'open'; label = 'Open usage page'; primary = $true })
+        # "refresh" is the host's own action: it runs interval again, which reads fresh numbers.
+        actions  = @(@{ id = 'refresh'; label = 'Refresh now' }, @{ id = 'open'; label = 'Open usage page'; primary = $true })
     }
     $image = Get-LogoImage ''
     if ($image) { $popup.image = $image }
