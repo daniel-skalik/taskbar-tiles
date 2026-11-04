@@ -65,7 +65,7 @@ RunSta(() =>
     var tiles = new List<(string Kind, double Width, Func<double, TileState> State)>
     {
         ("media", 268, Fixed(Media())),
-        ("claude-usage", 220, Fixed(Script($$"""{ "title": "5h 34%/52% · resets 16:40", "subtitle": "Week 21%/43% · resets Fri", "progress": 0.34, "progressMark": 0.52, "icon": { "glyph": "clock", "color": "ok" }, "image": "{{claudeLogo}}" }"""))),
+        ("claude-usage", 220, Fixed(Script($$"""{ "title": "5h 34%/52% · resets 16:40", "subtitle": "Week 21%/43% · resets Fri", "progress": 0.34, "progressMark": 0.52, "progressForecast": 0.65, "icon": { "glyph": "clock", "color": "ok" }, "image": "{{claudeLogo}}" }"""))),
         ("system", 200, Fixed(SystemTile())),
         ("battery", 132, Fixed(BatteryView.Tile(BatteryView.Sorted([
             new DeviceBattery("m", "MX Master 3S", DeviceType.Mouse, 65),
