@@ -90,8 +90,24 @@ function Format-Reset($when, [switch]$dayOnly) {
 }
 function Get-Color($percent) { if ($percent -ge 95) { 'bad' } elseif ($percent -ge 80) { 'warn' } else { 'ok' } }
 
+# How much of a limit an even pace would have used by now, in percent: the 5-hour window evenly from its start to its
+# reset, the week one seventh per day begun. Null without a reset time.
+function Get-Expected5h($reset) {
+    if (-not $reset) { return $null }
+    $elapsed = 5 - ($reset - [DateTimeOffset]::Now).TotalHours
+    return [int][Math]::Round([Math]::Min(100, [Math]::Max(0, $elapsed / 5 * 100)))
+}
+function Get-ExpectedWeek($reset) {
+    if (-not $reset) { return $null }
+    $days = [Math]::Ceiling(([DateTimeOffset]::Now - $reset.AddDays(-7)).TotalDays)
+    return [int][Math]::Round(100.0 / 7 * [Math]::Min(7, [Math]::Max(1, $days)))
+}
+# "42%/50%": used, then expected by now.
+function Format-Pace($percent, $expected) { if ($null -ne $expected) { "$percent%/$expected%" } else { "$percent%" } }
+
 $hour = Get-Percent $usage.five_hour; $hourReset = ConvertTo-Local $usage.five_hour.resets_at
 $week = Get-Percent $usage.seven_day; $weekReset = ConvertTo-Local $usage.seven_day.resets_at
+$hourPace = Get-Expected5h $hourReset; $weekPace = Get-ExpectedWeek $weekReset
 $updated = "Updated $($fetchedAt.ToLocalTime().ToString('HH:mm'))"
 if ($stale) { $updated += " ($stale)" }
 
@@ -123,8 +139,8 @@ function Get-LogoImage([string]$dotColor) {
 
 if ($env:TILE_HOOK -eq 'flyout') {
     $rows = @()
-    if ($null -ne $hour) { $rows += @{ text = '5 hours'; value = "$hour% $dot resets $(Format-Reset $hourReset)"; icon = @{ glyph = 'info'; color = (Get-Color $hour) } } }
-    if ($null -ne $week) { $rows += @{ text = 'Week'; value = "$week% $dot resets $(Format-Reset $weekReset)"; icon = @{ glyph = 'info'; color = (Get-Color $week) } } }
+    if ($null -ne $hour) { $rows += @{ text = '5 hours'; value = "$(Format-Pace $hour $hourPace) $dot resets $(Format-Reset $hourReset)"; icon = @{ glyph = 'info'; color = (Get-Color $hour) } } }
+    if ($null -ne $week) { $rows += @{ text = 'Week'; value = "$(Format-Pace $week $weekPace) $dot resets $(Format-Reset $weekReset)"; icon = @{ glyph = 'info'; color = (Get-Color $week) } } }
     # Weekly limits of one model (e.g. Opus), when the plan has them.
     foreach ($limit in @($usage.limits | Where-Object { $_.kind -eq 'weekly_scoped' -and $_.scope.model.display_name })) {
         $p = [int]$limit.percent
@@ -146,15 +162,16 @@ if ($env:TILE_HOOK -eq 'flyout') {
 # interval prints the tile.
 $state = @{}
 if ($null -ne $hour) {
-    $state.title = "5h $hour% $dot resets $(Format-Reset $hourReset)"
+    $state.title = "5h $(Format-Pace $hour $hourPace) $dot resets $(Format-Reset $hourReset)"
     $state.progress = [Math]::Min(1.0, [Math]::Max(0.0, $hour / 100.0))
+    if ($null -ne $hourPace) { $state.progressMark = $hourPace / 100.0 }
     $state.icon = @{ glyph = 'clock'; color = (Get-Color $hour) }
 } else {
     $state.title = '5h: no limit'
     $state.icon = @{ glyph = 'clock'; color = 'neutral' }
 }
 if ($null -ne $week) {
-    $state.subtitle = "Week $week% $dot resets $(Format-Reset $weekReset -dayOnly)"
+    $state.subtitle = "Week $(Format-Pace $week $weekPace) $dot resets $(Format-Reset $weekReset -dayOnly)"
     if ((Get-Color $week) -ne 'ok' -and $state.icon.color -eq 'ok') { $state.icon.color = Get-Color $week }
 }
 # The Claude logo replaces the clock, with an orange or red dot once a limit nears.
@@ -162,8 +179,9 @@ $dotColor = switch ($state.icon.color) { 'warn' { '#F2A33A' } 'bad' { '#E5484D' 
 $image = Get-LogoImage $dotColor
 if ($image) { $state.image = $image }
 $tip = @()
-if ($null -ne $hour) { $tip += "5 hours: $hour% used, resets $(Format-Reset $hourReset)" }
-if ($null -ne $week) { $tip += "Week: $week% used, resets $(Format-Reset $weekReset)" }
+function Format-PaceTip($expected) { if ($null -ne $expected) { " ($expected% at an even pace)" } else { '' } }
+if ($null -ne $hour) { $tip += "5 hours: $hour% used$(Format-PaceTip $hourPace), resets $(Format-Reset $hourReset)" }
+if ($null -ne $week) { $tip += "Week: $week% used$(Format-PaceTip $weekPace), resets $(Format-Reset $weekReset)" }
 $tip += $updated
 $state.tooltip = $tip -join "`n"
 $state | ConvertTo-Json -Depth 5 -Compress

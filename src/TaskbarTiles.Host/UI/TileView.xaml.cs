@@ -13,6 +13,15 @@ public partial class TileView : UserControl
 {
     static readonly FontFamily GlyphFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
     static readonly FontFamily MonogramFont = new("Segoe UI");
+    static readonly SolidColorBrush PaceBrush = Frozen(Color.FromRgb(0x4C, 0x7C, 0xE0));
+    static readonly SolidColorBrush AheadBrush = Frozen(Color.FromRgb(0xF2, 0xA3, 0x3A));
+
+    static SolidColorBrush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     readonly Func<bool> _isLightTheme;
     readonly TileCommands _commands;
@@ -20,6 +29,7 @@ public partial class TileView : UserControl
     bool _urgent;
     IReadOnlyList<double>? _spark;
     double? _sparkMax;
+    double? _mark;
     bool _compact;
     bool _clickInFlight;
     SolidColorBrush? _pulse;
@@ -28,7 +38,11 @@ public partial class TileView : UserControl
     {
         InitializeComponent();
         // Inner radius: the Root's 6 less its 1px border.
-        ProgressClip.SizeChanged += (_, e) => ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+        ProgressClip.SizeChanged += (_, e) =>
+        {
+            ProgressClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+            PlaceTick();
+        };
         SceneClip.SizeChanged += (_, e) => SceneClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkClip.SizeChanged += (_, e) => SparkClip.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
         SparkHost.SizeChanged += (_, _) => RenderSparkline();
@@ -144,11 +158,15 @@ public partial class TileView : UserControl
             ProgressDone.Width = new GridLength(done, GridUnitType.Star);
             ProgressLeft.Width = new GridLength(1 - done, GridUnitType.Star);
             ProgressTrack.Visibility = Visibility.Visible;
+            _mark = s.ProgressMark is { } m ? Math.Clamp(m, 0, 1) : null;
+            ProgressFill.Background = _mark is { } ahead && done > ahead + 0.005 ? AheadBrush : PaceBrush;
         }
         else
         {
             ProgressTrack.Visibility = Visibility.Collapsed;
+            _mark = null;
         }
+        PlaceTick();
 
         var wasUrgent = _urgent;
         _urgent = s.Urgent;
@@ -177,6 +195,19 @@ public partial class TileView : UserControl
     /// The sparkline across the whole tile, behind the icon and text, with a faint fill below it: scaled 0..SparklineMax when the state
     /// gives one (a percentage stays low when low), else from its own minimum to maximum. Redrawn when the tile resizes.
     /// </summary>
+    /// <summary>Puts the progress mark's tick where it belongs along the bar, or hides it.</summary>
+    void PlaceTick()
+    {
+        double width = ProgressClip.ActualWidth;
+        if (_mark is not { } mark || ProgressTrack.Visibility != Visibility.Visible || width <= 0)
+        {
+            ProgressTick.Visibility = Visibility.Collapsed;
+            return;
+        }
+        ProgressTick.Margin = new Thickness(Math.Clamp(mark * width - ProgressTick.Width / 2, 0, width - ProgressTick.Width), 0, 0, 0);
+        ProgressTick.Visibility = Visibility.Visible;
+    }
+
     void RenderSparkline()
     {
         var values = _spark;
