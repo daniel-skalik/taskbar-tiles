@@ -313,6 +313,7 @@ public sealed class TileRuntime : IAsyncDisposable
             .ToList();
         var icon = state.Icon is { } i && string.IsNullOrEmpty(i.Glyph) ? i with { Glyph = Glyph(i.Glyph) } : state.Icon;
         double? progress = state.Progress is { } p && double.IsFinite(p) ? p : null;
+        double? mark = state.ProgressMark is { } k && double.IsFinite(k) ? k : null;
         List<double>? spark = null;
         if (state.Sparkline is { } raw)
         {
@@ -321,7 +322,7 @@ public sealed class TileRuntime : IAsyncDisposable
         }
 
         double? sparkMax = state.SparklineMax is { } m && double.IsFinite(m) && m > 0 ? m : null;
-        return state with { Buttons = buttons, Icon = icon, Progress = progress, Sparkline = spark, SparklineMax = sparkMax };
+        return state with { Buttons = buttons, Icon = icon, Progress = progress, ProgressMark = mark, Sparkline = spark, SparklineMax = sparkMax };
     }
 
     /// <summary>Latest wins: only the newest pending state of the current generation is applied.</summary>

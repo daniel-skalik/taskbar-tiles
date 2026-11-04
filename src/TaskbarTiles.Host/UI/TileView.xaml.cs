@@ -13,6 +13,15 @@ public partial class TileView : UserControl
 {
     static readonly FontFamily GlyphFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
     static readonly FontFamily MonogramFont = new("Segoe UI");
+    static readonly SolidColorBrush PaceBrush = Frozen(Color.FromRgb(0x4C, 0x7C, 0xE0));
+    static readonly SolidColorBrush AheadBrush = Frozen(Color.FromRgb(0xF2, 0xA3, 0x3A));
+
+    static SolidColorBrush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     readonly Func<bool> _isLightTheme;
     readonly TileCommands _commands;
@@ -144,10 +153,30 @@ public partial class TileView : UserControl
             ProgressDone.Width = new GridLength(done, GridUnitType.Star);
             ProgressLeft.Width = new GridLength(1 - done, GridUnitType.Star);
             ProgressTrack.Visibility = Visibility.Visible;
+            if (s.ProgressMark is { } m)
+            {
+                var pace = Math.Clamp(m, 0, 1);
+                PaceDone.Width = new GridLength(pace, GridUnitType.Star);
+                PaceLeft.Width = new GridLength(1 - pace, GridUnitType.Star);
+                PaceTrack.Visibility = Visibility.Visible;
+                // Behind the pace: the real bar over a dim one reaching the pace. Ahead of it: the real bar in orange
+                // under a solid blue one up to the pace, so the part past the pace shows orange.
+                bool ahead = done > pace + 0.005;
+                ProgressFill.Background = ahead ? AheadBrush : PaceBrush;
+                PaceFill.Opacity = ahead ? 1 : 0.4;
+                Panel.SetZIndex(PaceTrack, ahead ? 1 : 0);
+            }
+            else
+            {
+                PaceTrack.Visibility = Visibility.Collapsed;
+                ProgressFill.Background = PaceBrush;
+                Panel.SetZIndex(PaceTrack, 0);
+            }
         }
         else
         {
             ProgressTrack.Visibility = Visibility.Collapsed;
+            PaceTrack.Visibility = Visibility.Collapsed;
         }
 
         var wasUrgent = _urgent;

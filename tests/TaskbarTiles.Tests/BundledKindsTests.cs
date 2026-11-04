@@ -91,7 +91,7 @@ public class BundledKindsTests
 
     static string UsageSample(double hour, double week) => $$"""
         { "five_hour": { "utilization": {{hour}}, "resets_at": "{{DateTimeOffset.UtcNow.AddHours(2):o}}" },
-          "seven_day": { "utilization": {{week}}, "resets_at": "2030-01-06T06:00:00+00:00" },
+          "seven_day": { "utilization": {{week}}, "resets_at": "{{DateTimeOffset.UtcNow.AddDays(2).AddMinutes(-30):o}}" },
           "limits": [ { "kind": "weekly_scoped", "percent": 12, "scope": { "model": { "display_name": "Opus" } } } ] }
         """;
 
@@ -103,9 +103,11 @@ public class BundledKindsTests
 
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
         Assert.Empty(outcome.Warnings);
-        Assert.StartsWith("5h 42% · resets ", outcome.Value!.Title);
-        Assert.StartsWith("Week 18% · resets ", outcome.Value.Subtitle);
+        Assert.StartsWith("5h 42%/60% · resets ", outcome.Value!.Title); // 3 of the 5 hours gone
+        Assert.StartsWith("Week 18%/86% · resets ", outcome.Value.Subtitle); // day 6 of 7 begun
         Assert.Equal(0.42, outcome.Value.Progress!.Value, 3);
+        Assert.Equal(0.60, outcome.Value.ProgressMark!.Value, 3);
+        Assert.Contains("5 hours: 42% used (60% at an even pace)", outcome.Value.Tooltip);
         Assert.Equal(TileColor.Ok, outcome.Value.Icon!.Color);
         Assert.NotNull(outcome.Value.Image); // claude.png from the tile folder
     }

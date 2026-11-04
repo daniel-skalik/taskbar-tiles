@@ -31,6 +31,12 @@ public sealed record TileState
     /// <summary>0..1, drawn as a thin bar along the bottom edge.</summary>
     public double? Progress { get; init; }
 
+    /// <summary>
+    /// 0..1, where the progress bar should be by now (say, an even pace through a usage limit): a dim bar under the
+    /// progress bar. While <see cref="Progress"/> is past it, the bar is blue up to the mark and orange beyond. Only drawn with a progress bar.
+    /// </summary>
+    public double? ProgressMark { get; init; }
+
     /// <summary>Recent values, oldest first, drawn as a chart behind the title and subtitle.</summary>
     public IReadOnlyList<double>? Sparkline { get; init; }
 
