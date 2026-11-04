@@ -27,6 +27,45 @@ function Find-DockerDesktop($docker) {
 
 $docker = Find-Docker
 
+# docker.png next to this script as base64 PNG: grey when $grey, with a status dot in the bottom-right corner when
+# $dotColor (#RRGGBB) is given. Null when the file is missing: the tile then keeps its glyph icon.
+function Get-LogoImage([string]$dotColor, [switch]$grey) {
+    $path = Join-Path $PSScriptRoot 'docker.png'
+    if (-not (Test-Path $path)) { return $null }
+    if (-not $dotColor -and -not $grey) { return [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }
+    Add-Type -AssemblyName System.Drawing
+    $logo = [System.Drawing.Image]::FromFile($path)
+    try {
+        $size = $logo.Width
+        $bitmap = New-Object System.Drawing.Bitmap $size, $size
+        $g = [System.Drawing.Graphics]::FromImage($bitmap)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        if ($grey) {
+            # Luminance weights, a little dimmed: Docker is off.
+            $m = New-Object System.Drawing.Imaging.ColorMatrix (,[single[][]]@(
+                [single[]]@(0.25, 0.25, 0.25, 0, 0), [single[]]@(0.5, 0.5, 0.5, 0, 0), [single[]]@(0.1, 0.1, 0.1, 0, 0),
+                [single[]]@(0, 0, 0, 0.8, 0), [single[]]@(0, 0, 0, 0, 1)))
+            $attributes = New-Object System.Drawing.Imaging.ImageAttributes
+            $attributes.SetColorMatrix($m)
+            $g.DrawImage($logo, (New-Object System.Drawing.Rectangle 0, 0, $size, $size), 0, 0, $size, $size, [System.Drawing.GraphicsUnit]::Pixel, $attributes)
+        } else {
+            $g.DrawImage($logo, 0, 0, $size, $size)
+        }
+        if ($dotColor) {
+            $d = [int]($size * 0.42); $x = $size - $d; $ring = [Math]::Max(2, [int]($size / 16))
+            $g.FillEllipse([System.Drawing.Brushes]::Black, $x - $ring, $x - $ring, $d + $ring, $d + $ring) # dark ring keeps the dot apart from the logo
+            $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.ColorTranslator]::FromHtml($dotColor))
+            $g.FillEllipse($brush, $x, $x, $d - $ring, $d - $ring)
+            $brush.Dispose()
+        }
+        $g.Dispose()
+        $stream = New-Object System.IO.MemoryStream
+        $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bitmap.Dispose()
+        return [Convert]::ToBase64String($stream.ToArray())
+    } finally { $logo.Dispose() }
+}
+
 if ($env:TILE_HOOK -eq 'action' -and $env:TILE_ACTION -eq 'open') {
     $desktop = Find-DockerDesktop $docker
     if (-not $desktop) { [Console]::Error.WriteLine('Docker Desktop was not found.'); exit 1 }
@@ -70,12 +109,15 @@ if ($null -eq $lines) {
         } | ConvertTo-Json -Depth 5 -Compress
         exit 0
     }
-    @{
+    $state = @{
         title    = 'Docker'
         subtitle = 'Not running'
         icon     = @{ glyph = 'package'; color = 'neutral' }
         tooltip  = 'Docker Desktop is not running. Click to start it.'
-    } | ConvertTo-Json -Depth 5 -Compress
+    }
+    $image = Get-LogoImage '' -grey
+    if ($image) { $state.image = $image }
+    $state | ConvertTo-Json -Depth 5 -Compress
     exit 0
 }
 
@@ -143,9 +185,13 @@ $subtitle = if ($containers.Count -eq 0) { 'No containers' } else { "$running ru
 if ($trouble -gt 0) { $subtitle = "$trouble with problems $dot $subtitle" }
 $color = if ($trouble -gt 0) { 'warn' } elseif ($running -gt 0) { 'ok' } else { 'neutral' }
 $tip = @($containers | Where-Object { $_.Running -or $_.Trouble } | ForEach-Object { "$($_.Name): $($_.Status)" })
-@{
+$state = @{
     title    = 'Docker'
     subtitle = $subtitle
     icon     = @{ glyph = 'package'; color = $color }
     tooltip  = if ($tip.Count) { $tip -join "`n" } else { 'No container is running' }
-} | ConvertTo-Json -Depth 5 -Compress
+}
+# The Docker logo replaces the glyph, with an orange dot while a container has problems.
+$image = Get-LogoImage $(if ($trouble -gt 0) { '#F2A33A' } else { '' })
+if ($image) { $state.image = $image }
+$state | ConvertTo-Json -Depth 5 -Compress

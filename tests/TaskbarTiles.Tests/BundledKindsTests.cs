@@ -170,6 +170,7 @@ public class BundledKindsTests
         Assert.Empty(outcome.Warnings);
         Assert.Equal("1 with problems · 2 running · 1 stopped", outcome.Value!.Subtitle);
         Assert.Equal(new TileIcon("package", TileColor.Warn), outcome.Value.Icon);
+        Assert.NotNull(outcome.Value.Image); // docker.png from the tile folder, with an orange dot
     }
 
     [Fact]
