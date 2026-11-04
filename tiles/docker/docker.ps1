@@ -86,8 +86,13 @@ $containers = foreach ($line in $lines) {
     $status = [string]$c.Status
     $trouble = $state -in @('restarting', 'dead', 'paused') -or $status -match '\(unhealthy\)'
     $failed = $state -eq 'exited' -and $status -match 'Exited \((\d+)\)' -and $Matches[1] -ne '0'
+    # Compose projects group their containers, as in Docker Desktop: "projects-hub" > "worker-1".
+    $project = if ([string]$c.Labels -match '(?:^|,)com\.docker\.compose\.project=([^,]+)') { $Matches[1] } else { '' }
+    $name = ([string]$c.Names).Split(',')[0]
     [pscustomobject]@{
-        Name    = ([string]$c.Names).Split(',')[0]
+        Name    = $name
+        Project = $project
+        Short   = if ($project -and $name.StartsWith("$project-")) { $name.Substring($project.Length + 1) } else { $name }
         Status  = $status
         Running = $state -eq 'running'
         Trouble = $trouble
@@ -100,12 +105,30 @@ $stopped = $containers.Count - $running
 $trouble = @($containers | Where-Object Trouble).Count
 
 if ($env:TILE_HOOK -eq 'flyout') {
-    # Trouble first, then running, then the rest, each by name; at most 12 rows.
-    $sorted = @($containers | Sort-Object @{ e = { if ($_.Trouble) { 0 } elseif ($_.Running) { 1 } else { 2 } } }, Name)
-    $rows = @($sorted | Select-Object -First 12 | ForEach-Object {
-        @{ text = $_.Name; value = $_.Status; icon = @{ glyph = 'info'; color = $_.Color } }
-    })
-    if ($sorted.Count -gt 12) { $rows += @{ text = "and $($sorted.Count - 12) more"; value = '' } }
+    # Compose projects as a row each with their containers indented under it, and lone containers: trouble first,
+    # then running, then the rest, each by name; at most 14 rows.
+    $indent = [string][char]0x2003 * 2
+    function Get-Rank($items) { if (@($items | Where-Object Trouble).Count) { 0 } elseif (@($items | Where-Object Running).Count) { 1 } else { 2 } }
+    $entries = @($containers | Group-Object { if ($_.Project) { "p:$($_.Project)" } else { "c:$($_.Name)" } } | ForEach-Object {
+        $first = $_.Group[0]
+        [pscustomobject]@{ Name = $(if ($first.Project) { $first.Project } else { $first.Name }); Project = [bool]$first.Project; Items = @($_.Group); Rank = (Get-Rank $_.Group) }
+    } | Sort-Object Rank, Name)
+    $rows = @()
+    foreach ($e in $entries) {
+        if (-not $e.Project) {
+            $c = $e.Items[0]
+            $rows += @{ text = $c.Name; value = $c.Status; icon = @{ glyph = 'info'; color = $c.Color } }
+            continue
+        }
+        $up = @($e.Items | Where-Object Running).Count; $down = $e.Items.Count - $up
+        $value = if ($up -and $down) { "$up running $dot $down stopped" } elseif ($up) { "$up running" } else { "$down stopped" }
+        $color = if (@($e.Items | Where-Object Trouble).Count) { 'warn' } elseif ($up) { 'ok' } elseif (@($e.Items | Where-Object { $_.Color -eq 'bad' }).Count) { 'bad' } else { 'neutral' }
+        $rows += @{ text = $e.Name; value = $value; icon = @{ glyph = 'info'; color = $color } }
+        foreach ($c in @($e.Items | Sort-Object @{ e = { if ($_.Trouble) { 0 } elseif ($_.Running) { 1 } else { 2 } } }, Short)) {
+            $rows += @{ text = "$indent$($c.Short)"; value = $c.Status; icon = @{ glyph = 'info'; color = $c.Color } }
+        }
+    }
+    if ($rows.Count -gt 14) { $more = $rows.Count - 13; $rows = @($rows[0..12]) + @{ text = "and $more more"; value = '' } }
     if ($containers.Count -eq 0) { $rows = @('No containers') }
     @{
         title    = 'Docker'

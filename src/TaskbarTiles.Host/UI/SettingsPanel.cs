@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -234,7 +235,10 @@ public static class SettingsPanel
                     box.TextChanged += (_, _) => Changed?.Invoke();
                     Input = () => box.Text;
                     _set = text => box.Text = text;
-                    stack.Children.Add(box);
+                    if (field.Type == FieldType.Text && field.Browse is { } browse)
+                        stack.Children.Add(WithBrowseButton(box, browse, field.Label));
+                    else
+                        stack.Children.Add(box);
                     if (field.Type == FieldType.Text && field.Choices is { Count: > 0 } suggestions)
                         stack.Children.Add(field.Multiple ? Toggles(box, suggestions) : Suggestions(box, suggestions));
                     break;
@@ -259,6 +263,49 @@ public static class SettingsPanel
         }
 
         public TileField Field { get; }
+
+        /// <summary>
+        /// The box with a folder button inside its right end, which opens Windows' folder (or file) picker at the
+        /// path typed and puts the chosen one in the box.
+        /// </summary>
+        static Grid WithBrowseButton(TextBox box, string browse, string label)
+        {
+            box.Padding = new Thickness(8, 5, 36, 5); // the text stops before the button
+            var button = new Button
+            {
+                Content = "", // folder
+                ToolTip = browse == "file" ? "Choose a file" : "Choose a folder",
+                Style = (Style)Application.Current.FindResource("IconButton"),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Width = 28, Height = 28,
+                Margin = new Thickness(0, 0, 3, 2),
+            };
+            button.Click += (_, _) =>
+            {
+                var start = box.Text.Trim().Trim('"');
+                var owner = Window.GetWindow(box);
+                string? chosen = FlyoutWindow.HoldOpenWhile(() =>
+                {
+                    if (browse == "file")
+                    {
+                        var files = new Microsoft.Win32.OpenFileDialog { Title = label, CheckFileExists = true };
+                        if (File.Exists(start)) { files.InitialDirectory = Path.GetDirectoryName(start); files.FileName = Path.GetFileName(start); }
+                        return files.ShowDialog(owner) == true ? files.FileName : null;
+                    }
+                    var folders = new Microsoft.Win32.OpenFolderDialog { Title = label };
+                    if (Directory.Exists(start)) folders.InitialDirectory = start;
+                    return folders.ShowDialog(owner) == true ? folders.FolderName : null;
+                });
+                if (chosen is null) return;
+                box.Text = chosen;
+                box.CaretIndex = box.Text.Length;
+            };
+            var grid = new Grid();
+            grid.Children.Add(box);
+            grid.Children.Add(button);
+            return grid;
+        }
 
         /// <summary>
         /// A "multiple" field's suggestions: every one, those in the list lit up; a click adds it to the list or takes it out.

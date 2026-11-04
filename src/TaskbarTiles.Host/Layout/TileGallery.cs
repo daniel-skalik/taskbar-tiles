@@ -16,19 +16,28 @@ public sealed record GalleryFolder(string Name, string Path, int Count);
 
 public static class TileGallery
 {
+    /// <summary>The picker folder of tiles you already have that this display does not show.</summary>
+    public const string YourTiles = "Your tiles";
+
     /// <summary>
     /// Existing tiles this display does not place yet (in config order), then one new tile per kind in tiles\, by name
     /// (broken kinds too: titled with their folder name, the error as subtitle). A new tile is just { "kind": id }.
-    /// Existing tiles are always at the top level; new tiles go in their kind's group.
+    /// Existing tiles go in the <see cref="YourTiles"/> folder, saying whether another display shows them; new tiles go
+    /// in their kind's group.
     /// </summary>
     public static IReadOnlyList<GalleryItem> Build(HostConfig config, DisplayEntry display, KindTable kinds)
     {
         var placed = DisplayResolver.PlacedTileIds(display).ToHashSet(StringComparer.Ordinal);
+        var elsewhere = config.Displays.Values.Where(d => !ReferenceEquals(d, display))
+            .SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal);
         var items = new List<GalleryItem>();
 
         foreach (var (id, tile) in config.Tiles)
             if (!placed.Contains(id))
-                items.Add(new GalleryItem(TitleFor(id), $"Your tile · {kinds.Find(tile.Kind)?.Name ?? tile.Kind}", id, null));
+            {
+                var where = elsewhere.Contains(id) ? "On another display" : "Not shown";
+                items.Add(new GalleryItem(TitleFor(id), $"{where} · {kinds.Find(tile.Kind)?.Name ?? tile.Kind}", id, null, YourTiles));
+            }
 
         foreach (var kind in kinds.Kinds.Values
                      .OrderBy(k => k.Name, StringComparer.CurrentCultureIgnoreCase)

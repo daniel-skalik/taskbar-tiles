@@ -18,6 +18,23 @@ public static class FlyoutWindow
     const double WidthDip = 320;
     static Window? _open;
 
+    static bool _holding;
+
+    /// <summary>
+    /// Runs <paramref name="dialog"/> (a Windows dialog opened from the popup) without the popup closing when the dialog
+    /// takes the focus, then gives the popup the focus back.
+    /// </summary>
+    public static T HoldOpenWhile<T>(Func<T> dialog)
+    {
+        _holding = true;
+        try { return dialog(); }
+        finally
+        {
+            _holding = false;
+            _open?.Activate();
+        }
+    }
+
     public static void CloseOpen()
     {
         var w = _open;
@@ -56,7 +73,7 @@ public static class FlyoutWindow
         Theme.ApplyTo(window.Resources, light);
         var acrylic = Backdrop.Supported && TryBackdrop(window, light, log);
         window.Content = Frame(content, acrylic, tint);
-        window.Deactivated += (_, _) => { if (_open == window) CloseOpen(); };
+        window.Deactivated += (_, _) => { if (_open == window && !_holding) CloseOpen(); };
         if (onClosed is not null)
             window.Closed += (_, _) =>
             {

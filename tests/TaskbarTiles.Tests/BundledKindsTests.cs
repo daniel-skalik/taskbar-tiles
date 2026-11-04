@@ -185,6 +185,24 @@ public class BundledKindsTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task Docker_popup_groups_compose_projects_like_docker_desktop()
+    {
+        const string sample = """
+            {"Names":"shop-web-1","State":"running","Status":"Up 1 hour","Labels":"com.docker.compose.project=shop,com.docker.compose.service=web"}
+            {"Names":"shop-db-1","State":"exited","Status":"Exited (1) 2 hours ago","Labels":"com.docker.compose.project=shop"}
+            {"Names":"redis","State":"running","Status":"Up 3 hours","Labels":""}
+            """;
+
+        var outcome = HookResults.ForFlyout("flyout", await RunDocker("flyout", sample), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        var indent = new string('\u2003', 2);
+        Assert.Equal(new[] { "redis", "shop", indent + "web-1", indent + "db-1" }, outcome.Value!.Rows.Select(r => r.Text));
+        Assert.Equal("1 running · 1 stopped", outcome.Value.Rows[1].Value);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task Docker_not_running_is_a_normal_tile()
     {
         var outcome = HookResults.ForTile("interval", await RunDocker("interval", "down"), TimeSpan.FromSeconds(30));
