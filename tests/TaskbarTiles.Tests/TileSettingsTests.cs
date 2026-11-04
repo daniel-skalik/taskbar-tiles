@@ -270,6 +270,16 @@ public class TileSettingsTests
     }
 
     [Fact]
+    public void A_text_field_may_browse_for_a_folder_or_a_file()
+    {
+        var (fields, error) = Parse("""[ { "key": "repo", "label": "Repository", "type": "text", "browse": "folder" } ]""");
+        Assert.Null(error);
+        Assert.Equal("folder", fields[0].Browse);
+        Assert.Equal("t.json: field 1 has a \"browse\" that is not \"folder\" or \"file\".",
+            Parse("""[ { "key": "repo", "label": "Repository", "type": "text", "browse": "drive" } ]""").Error);
+    }
+
+    [Fact]
     public void A_text_field_may_hold_a_list()
     {
         var (fields, error) = Parse("""[ { "key": "app", "label": "Apps", "type": "text", "multiple": true, "choices": ["Any"] } ]""");

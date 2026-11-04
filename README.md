@@ -27,6 +27,8 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 | <img src="docs/images/tile-system.png" alt="System monitor tile" height="48"> | **System monitor**<br>CPU, memory, GPU, network and every drive, one at a time with a chart, or all at once. |
 | <img src="docs/images/tile-battery.png" alt="Device batteries tile" height="48"> | **Device batteries**<br>The lowest battery of your mouse, keyboard and headphones. |
 | <img src="docs/images/tile-clipboard.png" alt="Clipboard peek tile" height="48"> | **Clipboard peek**<br>The last thing you copied; click for recent copies to copy again. |
+| <img src="docs/images/tile-docker.png" alt="Docker tile" height="48"> | **Docker**<br>How many containers run; click for each one's status. |
+| <img src="docs/images/tile-git.png" alt="Git repository tile" height="48"> | **Git repository**<br>A repository's branch, changes, and how far it is ahead of or behind its upstream. |
 | <img src="docs/images/tile-uptime.png" alt="Clock and uptime tile" height="48"> | **Clock and uptime**<br>The time, and how long Windows has been up. |
 | <img src="docs/images/tile-aquarium.png" alt="Aquarium tile" height="48"> | **Aquarium**<br>Fish and bubbles; click to feed them. |
 | <img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile" height="48"> | **Cozy farm**<br>A farm that follows your clock and the real sunrise and sunset. |
@@ -37,7 +39,7 @@ The pictures use made-up sample data; `dotnet run --project tools/screenshots` d
 
 ## Use
 
-- **Add a tile:** the **+** button at the end of your tiles. Tiles are grouped in folders, for example **Fun › Games**.
+- **Add a tile:** the **+** button at the end of your tiles. Tiles are grouped in folders, for example **Fun** or **Dev**.
 - **Details:** click a tile for its popup, with actions and a ⚙ for its settings (also right-click › **Settings…**).
 
   <img src="docs/images/popup.png" alt="The Claude usage tile's popup: 5-hour and weekly limits with reset times" width="320">

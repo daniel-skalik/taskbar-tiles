@@ -34,6 +34,7 @@ if (sizes) args = args[1..];
 var outDir = Path.GetFullPath(args.Length > 0 ? args[0] : Path.Combine(repo, "docs", "images"));
 Directory.CreateDirectory(outDir);
 var claudeLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "claude-usage", "claude.png")));
+var dockerLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "docker", "docker.png")));
 
 // The scenes animate: run each connector for a moment, at each width drawn, and keep its last frame.
 var noon = new DateTime(2026, 6, 21, 17, 30, 0);
@@ -73,6 +74,8 @@ RunSta(() =>
         ("clipboard", 200, Fixed(ClipboardView.Tile([
             new ClipEntry(2, new ClipItem(ClipKind.Text, "git switch -c feat/new-tile"), noon.AddMinutes(-2)),
             new ClipEntry(1, new ClipItem(ClipKind.Image, "Image 1280×720", "Image 1280×720"), noon.AddMinutes(-9))]))),
+        ("docker", 200, Fixed(Script($$"""{ "title": "Docker", "subtitle": "4 running · 1 stopped", "icon": { "glyph": "package", "color": "ok" }, "image": "{{dockerLogo}}" }"""))),
+        ("git", 220, Fixed(Script("""{ "title": "my-app · main", "subtitle": "3 changed, 1 new · ↑2", "icon": { "glyph": "branch", "color": "accent" } }"""))),
         ("uptime", 132, Fixed(Script("""{ "title": "17:30", "subtitle": "up 3d 4h", "icon": { "glyph": "clock", "color": "accent" } }"""))),
         ("aquarium", 200, Scene("aquarium")),
         ("cozy-farm", 200, Scene("cozy-farm")),
@@ -83,7 +86,7 @@ RunSta(() =>
         if (sizes) Save(RenderSizes(state), Path.Combine(outDir, $"sizes-{kind}.png"));
         else Save(Render(width, state(width)), Path.Combine(outDir, $"tile-{kind}.png"));
 });
-Console.WriteLine($"Wrote {(sizes ? "the sizes of " : "")}10 tiles to {outDir}");
+Console.WriteLine($"Wrote {(sizes ? "the sizes of " : "")}12 tiles to {outDir}");
 return 0;
 
 // Exit code 0 when the tile drew without errors, 1 otherwise.

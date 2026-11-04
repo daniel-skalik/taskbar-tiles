@@ -38,7 +38,8 @@ public class TileGalleryTests
 
         Assert.Equal(new[] { "Ci", "Uptime", "Clock and uptime", "Media", "Ping a host" }, items.Select(i => i.Title));
         Assert.Null(items[0].NewTile);
-        Assert.Equal("Your tile · Ping a host", items[0].Subtitle);
+        Assert.Equal("Not shown · Ping a host", items[0].Subtitle);
+        Assert.Equal(TileGallery.YourTiles, items[0].Group);
         Assert.Equal("Pings a host every 15 s", items[4].Subtitle);
         Assert.Equal("ping", items[4].TileId);
         Assert.Equal("ping", items[4].NewTile!.Kind);
@@ -46,7 +47,21 @@ public class TileGalleryTests
     }
 
     [Fact]
-    public void New_tiles_sit_in_their_kinds_group_and_your_tiles_at_the_top()
+    public void Your_tiles_say_whether_another_display_shows_them()
+    {
+        var cfg = Parse("""
+            { "tiles": { "a": { "kind": "uptime" }, "b": { "kind": "uptime" } },
+              "displays": { "primary": { "left": [] }, "OTHER": { "right": ["a"] } } }
+            """);
+
+        var items = TileGallery.Build(cfg, cfg.Displays["primary"], Kinds);
+
+        Assert.Equal("On another display · Clock and uptime", items.Single(i => i.TileId == "a" && i.NewTile is null).Subtitle);
+        Assert.Equal("Not shown · Clock and uptime", items.Single(i => i.TileId == "b" && i.NewTile is null).Subtitle);
+    }
+
+    [Fact]
+    public void New_tiles_sit_in_their_kinds_group_and_your_tiles_in_their_folder()
     {
         var kinds = TestKinds.Of(
             TestKinds.Script("ping", name: "Ping") with { Group = "Network" },
@@ -55,7 +70,7 @@ public class TileGalleryTests
 
         var items = TileGallery.Build(cfg, DisplayEntry.Empty, kinds);
 
-        Assert.Equal(new[] { ("Mine", ""), ("Ping", "Network"), ("Snake", "Fun/Games") }, items.Select(i => (i.Title, i.Group)));
+        Assert.Equal(new[] { ("Mine", TileGallery.YourTiles), ("Ping", "Network"), ("Snake", "Fun/Games") }, items.Select(i => (i.Title, i.Group)));
     }
 
     [Fact]
@@ -110,7 +125,7 @@ public class TileGalleryTests
     {
         var cfg = Parse("""{ "tiles": { "w": { "kind": "weather" } } }""");
 
-        Assert.Equal("Your tile · weather", TileGallery.Build(cfg, DisplayEntry.Empty, Kinds)[0].Subtitle);
+        Assert.Equal("Not shown · weather", TileGallery.Build(cfg, DisplayEntry.Empty, Kinds)[0].Subtitle);
     }
 
     [Theory]

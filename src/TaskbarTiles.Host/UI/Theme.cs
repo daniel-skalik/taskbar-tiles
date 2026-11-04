@@ -16,7 +16,7 @@ public static class Theme
         ["music"] = "", ["info"] = "", ["sync"] = "", ["cloud"] = "", ["clock"] = "",
         ["mouse"] = "\uE962", ["keyboard"] = "\uE765", ["headphones"] = "\uE7F6",
         ["cpu"] = "\uE950", ["memory"] = "\uE964", ["gpu"] = "\uF211", ["network"] = "\uE968", ["disk"] = "\uEDA2",
-        ["activity"] = "\uE9D9",
+        ["activity"] = "\uE9D9", ["package"] = "\uE7B8", ["branch"] = "\uF003",
     };
 
     // battery-0..battery-10 and battery-charging-0..battery-charging-10 (tenths of full). Segoe keeps 10 out of sequence.

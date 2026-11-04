@@ -1,0 +1,18 @@
+{
+  "name": "Docker",
+  "description": "Your Docker containers: how many run, and each one's status",
+  "group": "Dev",
+  "connector": "script",
+  "width": 200,
+  "fields": [
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "5s", "max": "10m", "help": "How often the containers are read." }
+  ],
+  "settings": {
+    "refresh": "15s",
+    "hooks": {
+      "interval":    { "every": "$refresh", "run": "docker.ps1" },
+      "flyout":      { "run": "docker.ps1" },
+      "action:open": { "run": "docker.ps1" }
+    }
+  }
+}

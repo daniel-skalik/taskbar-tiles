@@ -13,9 +13,11 @@ public enum FieldType { Text, Number, Toggle, Choice, Duration, Pick }
 /// values it accepts. Min/Max bound numbers; MinDuration/MaxDuration bound durations; Choices lists a choice's values,
 /// a pick's fixed ones, or a text field's suggestions (for picks and text the connector adds its own when the dialog opens).
 /// Multiple: a text field holding a comma-separated list, whose suggestions add or remove an item instead of replacing it.
+/// Browse: a text field holding a path, with a button in its box that picks one ("folder" or "file"); null for none.
 /// </summary>
 public sealed record TileField(string Key, string Label, FieldType Type, string? Help = null, double? Min = null, double? Max = null,
-    TimeSpan? MinDuration = null, TimeSpan? MaxDuration = null, IReadOnlyList<string>? Choices = null, bool Multiple = false);
+    TimeSpan? MinDuration = null, TimeSpan? MaxDuration = null, IReadOnlyList<string>? Choices = null, bool Multiple = false,
+    string? Browse = null);
 
 public static class TileFields
 {
@@ -65,6 +67,12 @@ public static class TileFields
                     field = field with { Choices = ch.EnumerateArray().Select(x => x.GetString()!).ToList() };
                     break;
                 case FieldType.Pick or FieldType.Text:
+                    if (type == FieldType.Text && el.TryGetProperty("browse", out var br))
+                    {
+                        if (br.ValueKind != JsonValueKind.String || br.GetString() is not ("folder" or "file"))
+                            return ([], Error("has a \"browse\" that is not \"folder\" or \"file\"."));
+                        field = field with { Browse = br.GetString() };
+                    }
                     if (type == FieldType.Text && el.TryGetProperty("multiple", out var m))
                     {
                         if (m.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return ([], Error("has a \"multiple\" that is not true or false."));
