@@ -162,6 +162,7 @@ public sealed class TileBar : Window, ITileBarView
         }
         foreach (var unused in pool) unused.Detach();
         Reflow();
+        _bars.Sibling(this)?.Reflow(); // its lone + comes or goes with this bar's tiles
     }
 
     public void Apply(TaskbarInfo info)
@@ -757,6 +758,12 @@ public sealed class TileBar : Window, ITileBarView
         if (IsMouseCaptured) ReleaseMouseCapture();
     }
 
+    /// <summary>
+    /// Outside edit mode, the right bar of a taskbar without a single tile shows just +, so tiles can still be added
+    /// (and its menu still offers Edit layout).
+    /// </summary>
+    bool Lonely => !_editing && Side == BarSide.Right && _views.Count == 0 && (_bars.Sibling(this)?._views.Count ?? 0) == 0;
+
     void Reflow()
     {
         if (_hwnd == IntPtr.Zero || _info is null) return;
@@ -769,14 +776,15 @@ public sealed class TileBar : Window, ITileBarView
         // In edit mode the bar keeps DropGapDip of transparent room after Done, so a drop preview can slide tiles apart
         // without resizing the bar or reflowing its tiles.
         var chrome = _editing ? AddWidth + GapDip + DoneWidth + DropGapDip : 0;
+        var lonely = Lonely && !hidden;
 
         var layout = hidden
             ? null
             : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned, v.Slot.CanCompact)).ToList(),
                 zone.Width / scale - (_editing ? chrome + GapDip : 0), GapDip);
-        Arrange(layout, showChrome: _editing && !hidden);
+        Arrange(layout, showChrome: _editing && !hidden, showAdd: lonely);
 
-        var widthDip = (layout?.Width ?? 0) + (_editing && !hidden ? chrome + (layout?.Width > 0 ? GapDip : 0) : 0);
+        var widthDip = (layout?.Width ?? 0) + (_editing && !hidden ? chrome + (layout?.Width > 0 ? GapDip : 0) : 0) + (lonely ? AddWidth : 0);
         if (widthDip <= 0)
         {
             CloseOverflow();
@@ -803,8 +811,11 @@ public sealed class TileBar : Window, ITileBarView
         if (Side == BarSide.Right && _info is { FreeZone.IconsCentered: false }) _bars.Sibling(this)?.Reflow();
     }
 
-    /// <summary>Puts full and compact slots on the bar, then the » tile when anything overflows, then + and Done in edit mode.</summary>
-    void Arrange(LayoutResult? layout, bool showChrome)
+    /// <summary>
+    /// Puts full and compact slots on the bar, then the » tile when anything overflows, then + and Done in edit mode
+    /// (<paramref name="showAdd"/>: just +, on a taskbar without tiles).
+    /// </summary>
+    void Arrange(LayoutResult? layout, bool showChrome, bool showAdd = false)
     {
         var shown = new List<FrameworkElement>();
         var overflowed = new List<SlotView>();
@@ -827,6 +838,7 @@ public sealed class TileBar : Window, ITileBarView
             shown.Add(_addButton);
             shown.Add(_doneButton);
         }
+        else if (showAdd) shown.Add(_addButton);
         _panel.Margin = new Thickness(0, InsetDip, showChrome ? DropGapDip : 0, InsetDip);
 
         if (_dragSource is not null && !shown.Contains(_dragSource)) EndDrag(); // the dragged slot went into overflow
