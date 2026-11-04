@@ -271,15 +271,17 @@ public static class SettingsPanel
         static Grid WithBrowseButton(TextBox box, string browse, string label)
         {
             box.Padding = new Thickness(8, 5, 36, 5); // the text stops before the button
+            var grid = new Grid { Margin = box.Margin }; // the gap above moves to the grid, so the button centers on the box
+            box.Margin = new Thickness(0);
             var button = new Button
             {
                 Content = "", // folder
                 ToolTip = browse == "file" ? "Choose a file" : "Choose a folder",
                 Style = (Style)Application.Current.FindResource("IconButton"),
                 HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
+                VerticalAlignment = VerticalAlignment.Center,
                 Width = 28, Height = 28,
-                Margin = new Thickness(0, 0, 3, 2),
+                Margin = new Thickness(0, 0, 4, 0),
             };
             button.Click += (_, _) =>
             {
@@ -301,7 +303,6 @@ public static class SettingsPanel
                 box.Text = chosen;
                 box.CaretIndex = box.Text.Length;
             };
-            var grid = new Grid();
             grid.Children.Add(box);
             grid.Children.Add(button);
             return grid;
