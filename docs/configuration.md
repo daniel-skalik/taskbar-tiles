@@ -157,7 +157,7 @@ This is recomputed whenever the free space changes (apps opened or closed, align
 
 ## Edit layout
 
-Right-click a tile or the bar → **Edit layout**. All taskbars switch to edit mode at once, both sides of each (so a side without tiles can get some). Each side edits its own tiles; dragging a tile onto the other side or another taskbar moves it there.
+Right-click a tile or the bar → **Edit layout**. A taskbar without a single tile shows just a `+` before the tray: click it to add a tile, or right-click it for **Edit layout**. All taskbars switch to edit mode at once, both sides of each (so a side without tiles can get some). Each side edits its own tiles; dragging a tile onto the other side or another taskbar moves it there.
 
 - Tiles get a dashed outline and a `×`. Clicks no longer open popups.
 - Drag a tile onto the left or right part of another tile, or between two tiles, to move it there; release it past the last tile (over `»`, `+` or **Done**) to put it at the end. While you drag, a see-through copy of the tile follows the pointer (across monitors too), the tile itself fades, and the tiles of the taskbar under the pointer slide apart where it will land. Over the middle of a tile nothing slides; that tile lights up instead.
