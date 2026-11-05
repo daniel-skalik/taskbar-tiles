@@ -1,9 +1,10 @@
-# TODO tile and Clipboard save: design
+# TODO tile, Clipboard save and Linear tile: design
 
-Two additions:
+Three additions:
 
 1. A TODO tile kept in a Markdown file.
 2. A **Save** button in the Clipboard peek popup that writes the clipboard to a file.
+3. A Linear tile listing your issues in In Progress and Todo.
 
 The TODO tile needs to add text from a popup and to stay open while you tick items. That takes three new popup features, which the host gains for every tile, script or DLL.
 
@@ -22,6 +23,8 @@ Popup JSON gains `"input": { "placeholder": "Add a task", "action": "add" }`.
   - `ITileConnector` gains a default interface method, `Task OnInputAsync(string actionId, string text, CancellationToken ct)`. By default it calls `OnActionAsync(actionId, ct)`, so existing connectors still build.
 - `action` is required; an `input` without it is dropped with a warning. Ids starting with `host:` are refused, the same rule as for actions.
 - The text is at most 1000 characters. The box stops accepting input at that length.
+- `"secret": true` (default false) draws the box as a password box: what you type shows as dots. `FlyoutInput` gains `bool Secret`.
+- The host never writes the typed text to the log, for any input; it reaches the connector only.
 
 ### Popup stays open: `stayOpen`
 
@@ -139,6 +142,81 @@ The bundled `clipboard` kind (DLL connector) gains a **Save** popup action.
 - **Pure helper:** naming, and the choice of format from what the clipboard holds, live in a pure helper class (`ClipboardSave`), so they can be unit-tested.
 - **Docs:** the `docs/configuration.md` Clipboard peek section changes "Copies stay in memory only, never on disk" to say a copy reaches disk only when you press Save, in the folder you set. It also documents `saveFolder`.
 
+## 4. Linear tile (`tiles/linear`)
+
+A bundled script tile:
+
+- **Picker:** group `Productivity`, name "Linear", width 200.
+- **Script:** `linear.ps1`, serving every hook.
+- **Hooks:** `interval` (every `$refresh`), `flyout`, and action hooks for `open`, `setkey` and `forget`.
+
+### Settings
+
+| Key | Field | Default | Meaning |
+|---|---|---|---|
+| `refresh` | duration, 1m to 30m | `2m` | How often the issues are fetched. |
+
+### Which issues
+
+Issues assigned to you whose state type is `started` (In Progress) or `unstarted` (Todo), any team, at most 50.
+
+- **Order:** started before unstarted; then by priority (Urgent 1, High 2, Medium 3, Low 4, No priority last); then most recently updated first.
+
+### API key
+
+- **Where:** Windows Credential Manager, a generic credential with target `TaskbarTiles-Linear` (user name `api`), read and written through Win32 `CredReadW`, `CredWriteW` and `CredDeleteW` from PowerShell.
+- **Use:** sent only as the `Authorization` header to `https://api.linear.app/graphql`. Never printed, logged, cached, or put in an error message.
+- **Setting it from the popup:** with no key, the popup has a secret input. Enter runs `action:setkey` with the key in `TILE_INPUT`:
+  - The script fetches the issues with the new key first.
+  - Accepted: the key is stored, the issues are cached, and the popup rebuilds (`stayOpen`) into the issue list.
+  - Rejected or unreachable: nothing is stored. The rebuilt popup's subtitle says "Key rejected by Linear", or "Could not reach Linear: <reason>".
+  - That message is kept for the next `flyout` run in a small note file in `%TEMP%` (the message only, never the key), which that run deletes.
+- **By hand:** `cmdkey /generic:TaskbarTiles-Linear /user:api /pass:<key>` stores the same credential; documented as an alternative.
+- **Forget key:** removes the credential and the cache.
+
+### Tile
+
+- **No key:** title "Linear", subtitle "Click to set up", icon `activity` in `neutral`. This is a normal tile, not an error.
+- **Key rejected** (on a fetch with the stored key): title "Linear", subtitle "Key rejected", the same icon; the popup is the setup popup with subtitle "Linear rejected the saved key".
+- **With issues:**
+  - Title: "2 in progress"; with none in progress, "3 to do"; with none at all, "All clear".
+  - Subtitle: the first issue in order as `ENG-142 Fix login redirect`; with none, "Nothing assigned".
+  - Icon: glyph `activity`, colour `accent` with issues, `ok` without.
+  - Tooltip: "2 in progress · 3 to do", then up to 5 issues; plus "Stale: <reason>" when showing the cache after a failed fetch.
+
+### Popup
+
+- **Setup popup** (no key, or key rejected): `stayOpen: true`.
+  - Title "Linear". Subtitle: the note message if one is waiting, else "Paste your personal API key".
+  - Input: `{ "placeholder": "Personal API key", "action": "setkey", "secret": true }`.
+  - One plain row: "Create one in Linear: Settings › Security & access › Personal API keys".
+  - Action `open:https://linear.app/settings/account/security`, labelled "Get a key", primary.
+- **Issue popup:**
+  - Title "Linear". Subtitle "2 in progress · 3 to do".
+  - Rows: up to 15 issues in order. Text `ENG-142 Fix login redirect`, value the state name, icon dot `accent` for started and `neutral` for unstarted. Action `open:<issue url>`.
+  - With no issues, one plain row: "Nothing in In Progress or Todo".
+  - Actions: `forget`, labelled "Forget key"; `open:https://linear.app/<urlKey>/my-issues/assigned`, labelled "Open Linear", primary.
+
+### Actions
+
+- **`open:<url>`:** runs through the action prefix fallback. Opens the URL with `Start-Process` only when it starts with `https://linear.app/`; anything else exits 1 with "Not a Linear link". Prints nothing.
+- **`setkey`:** as above. Empty input does nothing. Prints nothing.
+- **`forget`:** as above. Prints nothing.
+
+### Data and errors
+
+- **Request:** one GraphQL POST: `organization { urlKey }` and `viewer.assignedIssues(first: 50, filter: state type in [started, unstarted])` with `identifier`, `title`, `url`, `priority`, `updatedAt`, `state { name type }`. Timeout 8 s.
+- **Cache:** `%TEMP%\TaskbarTiles-linear-<tileId>.json` holds the last answer and its time. `interval` always fetches. `flyout` uses the cache while it is under 2 minutes old, and fetches otherwise.
+- **Rejected key:** HTTP 401, or a GraphQL error with code `AUTHENTICATION_ERROR`.
+- **Other failures** (network, rate limit, other GraphQL errors): with a cache, show it as stale; with none, exit 1 with "Could not reach Linear: <reason>" or "Linear: <GraphQL message>".
+- **Test seams**, both tiny:
+  - `TILE_LINEAR_RESPONSE` names a file read instead of calling the API. With it set, the cache is neither read nor written.
+  - `TILE_LINEAR_KEYFILE` names a file used instead of Credential Manager. The note file goes next to it.
+
+### Bundling
+
+As for the To do tile: `tools/install.ps1`, `BundledKindsTests`, a "Linear" section in `docs/configuration.md`, a README row, and a screenshot sample drawing `docs/images/tile-linear.png`.
+
 ## Testing
 
 **Unit tests:**
@@ -152,6 +230,15 @@ The bundled `clipboard` kind (DLL connector) gains a **Save** popup action.
   - Clear done.
   - Headings and notes kept; CRLF and LF kept; a BOM kept.
   - Popup rows, their `check` values, and the done limit.
+- `secret` input parsing.
+- `linear.ps1`, with both test seams:
+  - Title, subtitle and issue order.
+  - Popup rows and their `open:` links.
+  - No key: setup tile and setup popup.
+  - `setkey` stores an accepted key, refuses a rejected one and shows why, and never prints the key.
+  - `forget` removes the key.
+  - `open:` refuses a link outside Linear.
+  - A rejected stored key shows setup; another error without a cache fails with the message.
 
 **Checked by hand in the app:**
 
@@ -159,6 +246,8 @@ The bundled `clipboard` kind (DLL connector) gains a **Save** popup action.
 - The popup staying open and rebuilding.
 - The checkbox look.
 - The Save button: an image and a text copy.
+- The secret input showing dots.
+- Linear: pasting a real key, the issue list, opening an issue, Forget key.
 
 ## Out of scope
 
@@ -167,3 +256,4 @@ The bundled `clipboard` kind (DLL connector) gains a **Save** popup action.
 - Sync with To Do services.
 - A live file watcher. The 10 s interval and the refresh after each action are enough.
 - Saving copied file lists, or items from the history.
+- Linear: changing an issue's state, filters, notifications, OAuth sign-in.

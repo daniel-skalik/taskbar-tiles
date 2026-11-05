@@ -1,12 +1,13 @@
-# To do Tile and Clipboard Save Implementation Plan
+# To do Tile, Clipboard Save and Linear Tile Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a To do tile backed by a Markdown file, and a Save button in Clipboard peek that writes the clipboard to a file. Both rest on three new popup features: a text box, a popup that stays open, and checkbox rows.
+**Goal:** Add a To do tile backed by a Markdown file, a Save button in Clipboard peek that writes the clipboard to a file, and a Linear tile listing your In Progress and Todo issues. They rest on three new popup features: a text box (optionally secret), a popup that stays open, and checkbox rows.
 
 **Architecture:**
 - The popup features go into the contracts (`FlyoutState`, `FlyoutRow`, `ITileConnector`), then the script output parser, then the script connector (`TILE_INPUT`, action-id prefix fallback), and finally the host's `FlyoutWindow`.
 - The To do tile is a bundled PowerShell script tile.
+- The Linear tile is a bundled PowerShell script tile that calls the Linear GraphQL API and keeps its API key in Windows Credential Manager.
 - Clipboard Save adds a pure `ClipboardSave` helper, a raw clipboard read for saving, and PNG encoding through WinRT `Windows.Graphics.Imaging`. The plugin stays free of WPF and WinForms.
 
 **Tech Stack:** .NET 9 WPF host, C# plugins, xUnit tests, PowerShell 5.1/7 scripts, WinRT imaging (`net9.0-windows10.0.19041.0`).
@@ -29,6 +30,12 @@
 **Clipboard**
 - Clipboard content is never written to the log.
 - Clipboard content reaches disk only through the Save action, into the user's chosen folder.
+
+**Linear API key**
+- Sent only as the `Authorization` header to `https://api.linear.app/graphql`.
+- Never printed, logged, cached, or put in an error message. The host never logs popup input text.
+- Stored only in Windows Credential Manager, generic credential `TaskbarTiles-Linear`, user `api`.
+- Tests never touch the real Credential Manager or the network.
 
 **Popup ids and limits**
 - Popup ids starting with `host:` are reserved for the host.
@@ -69,10 +76,14 @@
 **Host**
 - Modify `src/TaskbarTiles.Host/Runtime/TileRuntime.cs`: add `InvokeInputAsync`.
 - Modify `src/TaskbarTiles.Host/UI/TileCommands.cs`: add `InvokeInputAsync`.
-- Modify `src/TaskbarTiles.Host/UI/FlyoutWindow.cs`: add the text box, the rebuild for `stayOpen`, and checkbox rows.
+- Modify `src/TaskbarTiles.Host/UI/FlyoutWindow.cs`: add the text box (a password box when secret), the rebuild for `stayOpen`, and checkbox rows.
+- Modify `src/TaskbarTiles.Host/UI/Styles.xaml`: add the `FlyoutPasswordBox` style.
 
 **To do tile**
 - Create `tiles/todo/tile.json` and `tiles/todo/todo.ps1`.
+
+**Linear tile**
+- Create `tiles/linear/tile.json` and `tiles/linear/linear.ps1`.
 
 **Clipboard plugin**
 - Create `src/TaskbarTiles.Plugins.Clipboard/ClipboardSave.cs`: pure helpers for the folder, the file name, BMP from DIB, the alpha fix, and choosing what to save.
@@ -108,7 +119,7 @@
 
 **Interfaces:**
 - Produces:
-  - `record FlyoutInput(string Action, string? Placeholder)`
+  - `record FlyoutInput(string Action, string? Placeholder, bool Secret = false)`
   - `FlyoutState(..., byte[]? Image = null, string? Tint = null, FlyoutInput? Input = null, bool StayOpen = false)`
   - `FlyoutRow(string Text, string? Value = null, TileIcon? Icon = null, string? Action = null, bool? Check = null)`
 
@@ -142,6 +153,17 @@
 
         Assert.False(f.StayOpen);
         Assert.Null(f.Input);
+    }
+
+    [Fact]
+    public void A_secret_input_is_read_and_a_bad_secret_value_is_warned_about()
+    {
+        var f = ScriptOutput.ParseFlyout("""{ "title": "T", "input": { "action": "setkey", "secret": true } }""").Value!;
+        Assert.Equal(new FlyoutInput("setkey", null, Secret: true), f.Input);
+
+        var bad = ScriptOutput.ParseFlyout("""{ "title": "T", "input": { "action": "setkey", "secret": "yes" } }""");
+        Assert.Contains(bad.Warnings, w => w.Contains("\"input.secret\" must be true or false"));
+        Assert.Equal(new FlyoutInput("setkey", null), bad.Value!.Input);
     }
 
     [Theory]
@@ -179,8 +201,11 @@ public sealed record FlyoutRow(string Text, string? Value = null, TileIcon? Icon
 
 public sealed record FlyoutAction(string Id, string Label, bool Primary = false);
 
-/// <summary>A one-line text box in the popup; Enter sends the typed text to <see cref="ITileConnector.OnInputAsync"/> with <paramref name="Action"/>.</summary>
-public sealed record FlyoutInput(string Action, string? Placeholder);
+/// <summary>
+/// A one-line text box in the popup; Enter sends the typed text to <see cref="ITileConnector.OnInputAsync"/> with
+/// <paramref name="Action"/>. <paramref name="Secret"/>: a password box that shows dots, for keys and tokens.
+/// </summary>
+public sealed record FlyoutInput(string Action, string? Placeholder, bool Secret = false);
 
 /// <summary>
 /// A tile's popup. <paramref name="StayOpen"/>: a row, button or input action leaves the popup open and the host asks
@@ -216,7 +241,7 @@ public sealed record FlyoutState(
   3. Add this method after `ReadTint`:
 
 ```csharp
-    /// <summary>"input": { "action", "placeholder" }. Without a usable action the box is dropped: it could not send anything.</summary>
+    /// <summary>"input": { "action", "placeholder", "secret" }. Without a usable action the box is dropped: it could not send anything.</summary>
     static FlyoutInput? ReadInput(JsonElement o, List<string> w)
     {
         if (!o.TryGetProperty("input", out var v) || v.ValueKind == JsonValueKind.Null) return null;
@@ -236,7 +261,7 @@ public sealed record FlyoutState(
             w.Add("\"input.action\" uses a reserved id; ids starting with \"host:\" are reserved for the host. The input box is dropped.");
             return null;
         }
-        return new FlyoutInput(action, Text(v, "placeholder", w, "input"));
+        return new FlyoutInput(action, Text(v, "placeholder", w, "input"), Bool(v, "secret", w, "input") ?? false);
     }
 ```
 
@@ -438,6 +463,7 @@ git commit -m "feat(popup): send input text to connectors (TILE_INPUT) and let a
 
 **Files:**
 - Modify: `src/TaskbarTiles.Host/UI/FlyoutWindow.cs`. Change `ShowAbove` (lines 46-48), move `Build` (lines 121-214) into a new nested class, and change `Row` (lines 218-265).
+- Modify: `src/TaskbarTiles.Host/UI/Styles.xaml`: add the `FlyoutPasswordBox` style after `FlyoutTextBox`.
 - Modify: `docs/script-connectors.md`: the Hooks table row for `action:<id>`, the Environment table, and the Popup JSON table.
 
 **Interfaces:**
@@ -511,7 +537,7 @@ using System.Windows.Threading;
     sealed class TilePopup(FrameworkElement anchor, TileRuntime runtime, TileCommands commands, ITileLog log, Action? openSettings)
     {
         public Window? Window { get; set; }
-        TextBox? _input;
+        Control? _input; // a TextBox, or a PasswordBox for a secret input
         bool _busy;
 
         public void FocusInput()
@@ -598,7 +624,29 @@ using System.Windows.Threading;
             }
             panel.Children.Add(header);
 
-            if (state.Input is { } input)
+            if (state.Input is { Secret: true } secret)
+            {
+                // Dots instead of text. Tag is the FlyoutPasswordBox style's placeholder, emptied while the box holds
+                // text (a PasswordBox has no bindable text for a trigger). The text goes to the connector only, never the log.
+                var box = new PasswordBox
+                {
+                    Tag = secret.Placeholder ?? "", MaxLength = MaxInputChars, Margin = new Thickness(0, 14, 0, 0),
+                    Style = (Style)Application.Current.FindResource("FlyoutPasswordBox"),
+                };
+                box.PasswordChanged += (_, _) => box.Tag = box.Password.Length == 0 ? secret.Placeholder ?? "" : "";
+                box.KeyDown += (_, e) =>
+                {
+                    if (e.Key != Key.Enter) return;
+                    e.Handled = true;
+                    var text = box.Password.Trim();
+                    if (text.Length == 0 || _busy) return;
+                    box.Clear();
+                    Run(state, secret.Action, text);
+                };
+                _input = box;
+                panel.Children.Add(box);
+            }
+            else if (state.Input is { } input)
             {
                 // Tag is the FlyoutTextBox style's placeholder.
                 var box = new TextBox
@@ -661,6 +709,37 @@ using System.Windows.Threading;
 
 Note: copy the gear `Content` from the existing code exactly. It is a private-use Segoe glyph in the current source; `` is its escape. If the current source holds a different character, keep that one.
 
+- [ ] **Step 2b: Add the `FlyoutPasswordBox` style** to `src/TaskbarTiles.Host/UI/Styles.xaml`, right after the `FlyoutTextBox` style:
+
+```xml
+    <!-- Popup secret input: looks like FlyoutTextBox, shows dots. Tag is the placeholder; FlyoutWindow empties it while the box holds text. -->
+    <Style x:Key="FlyoutPasswordBox" TargetType="PasswordBox">
+        <Setter Property="Foreground" Value="{DynamicResource TileForeground}"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource TileForeground}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="8,5"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border x:Name="Bd" CornerRadius="5" BorderThickness="1" Padding="0,5"
+                            Background="{DynamicResource TileFill}" BorderBrush="{DynamicResource TileOutline}">
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                            <TextBlock Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}" Padding="2,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TileDim}" IsHitTestVisible="False"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#4C7CE0"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+```
+
 - [ ] **Step 3: Checkbox rows.** In `Row`:
 
   1. Replace the `if (row.Icon is { } icon) grid.Children.Add(new Border {...});` block with:
@@ -716,7 +795,7 @@ Expected: build succeeds; tests PASS.
   4. Add two rows after `tint`:
 
 ```markdown
-| `input` | object | A text box above the rows: `{ "placeholder": "Add a task", "action": "add" }`. Enter runs the `action:<action>` hook with the text in `TILE_INPUT`; empty text does nothing. `action` is required and may not start with `host:`. |
+| `input` | object | A text box above the rows: `{ "placeholder": "Add a task", "action": "add" }`. Enter runs the `action:<action>` hook with the text in `TILE_INPUT`; empty text does nothing. `action` is required and may not start with `host:`. Add `"secret": true` for a password box that shows dots, for keys and tokens; the host never logs the text. |
 | `stayOpen` | boolean | `true` keeps the popup open after a row, button or input action: when the action is done the `flyout` hook runs again and the popup is redrawn in place. Default `false`: an action closes the popup. |
 ```
 
@@ -725,6 +804,7 @@ Expected: build succeeds; tests PASS.
 The behaviour to confirm:
 - The text box takes focus.
 - Enter runs the action.
+- A `"secret": true` input shows dots, and its placeholder disappears while it holds text.
 - The popup stays open and redraws.
 - Checkbox rows look right.
 
@@ -733,7 +813,7 @@ If this can't be run here, write it in the task report as not checked.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/TaskbarTiles.Host/UI/FlyoutWindow.cs docs/script-connectors.md
+git add src/TaskbarTiles.Host/UI/FlyoutWindow.cs src/TaskbarTiles.Host/UI/Styles.xaml docs/script-connectors.md
 git commit -m "feat(popup): draw the input box and checkbox rows; keep stayOpen popups open and redraw them" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1625,12 +1705,543 @@ git commit -m "feat(clipboard): Save writes the clipboard to a PNG or text file 
 
 ---
 
+### Task 6: Linear tile
+
+**Files:**
+- Create: `tiles/linear/tile.json`, `tiles/linear/linear.ps1`
+- Modify: `tools/install.ps1` (`$bundledKinds`, the required-files list, and the header comment's kind list if it has one; `grep -n "todo" tools/install.ps1` finds every list Task 4 touched)
+- Modify: `tests/TaskbarTiles.Tests/BundledKindsTests.cs`: the expected kind list, plus new tests
+- Modify: `docs/configuration.md` (a new `### Linear` section after `### To do`), `README.md` (the tiles table), and `tools/screenshots/Program.cs` (a sample, plus "13 tiles" becomes "14 tiles")
+- Create: `docs/images/tile-linear.png`, drawn by the screenshots tool
+
+**Interfaces:**
+- Consumes from Tasks 1 to 3:
+  - The popup JSON fields `input` (with `secret`) and `stayOpen`.
+  - `TILE_INPUT`.
+  - The action prefix fallback, which lets `action:open` serve `open:<url>`. It splits at the first colon, so `open:https://linear.app/...` runs `action:open`.
+- Produces: the bundled kind `linear`.
+
+**Security rules for this task (from the spec):**
+- The API key is sent only as the `Authorization` header to `https://api.linear.app/graphql`.
+- It is never printed (stdout or stderr), logged, cached, or put in an error message or the note file.
+- Tests never touch the real Credential Manager or the network: every test sets both `TILE_LINEAR_KEYFILE` and `TILE_LINEAR_RESPONSE`.
+
+- [ ] **Step 1: Write the failing tests** (in `BundledKindsTests.cs`)
+
+  1. Add `"linear"` to the expected kind list, keeping it in ordinal order: `..., "git", "linear", "media", ...`.
+
+  2. Add these tests:
+
+```csharp
+    const string LinearIssues = """
+        { "data": { "organization": { "urlKey": "acme" }, "viewer": { "assignedIssues": { "nodes": [
+          { "identifier": "ENG-7", "title": "Old todo", "url": "https://linear.app/acme/issue/ENG-7/old", "priority": 0,
+            "updatedAt": "2026-11-01T10:00:00Z", "state": { "name": "Todo", "type": "unstarted" } },
+          { "identifier": "ENG-9", "title": "Urgent todo", "url": "https://linear.app/acme/issue/ENG-9/urgent", "priority": 1,
+            "updatedAt": "2026-11-02T10:00:00Z", "state": { "name": "Todo", "type": "unstarted" } },
+          { "identifier": "ENG-3", "title": "Fix login", "url": "https://linear.app/acme/issue/ENG-3/fix", "priority": 3,
+            "updatedAt": "2026-11-03T10:00:00Z", "state": { "name": "In Progress", "type": "started" } }
+        ] } } } }
+        """;
+
+    const string LinearRejected = """{ "errors": [ { "message": "Authentication required", "extensions": { "code": "AUTHENTICATION_ERROR" } } ] }""";
+
+    /// <summary>
+    /// Runs linear.ps1 with dir\key.txt standing in for Credential Manager and <paramref name="response"/> for the API,
+    /// so no test reaches the real credential store or the network.
+    /// </summary>
+    static Task<ScriptResult> RunLinear(TempDir dir, string hook, string response = LinearIssues, string action = "", string input = "")
+    {
+        File.WriteAllText(dir.File("response.json"), response);
+        return RunBundled("linear", "linear.ps1", hook, extraEnv: new Dictionary<string, string>
+        {
+            ["TILE_LINEAR_KEYFILE"] = dir.File("key.txt"), ["TILE_LINEAR_RESPONSE"] = dir.File("response.json"),
+            ["TILE_ACTION"] = action, ["TILE_INPUT"] = input,
+        });
+    }
+
+    static TempDir LinearDirWithKey()
+    {
+        var dir = new TempDir();
+        File.WriteAllText(dir.File("key.txt"), "lin_api_saved");
+        return dir;
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_counts_in_progress_and_shows_the_top_issue()
+    {
+        using var dir = LinearDirWithKey();
+
+        var outcome = HookResults.ForTile("interval", await RunLinear(dir, "interval"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("1 in progress", outcome.Value!.Title);
+        Assert.Equal("ENG-3 Fix login", outcome.Value.Subtitle);
+        Assert.Equal(new TileIcon("activity", TileColor.Accent), outcome.Value.Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_popup_orders_issues_and_links_each_one()
+    {
+        using var dir = LinearDirWithKey();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        Assert.Equal("Linear", f.Title);
+        Assert.Equal("1 in progress · 2 to do", f.Subtitle);
+        Assert.Equal(new[] { "ENG-3 Fix login", "ENG-9 Urgent todo", "ENG-7 Old todo" }, f.Rows.Select(r => r.Text));
+        Assert.Equal(new[] { "In Progress", "Todo", "Todo" }, f.Rows.Select(r => r.Value));
+        Assert.Equal("open:https://linear.app/acme/issue/ENG-3/fix", f.Rows[0].Action);
+        Assert.Equal(TileColor.Accent, f.Rows[0].Icon!.Color);
+        Assert.Equal(TileColor.Neutral, f.Rows[1].Icon!.Color);
+        Assert.Equal(new[] { "forget", "open:https://linear.app/acme/my-issues/assigned" }, f.Actions.Select(a => a.Id));
+        Assert.Null(f.Input);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_without_a_key_offers_setup()
+    {
+        using var dir = new TempDir();
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval"), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("Linear", "Click to set up"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Empty(popup.Warnings);
+        var f = popup.Value!;
+        Assert.Equal("Paste your personal API key", f.Subtitle);
+        Assert.Equal(new FlyoutInput("setkey", "Personal API key", Secret: true), f.Input);
+        Assert.True(f.StayOpen);
+        Assert.Equal(new[] { "open:https://linear.app/settings/account/security" }, f.Actions.Select(a => a.Id));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_stores_a_key_Linear_accepts()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunLinear(dir, "action", action: "setkey", input: " lin_api_new ");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.Equal("", result.StdOut.Trim());
+        Assert.Equal("lin_api_new", File.ReadAllText(dir.File("key.txt")));
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Null(popup.Value!.Input); // the issue list now
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_keeps_out_a_rejected_key_and_says_why_once()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunLinear(dir, "action", LinearRejected, "setkey", "lin_api_bad");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.DoesNotContain("lin_api_bad", result.StdOut + result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+        var first = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("Key rejected by Linear", first.Value!.Subtitle);
+        var second = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("Paste your personal API key", second.Value!.Subtitle);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_forget_removes_the_key()
+    {
+        using var dir = LinearDirWithKey();
+
+        var result = await RunLinear(dir, "action", action: "forget");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_open_refuses_a_link_outside_Linear()
+    {
+        using var dir = LinearDirWithKey();
+
+        var result = await RunLinear(dir, "action", action: "open:https://example.com/x");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Not a Linear link", result.StdErr);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_with_a_rejected_saved_key_offers_setup_again()
+    {
+        using var dir = LinearDirWithKey();
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", LinearRejected), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("Linear", "Key rejected"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout", LinearRejected), TimeSpan.FromSeconds(30));
+        Assert.Equal("Linear rejected the saved key", popup.Value!.Subtitle);
+        Assert.Equal("setkey", popup.Value.Input!.Action);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_error_without_a_cache_fails_with_the_message()
+    {
+        using var dir = LinearDirWithKey();
+        const string limited = """{ "errors": [ { "message": "Rate limit exceeded", "extensions": { "code": "RATELIMITED" } } ] }""";
+
+        var outcome = HookResults.ForTile("interval", await RunLinear(dir, "interval", limited), TimeSpan.FromSeconds(30));
+
+        Assert.True(outcome.Failed);
+        Assert.Contains("Linear: Rate limit exceeded", $"{outcome.ErrorMessage} {outcome.ErrorDetails}");
+    }
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `dotnet test --disable-build-servers --filter "FullyQualifiedName~BundledKindsTests"`
+Expected: FAIL. The kind list doesn't match, and `linear.ps1` doesn't exist.
+
+- [ ] **Step 3: Create `tiles/linear/tile.json`**
+
+```json
+{
+  "name": "Linear",
+  "description": "Your Linear issues in In Progress and Todo; click one to open it",
+  "group": "Productivity",
+  "connector": "script",
+  "width": 200,
+  "fields": [
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often your issues are fetched from Linear." }
+  ],
+  "settings": {
+    "refresh": "2m",
+    "hooks": {
+      "interval":      { "every": "$refresh", "run": "linear.ps1" },
+      "flyout":        { "run": "linear.ps1" },
+      "action:open":   { "run": "linear.ps1" },
+      "action:setkey": { "run": "linear.ps1" },
+      "action:forget": { "run": "linear.ps1" }
+    }
+  }
+}
+```
+
+- [ ] **Step 4: Create `tiles/linear/linear.ps1`** (ASCII only)
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
+# Taskbar Tiles bundled kind "linear": your Linear issues in In Progress and Todo. Hooks (tile.json): interval, flyout,
+# action:open (ids "open:<url>"), action:setkey, action:forget. See docs/script-connectors.md.
+# Replaced on every install: copy this folder under a new name before changing it.
+# The API key lives in Windows Credential Manager (generic credential "TaskbarTiles-Linear"). It is sent only to
+# api.linear.app, and never printed, logged, cached or put in an error message.
+# Testing only: TILE_LINEAR_RESPONSE names a file read instead of calling the API (no cache then);
+# TILE_LINEAR_KEYFILE names a file used instead of Credential Manager.
+
+$target = 'TaskbarTiles-Linear'
+$api = 'https://api.linear.app/graphql'
+$keyPage = 'https://linear.app/settings/account/security'
+$dot = [char]0x00B7
+$cache = Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-linear-$env:TILE_ID.json"
+# A setkey failure message waiting for the next popup; never the key.
+$note = if ($env:TILE_LINEAR_KEYFILE) { "$env:TILE_LINEAR_KEYFILE.note" } else { Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-linear-$env:TILE_ID.note" }
+$query = 'query { organization { urlKey } viewer { assignedIssues(first: 50, filter: { state: { type: { in: ["started", "unstarted"] } } }) { nodes { identifier title url priority updatedAt state { name type } } } } }'
+
+function Fail([string]$message) { [Console]::Error.WriteLine($message); exit 1 }
+
+# Credential Manager through advapi32; compiled only when the real store is used.
+function Use-CredentialManager {
+    if ('TaskbarTiles.LinearCred' -as [type]) { return }
+    Add-Type -Namespace TaskbarTiles -Name LinearCred -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+public struct CREDENTIAL {
+    public int Flags; public int Type; public string TargetName; public string Comment;
+    public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+    public int CredentialBlobSize; public IntPtr CredentialBlob; public int Persist;
+    public int AttributeCount; public IntPtr Attributes; public string TargetAlias; public string UserName;
+}
+[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CredReadW(string target, int type, int flags, out IntPtr credential);
+[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CredWriteW(ref CREDENTIAL credential, int flags);
+[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool CredDeleteW(string target, int type, int flags);
+[DllImport("advapi32.dll")] static extern void CredFree(IntPtr buffer);
+public static string Read(string target) {
+    IntPtr p;
+    if (!CredReadW(target, 1, 0, out p)) return null;
+    try {
+        var c = (CREDENTIAL)Marshal.PtrToStructure(p, typeof(CREDENTIAL));
+        return c.CredentialBlobSize == 0 ? null : Marshal.PtrToStringUni(c.CredentialBlob, c.CredentialBlobSize / 2);
+    } finally { CredFree(p); }
+}
+public static void Write(string target, string secret) {
+    var blob = Marshal.StringToCoTaskMemUni(secret);
+    try {
+        var c = new CREDENTIAL { Type = 1, TargetName = target, UserName = "api", CredentialBlob = blob, CredentialBlobSize = secret.Length * 2, Persist = 2 };
+        if (!CredWriteW(ref c, 0)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+    } finally { Marshal.ZeroFreeCoTaskMemUnicode(blob); }
+}
+public static void Delete(string target) { CredDeleteW(target, 1, 0); }
+'@
+}
+
+function Get-Key {
+    if ($env:TILE_LINEAR_KEYFILE) {
+        if (Test-Path -LiteralPath $env:TILE_LINEAR_KEYFILE) { return (Get-Content -LiteralPath $env:TILE_LINEAR_KEYFILE -Raw).Trim() }
+        return $null
+    }
+    Use-CredentialManager
+    [TaskbarTiles.LinearCred]::Read($target)
+}
+
+function Set-Key([string]$key) {
+    if ($env:TILE_LINEAR_KEYFILE) { Set-Content -LiteralPath $env:TILE_LINEAR_KEYFILE -Value $key -NoNewline -Encoding ASCII; return }
+    Use-CredentialManager
+    [TaskbarTiles.LinearCred]::Write($target, $key)
+}
+
+function Remove-Key {
+    if ($env:TILE_LINEAR_KEYFILE) { Remove-Item -LiteralPath $env:TILE_LINEAR_KEYFILE -ErrorAction SilentlyContinue; return }
+    Use-CredentialManager
+    [TaskbarTiles.LinearCred]::Delete($target)
+}
+
+# One request. Returns @{ Data } or @{ Error; Auth }; Auth is true when Linear refused the key.
+function Invoke-Linear([string]$key) {
+    $r = $null; $status = 0
+    try {
+        if ($env:TILE_LINEAR_RESPONSE) { $r = Get-Content -LiteralPath $env:TILE_LINEAR_RESPONSE -Raw | ConvertFrom-Json }
+        else {
+            $body = @{ query = $query } | ConvertTo-Json -Compress
+            $r = Invoke-RestMethod -Method Post -Uri $api -Headers @{ Authorization = $key } -ContentType 'application/json' -Body $body -TimeoutSec 8
+        }
+    } catch {
+        $failure = $_
+        try { $status = [int]$failure.Exception.Response.StatusCode } catch { }
+        try { $r = $failure.ErrorDetails.Message | ConvertFrom-Json } catch { $r = $null }
+        if (-not $r -or -not $r.errors) {
+            if ($status -eq 401) { return @{ Auth = $true; Error = 'Key rejected by Linear' } }
+            return @{ Auth = $false; Error = "Could not reach Linear: $($failure.Exception.Message)" }
+        }
+    }
+    if ($r.errors) {
+        $auth = $status -eq 401 -or @($r.errors | Where-Object { $_.extensions.code -eq 'AUTHENTICATION_ERROR' }).Count -gt 0
+        if ($auth) { return @{ Auth = $true; Error = 'Key rejected by Linear' } }
+        return @{ Auth = $false; Error = "Linear: $(@($r.errors)[0].message)" }
+    }
+    @{ Data = $r.data }
+}
+
+function Read-Cache {
+    if ($env:TILE_LINEAR_RESPONSE -or -not (Test-Path -LiteralPath $cache)) { return $null }
+    try { return Get-Content -LiteralPath $cache -Raw | ConvertFrom-Json } catch { return $null }
+}
+
+function Write-Cache($data) {
+    if ($env:TILE_LINEAR_RESPONSE) { return }
+    try { @{ fetched_at = [DateTimeOffset]::UtcNow.ToString('o'); data = $data } | ConvertTo-Json -Depth 10 -Compress | Set-Content -LiteralPath $cache -Encoding UTF8 } catch { }
+}
+
+# In Progress before Todo, then Urgent (1) to Low (4) with No priority (0) last, then most recently updated first.
+function Sort-Issues($nodes) {
+    $order = @(
+        @{ Expression = { if ($_.state.type -eq 'started') { 0 } else { 1 } } },
+        @{ Expression = { if ([int]$_.priority -ge 1) { [int]$_.priority } else { 5 } } },
+        @{ Expression = { [DateTimeOffset]$_.updatedAt }; Descending = $true })
+    @($nodes | Where-Object { $_ } | Sort-Object -Property $order)
+}
+
+# The popup that takes a key. A message left by a failed setkey replaces the subtitle once.
+function Write-Setup([string]$subtitle) {
+    if (Test-Path -LiteralPath $note) {
+        $waiting = (Get-Content -LiteralPath $note -Raw).Trim()
+        Remove-Item -LiteralPath $note -ErrorAction SilentlyContinue
+        if ($waiting) { $subtitle = $waiting }
+    }
+    $sep = [char]0x203A
+    @{
+        title    = 'Linear'
+        subtitle = $subtitle
+        stayOpen = $true
+        input    = @{ placeholder = 'Personal API key'; action = 'setkey'; secret = $true }
+        rows     = @("Create one in Linear: Settings $sep Security & access $sep Personal API keys")
+        actions  = @(@{ id = "open:$keyPage"; label = 'Get a key'; primary = $true })
+    } | ConvertTo-Json -Depth 5 -Compress
+}
+
+function Write-SetupTile([string]$subtitle) {
+    @{ title = 'Linear'; subtitle = $subtitle; icon = @{ glyph = 'activity'; color = 'neutral' } } | ConvertTo-Json -Depth 5 -Compress
+}
+
+$hook = $env:TILE_HOOK
+$action = "$env:TILE_ACTION"
+
+if ($hook -eq 'action') {
+    if ($action.StartsWith('open:')) {
+        $url = $action.Substring(5)
+        if ($url -notmatch '^https://linear\.app/') { Fail 'Not a Linear link.' }
+        Start-Process $url
+        exit 0
+    }
+    if ($action -eq 'setkey') {
+        $key = "$env:TILE_INPUT".Trim()
+        if (-not $key) { exit 0 }
+        $result = Invoke-Linear $key
+        if ($result.Error) { Set-Content -LiteralPath $note -Value $result.Error -Encoding UTF8; exit 0 }
+        Set-Key $key
+        Write-Cache $result.Data
+        Remove-Item -LiteralPath $note -ErrorAction SilentlyContinue
+        exit 0
+    }
+    if ($action -eq 'forget') {
+        Remove-Key
+        Remove-Item -LiteralPath $cache, $note -ErrorAction SilentlyContinue
+        exit 0
+    }
+    Fail "Unknown action '$action'."
+}
+
+$key = Get-Key
+if (-not $key) {
+    if ($hook -eq 'flyout') { Write-Setup 'Paste your personal API key' } else { Write-SetupTile 'Click to set up' }
+    exit 0
+}
+
+# interval always fetches; the popup takes the cache while it is under 2 minutes old.
+$cached = Read-Cache
+$data = $null; $stale = $null
+if ($hook -eq 'flyout' -and $cached -and ([DateTimeOffset]::UtcNow - [DateTimeOffset]$cached.fetched_at).TotalMinutes -lt 2) {
+    $data = $cached.data
+} else {
+    $result = Invoke-Linear $key
+    if ($result.Auth) {
+        if ($hook -eq 'flyout') { Write-Setup 'Linear rejected the saved key' } else { Write-SetupTile 'Key rejected' }
+        exit 0
+    }
+    if ($result.Error) {
+        if (-not $cached) { Fail $result.Error }
+        $data = $cached.data; $stale = $result.Error
+    } else {
+        $data = $result.Data
+        Write-Cache $data
+    }
+}
+
+$issues = Sort-Issues $data.viewer.assignedIssues.nodes
+$doing = @($issues | Where-Object { $_.state.type -eq 'started' }).Count
+$todo = $issues.Count - $doing
+$summary = "$doing in progress $dot $todo to do"
+
+if ($hook -eq 'flyout') {
+    $rows = @()
+    foreach ($i in @($issues | Select-Object -First 15)) {
+        $rows += @{
+            text   = "$($i.identifier) $($i.title)"
+            value  = $i.state.name
+            icon   = @{ glyph = 'info'; color = $(if ($i.state.type -eq 'started') { 'accent' } else { 'neutral' }) }
+            action = "open:$($i.url)"
+        }
+    }
+    if (-not $rows.Count) { $rows = @('Nothing in In Progress or Todo') }
+    @{
+        title    = 'Linear'
+        subtitle = $summary
+        rows     = $rows
+        actions  = @(
+            @{ id = 'forget'; label = 'Forget key' },
+            @{ id = "open:https://linear.app/$($data.organization.urlKey)/my-issues/assigned"; label = 'Open Linear'; primary = $true })
+    } | ConvertTo-Json -Depth 6 -Compress
+    exit 0
+}
+
+# interval prints the tile.
+$tip = @($summary) + @($issues | Select-Object -First 5 | ForEach-Object { "$($_.identifier) $($_.title)" })
+if ($stale) { $tip += "Stale: $stale" }
+@{
+    title    = $(if ($doing) { "$doing in progress" } elseif ($todo) { "$todo to do" } else { 'All clear' })
+    subtitle = $(if ($issues.Count) { "$($issues[0].identifier) $($issues[0].title)" } else { 'Nothing assigned' })
+    icon     = @{ glyph = 'activity'; color = $(if ($issues.Count) { 'accent' } else { 'ok' }) }
+    tooltip  = $tip -join "`n"
+} | ConvertTo-Json -Depth 5 -Compress
+```
+
+Notes for the implementer:
+- `Use-CredentialManager` is never reached in tests, which set `TILE_LINEAR_KEYFILE`. Check that it compiles once by hand, without storing anything: `powershell -NoProfile -Command ". { <paste the Add-Type block> }; [TaskbarTiles.LinearCred]::Read('TaskbarTiles-Linear-none')"` must print nothing and raise no error. Do the same under `pwsh` if it is installed. Do not write a real credential.
+- PowerShell 7's `ConvertFrom-Json` turns ISO date strings into `DateTime`; 5.1 leaves them as strings. `[DateTimeOffset]` casts handle both.
+- If `ScriptOutput` rejects action ids that hold a URL (a length or character limit), report it as BLOCKED rather than changing the id scheme: the spec relies on `open:<url>`.
+- If a test fails on PowerShell quirks (single-item arrays, `$null` piped to `ConvertFrom-Json`), fix the script, not the test.
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `dotnet test --disable-build-servers --filter "FullyQualifiedName~BundledKindsTests"`
+Expected: PASS.
+
+- [ ] **Step 6: Bundle it, document it, take a screenshot.**
+
+  1. **`tools/install.ps1`:**
+     - Add `'linear'` to `$bundledKinds` after `'todo'`.
+     - In the required list, after the todo line, add: `(Join-Path $stage 'tiles\linear\tile.json'),`
+     - If the header comment lists the kinds, add `linear` there too.
+  2. **`tools/screenshots/Program.cs`:**
+     - After the `todo` sample line, add:
+
+```csharp
+        ("linear", 200, Fixed(Script("""{ "title": "2 in progress", "subtitle": "ENG-142 Fix login redirect", "icon": { "glyph": "activity", "color": "accent" } }"""))),
+```
+
+     - Change `13 tiles` to `14 tiles`.
+  3. **`README.md`:** after the To do row, add:
+
+```markdown
+| <img src="docs/images/tile-linear.png" alt="Linear tile" height="48"> | **Linear**<br>Your issues in In Progress and Todo; click one to open it. |
+```
+
+  4. **`docs/configuration.md`:** after the `### To do` section, add:
+
+```markdown
+### Linear
+
+The bundled `linear` kind shows the Linear issues assigned to you that are in progress or still to do (state types *started* and *unstarted*, every team): how many are in progress and the most pressing one. Click it for up to 15 of them, in progress first, then by priority and the most recently updated; click one to open it in your browser. **Open Linear** opens your assigned issues there.
+
+- **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass:<key>`.
+- **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
+- Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched. When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
+```
+
+  5. Run `dotnet run --disable-build-servers --project tools/screenshots`. Then `git status`: keep only the new `docs/images/tile-linear.png`, and `git checkout -- <file>` any other `docs/images/*.png` the tool changed.
+
+- [ ] **Step 7: Run the full suite**
+
+Run: `dotnet test --disable-build-servers`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add tiles/linear tools/install.ps1 tools/screenshots/Program.cs README.md docs/configuration.md docs/images/tile-linear.png tests/TaskbarTiles.Tests/BundledKindsTests.cs
+git commit -m "feat(tiles): bundled Linear tile with the API key in Credential Manager" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ## Final check (after all tasks)
 
 - [ ] `dotnet test --disable-build-servers`: all tests pass.
-- [ ] `git status` is clean, and `git log --oneline main..` shows the spec commit plus five task commits.
+- [ ] `git status` is clean, and `git log --oneline main..` shows the spec and plan commits plus six task commits.
 - [ ] Tell the user what to check by hand after `install.cmd`:
   - The To do popup: typing plus Enter, ticking, Clear done, and the popup staying open.
   - The checkbox look.
   - Clipboard Save of a screenshot and of text.
   - Clicking "Saved …" to open Explorer.
+  - Linear: the setup popup's dots, pasting a real key, the issue list, clicking an issue, Open Linear, Forget key.
