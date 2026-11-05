@@ -363,9 +363,58 @@ public static class FlyoutWindow
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = inner,
         };
         if (Application.Current?.TryFindResource("FlyoutScrollViewer") is Style style) scroll.Style = style;
+        SmoothScroll.Attach(scroll);
         var card = new Border { CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 14, 0, 0), Child = scroll };
         card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
         return card;
+    }
+
+    /// <summary>
+    /// Mouse-wheel scrolling that glides instead of jumping 48 DIP a notch: each notch moves a target, and every frame
+    /// covers part of the way there until it lands.
+    /// </summary>
+    internal static class SmoothScroll
+    {
+        const double PixelsPerNotch = 48; // WPF's own wheel step: 3 lines of 16
+        const double Fraction = 0.3;      // of the remaining distance per frame
+
+        /// <summary>The next offset on the way from <paramref name="current"/> to <paramref name="target"/>.</summary>
+        public static double Step(double current, double target)
+        {
+            var next = current + (target - current) * Fraction;
+            return Math.Abs(target - next) < 0.5 ? target : next;
+        }
+
+        public static void Attach(ScrollViewer scroll)
+        {
+            double target = 0;
+            var gliding = false;
+
+            void Frame(object? sender, EventArgs e)
+            {
+                var next = Step(scroll.VerticalOffset, target);
+                scroll.ScrollToVerticalOffset(next);
+                if (next == target) Stop();
+            }
+            void Stop()
+            {
+                if (!gliding) return;
+                gliding = false;
+                CompositionTarget.Rendering -= Frame;
+            }
+
+            scroll.PreviewMouseWheel += (_, e) =>
+            {
+                if (scroll.ScrollableHeight <= 0) return; // nothing to scroll: let the wheel go on
+                e.Handled = true;
+                var from = gliding ? target : scroll.VerticalOffset;
+                target = Math.Clamp(from - e.Delta / 120.0 * PixelsPerNotch, 0, scroll.ScrollableHeight);
+                if (gliding) return;
+                gliding = true;
+                CompositionTarget.Rendering += Frame;
+            };
+            scroll.Unloaded += (_, _) => Stop(); // a redraw or close replaces the viewer mid-glide
+        }
     }
 
     /// <summary>A row icon: its shape when the glyph names one (<see cref="Theme.RowShape"/>), else a colored dot.</summary>

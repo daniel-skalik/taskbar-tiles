@@ -66,4 +66,11 @@ public class FlyoutWindowTests
         Assert.Equal(FlyoutWindow.RowsMaxHeight, scroll.MaxHeight);
         Assert.Equal(System.Windows.Controls.ScrollBarVisibility.Auto, scroll.VerticalScrollBarVisibility);
     });
+
+    [Theory]
+    [InlineData(0, 100, 30)]     // a step covers part of the way
+    [InlineData(99.6, 100, 100)] // and lands once it is within half a pixel
+    [InlineData(100, 0, 70)]     // upward the same
+    public void Smooth_scrolling_eases_toward_its_target(double current, double target, double next) =>
+        Assert.Equal(next, FlyoutWindow.SmoothScroll.Step(current, target), 3);
 }
