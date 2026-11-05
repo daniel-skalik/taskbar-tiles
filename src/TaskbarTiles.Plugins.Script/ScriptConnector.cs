@@ -94,13 +94,25 @@ public sealed class ScriptConnector : ITileConnector
                 return;
         }
 
-        if (_settings.Action(actionId) is not { } action)
+        await RunActionAsync(actionId, null, ct);
+    }
+
+    public async Task OnInputAsync(string actionId, string text, CancellationToken ct)
+    {
+        if (_settings is null) return;
+        await RunActionAsync(actionId, text, ct);
+    }
+
+    /// <summary>The action's hook; <paramref name="input"/> is the popup text box's text (TILE_INPUT), null for buttons and rows.</summary>
+    async Task RunActionAsync(string actionId, string? input, CancellationToken ct)
+    {
+        if (_settings!.Action(actionId) is not { } action)
         {
             Ctx.Log.Warn($"No hook for action '{actionId}'; add \"action:{actionId}\" to settings.hooks.");
             return;
         }
         // An action that prints nothing usually changed what the status shows: refresh it.
-        if (await Interactive("action", ct, t => RunTileHookAsync("action", action, actionId, t)) == HookRun.NoOutput)
+        if (await Interactive("action", ct, t => RunTileHookAsync("action", action, actionId, t, input)) == HookRun.NoOutput)
             _interval?.Trigger(_cts.Token);
     }
 
@@ -211,10 +223,10 @@ public sealed class ScriptConnector : ITileConnector
         }
     }
 
-    async Task<HookRun> RunTileHookAsync(string hook, HookSpec spec, string? actionId, CancellationToken ct)
+    async Task<HookRun> RunTileHookAsync(string hook, HookSpec spec, string? actionId, CancellationToken ct, string? input = null)
     {
         var timeout = spec.Timeout ?? ScriptSettings.DefaultTimeout;
-        var result = await RunScriptAsync(hook, spec, actionId, timeout, ct);
+        var result = await RunScriptAsync(hook, spec, actionId, timeout, ct, input);
         var outcome = HookResults.ForTile(hook, result, timeout);
         foreach (var warning in outcome.Warnings) Ctx.Log.Warn(warning);
         if (outcome.Failed)
@@ -231,11 +243,11 @@ public sealed class ScriptConnector : ITileConnector
         return HookRun.Updated;
     }
 
-    async Task<ScriptResult> RunScriptAsync(string hook, HookSpec spec, string? actionId, TimeSpan timeout, CancellationToken ct)
+    async Task<ScriptResult> RunScriptAsync(string hook, HookSpec spec, string? actionId, TimeSpan timeout, CancellationToken ct, string? input = null)
     {
         try
         {
-            return await _runner.RunAsync(_resolver!.Resolve(spec.Run), EnvFor(hook, actionId), timeout, ct);
+            return await _runner.RunAsync(_resolver!.Resolve(spec.Run), EnvFor(hook, actionId, input), timeout, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -243,11 +255,12 @@ public sealed class ScriptConnector : ITileConnector
         }
     }
 
-    Dictionary<string, string> EnvFor(string hook, string? actionId) => new()
+    Dictionary<string, string> EnvFor(string hook, string? actionId, string? input = null) => new()
     {
         ["TILE_ID"] = Ctx.TileId,
         ["TILE_HOOK"] = hook,
         ["TILE_ACTION"] = actionId ?? "",
+        ["TILE_INPUT"] = input ?? "",
         ["TILE_SETTINGS_JSON"] = Ctx.Settings.GetRawText(),
     };
 

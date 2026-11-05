@@ -40,7 +40,16 @@ public sealed class ScriptSettings
 
     public HookSpec? Hook(string name) => Hooks.GetValueOrDefault(name);
 
-    public HookSpec? Action(string actionId) => Hooks.GetValueOrDefault(ActionPrefix + actionId);
+    /// <summary>
+    /// The hook for an action id: "action:&lt;id&gt;", else the hook for the id's part before its first colon, so one
+    /// "action:toggle" hook serves "toggle:5:ab12cd34" (TILE_ACTION still holds the whole id).
+    /// </summary>
+    public HookSpec? Action(string actionId)
+    {
+        if (Hooks.TryGetValue(ActionPrefix + actionId, out var exact)) return exact;
+        var colon = actionId.IndexOf(':');
+        return colon > 0 ? Hooks.GetValueOrDefault(ActionPrefix + actionId[..colon]) : null;
+    }
 
     public static ScriptSettings Parse(JsonElement settings)
     {

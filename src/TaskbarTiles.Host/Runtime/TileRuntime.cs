@@ -238,6 +238,21 @@ public sealed class TileRuntime : IAsyncDisposable
         finally { _actionsInFlight.TryRemove(actionId, out _); }
     }
 
+    /// <summary>Text from a popup input box; like <see cref="InvokeActionAsync"/>, one call per action id at a time.</summary>
+    public async Task InvokeInputAsync(string actionId, string text)
+    {
+        if (IsDisposed || Volatile.Read(ref _current) is not { } instance) return;
+        if (!_actionsInFlight.TryAdd(actionId, 0)) return;
+        try
+        {
+            await RunWithTimeout(instance, async ct => { await instance.Connector.OnInputAsync(actionId, text, ct); return true; });
+        }
+        catch (TimeoutException) { ShowNotResponding(); }
+        catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { }
+        catch (Exception ex) { Fail(ex, instance.Generation); }
+        finally { _actionsInFlight.TryRemove(actionId, out _); }
+    }
+
     /// <summary>Image and tint of the connector's last popup, so the Settings panel can look like it.</summary>
     public (byte[]? Image, string? Tint) LastFlyoutLook { get; private set; }
 

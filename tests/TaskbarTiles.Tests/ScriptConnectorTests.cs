@@ -621,4 +621,23 @@ public class ScriptConnectorTests
         await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Empty(ctx.Errors);
     }
+
+    [Fact]
+    public async Task Input_runs_the_action_hook_with_the_text_in_TILE_INPUT()
+    {
+        var runner = new FakeRunner();
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "action:add": { "run": "add.ps1" } } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+
+        await ((ITileConnector)c).OnInputAsync("add", "Buy milk", CancellationToken.None);
+        await c.OnActionAsync("add", CancellationToken.None);
+
+        var calls = runner.Calls;
+        Assert.Equal(2, calls.Count);
+        Assert.Equal("action", calls[0].Env["TILE_HOOK"]);
+        Assert.Equal("add", calls[0].Env["TILE_ACTION"]);
+        Assert.Equal("Buy milk", calls[0].Env["TILE_INPUT"]);
+        Assert.Equal("", calls[1].Env["TILE_INPUT"]);
+    }
 }

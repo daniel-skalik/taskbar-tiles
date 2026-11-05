@@ -131,4 +131,15 @@ public class ScriptSettingsTests
     public void Every_from_a_missing_or_bad_setting_is_an_error(string json) =>
         Assert.Equal("Hook \"interval\" takes \"every\" from setting \"refresh\", which must be a duration from 1s to 24h, e.g. \"30s\".",
             Assert.Single(Parse(json).Errors));
+
+    [Fact]
+    public void An_action_id_with_a_colon_falls_back_to_the_hook_for_its_first_part()
+    {
+        var s = Parse("""{ "hooks": { "action:toggle": "t.ps1", "action:toggle:7": "seven.ps1" } }""");
+
+        Assert.Equal("t.ps1", s.Action("toggle:5:ab12cd34")!.Run);
+        Assert.Equal("seven.ps1", s.Action("toggle:7")!.Run); // an exact hook wins
+        Assert.Null(s.Action("other:1"));
+        Assert.Null(s.Action(":x"));
+    }
 }
