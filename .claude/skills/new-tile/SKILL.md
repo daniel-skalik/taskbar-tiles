@@ -112,6 +112,7 @@ The preview opens the popup but does not press its buttons. Run each `action:` h
 
 ```powershell
 $env:TILE_HOOK = 'action'; $env:TILE_ACTION = '<id>'
+$env:TILE_INPUT = '<text>'   # only for an input action: the text typed in the popup
 $env:TILE_SETTINGS_JSON = (Get-Content my-tiles\<id>\tile.json -Raw | ConvertFrom-Json).settings | ConvertTo-Json -Depth 10
 powershell -NoProfile -ExecutionPolicy Bypass -File my-tiles\<id>\<script>.ps1
 ```

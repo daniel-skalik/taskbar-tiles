@@ -347,6 +347,14 @@ public class ClipboardConnectorTests
         Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Clipboard"), ClipboardSave.Folder(empty.RootElement));
     }
 
+    [Fact]
+    public void A_relative_save_folder_falls_back_to_pictures()
+    {
+        using var relative = JsonDocument.Parse("""{ "saveFolder": "clips/here" }""");
+
+        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Clipboard"), ClipboardSave.Folder(relative.RootElement));
+    }
+
     /// <summary>A 2x1 32-bit BI_RGB DIB: 40-byte header, then two pixels (B, G, R, A) with alpha 0, as most apps copy them.</summary>
     static byte[] TinyDib()
     {
@@ -442,6 +450,21 @@ public class ClipboardConnectorTests
         Assert.True(popup.StayOpen);
         Assert.Equal(new[] { ClipboardSave.SaveAction, ClipboardView.ClearAction }, popup.Actions.Select(a => a.Id));
         Assert.Equal(("Saved clipboard-2026-11-05-143012.txt", ClipboardSave.ShowSavedAction), (popup.Rows[^1].Text, popup.Rows[^1].Action!));
+    }
+
+    [Fact]
+    public async Task Clear_removes_the_save_result_row()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: "hello");
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+        Assert.Contains((await c.GetFlyoutAsync(CancellationToken.None))!.Rows, r => r.Action == ClipboardSave.ShowSavedAction);
+
+        await c.OnActionAsync(ClipboardView.ClearAction, CancellationToken.None);
+
+        Assert.DoesNotContain((await c.GetFlyoutAsync(CancellationToken.None))!.Rows, r => r.Action == ClipboardSave.ShowSavedAction);
     }
 
     [Fact]

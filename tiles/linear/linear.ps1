@@ -5,16 +5,17 @@ $ErrorActionPreference = 'Stop'
 # Replaced on every install: copy this folder under a new name before changing it.
 # The API key lives in Windows Credential Manager (generic credential "TaskbarTiles-Linear"). It is sent only to
 # api.linear.app, and never printed, logged, cached or put in an error message.
-# Testing only: TILE_LINEAR_RESPONSE names a file read instead of calling the API (no cache then);
-# TILE_LINEAR_KEYFILE names a file used instead of Credential Manager.
+# Testing only: TILE_LINEAR_RESPONSE names a file read instead of calling the API (no cache then); only together with
+# it, TILE_LINEAR_KEYFILE names a file used instead of Credential Manager (so a stray variable cannot put the key in a file).
 
 $target = 'TaskbarTiles-Linear'
+$keyFile = if ($env:TILE_LINEAR_RESPONSE -and $env:TILE_LINEAR_KEYFILE) { $env:TILE_LINEAR_KEYFILE } else { $null }
 $api = 'https://api.linear.app/graphql'
 $keyPage = 'https://linear.app/settings/account/security'
 $dot = [char]0x00B7
 $cache = Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-linear-$env:TILE_ID.json"
 # A setkey failure message waiting for the next popup; never the key.
-$note = if ($env:TILE_LINEAR_KEYFILE) { "$env:TILE_LINEAR_KEYFILE.note" } else { Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-linear-$env:TILE_ID.note" }
+$note = if ($keyFile) { "$keyFile.note" } else { Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-linear-$env:TILE_ID.note" }
 $query = 'query { organization { urlKey } viewer { assignedIssues(first: 50, filter: { state: { type: { in: ["started", "unstarted"] } } }) { nodes { identifier title url priority updatedAt state { name type } } } } }'
 
 function Fail([string]$message) { [Console]::Error.WriteLine($message); exit 1 }
@@ -54,8 +55,8 @@ public static void Delete(string target) { CredDeleteW(target, 1, 0); }
 }
 
 function Get-Key {
-    if ($env:TILE_LINEAR_KEYFILE) {
-        if (Test-Path -LiteralPath $env:TILE_LINEAR_KEYFILE) { return (Get-Content -LiteralPath $env:TILE_LINEAR_KEYFILE -Raw).Trim() }
+    if ($keyFile) {
+        if (Test-Path -LiteralPath $keyFile) { return (Get-Content -LiteralPath $keyFile -Raw).Trim() }
         return $null
     }
     Use-CredentialManager
@@ -63,13 +64,13 @@ function Get-Key {
 }
 
 function Set-Key([string]$key) {
-    if ($env:TILE_LINEAR_KEYFILE) { Set-Content -LiteralPath $env:TILE_LINEAR_KEYFILE -Value $key -NoNewline -Encoding ASCII; return }
+    if ($keyFile) { Set-Content -LiteralPath $keyFile -Value $key -NoNewline -Encoding ASCII; return }
     Use-CredentialManager
     [TaskbarTiles.LinearCred]::Write($target, $key)
 }
 
 function Remove-Key {
-    if ($env:TILE_LINEAR_KEYFILE) { Remove-Item -LiteralPath $env:TILE_LINEAR_KEYFILE -ErrorAction SilentlyContinue; return }
+    if ($keyFile) { Remove-Item -LiteralPath $keyFile -ErrorAction SilentlyContinue; return }
     Use-CredentialManager
     [TaskbarTiles.LinearCred]::Delete($target)
 }
@@ -178,10 +179,24 @@ if (-not $key) {
     exit 0
 }
 
-# interval always fetches; the popup takes the cache while it is under 2 minutes old.
+# The popup's cache age limit: the refresh setting ("2m", "30s", "1h"), at least 2 minutes.
+function Get-CacheMinutes {
+    $minutes = 2.0
+    try {
+        $refresh = [string](($env:TILE_SETTINGS_JSON | ConvertFrom-Json).refresh)
+        if ($refresh -match '^\s*(\d+(?:\.\d+)?)\s*([smh])\s*$') {
+            $n = [double]$Matches[1]
+            $asMinutes = switch ($Matches[2]) { 's' { $n / 60 } 'm' { $n } 'h' { $n * 60 } }
+            if ($asMinutes -gt $minutes) { $minutes = $asMinutes }
+        }
+    } catch { }
+    $minutes
+}
+
+# interval always fetches; the popup takes the cache while it is younger than that.
 $cached = Read-Cache
 $data = $null; $stale = $null
-if ($hook -eq 'flyout' -and $cached -and ([DateTimeOffset]::UtcNow - [DateTimeOffset]$cached.fetched_at).TotalMinutes -lt 2) {
+if ($hook -eq 'flyout' -and $cached -and ([DateTimeOffset]::UtcNow - [DateTimeOffset]$cached.fetched_at).TotalMinutes -lt (Get-CacheMinutes)) {
     $data = $cached.data
 } else {
     $result = Invoke-Linear $key

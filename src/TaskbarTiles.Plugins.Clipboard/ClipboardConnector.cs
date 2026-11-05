@@ -124,6 +124,7 @@ public sealed class ClipboardConnector : ITileConnector
             if (actionId == ClipboardView.ClearAction)
             {
                 _history.Clear();
+                _saveRow = null; _savedPath = null;
                 Publish(ctx);
                 ctx.Log.Info("Clipboard history cleared.");
                 return;

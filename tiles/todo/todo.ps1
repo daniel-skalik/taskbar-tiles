@@ -109,6 +109,7 @@ if ($env:TILE_HOOK -eq 'flyout') {
     foreach ($t in $open) { $rows += @{ text = $t.Text; check = $false; action = "toggle:$($t.Line):$(Get-Hash $t.Text)" } }
     if ($showDone) { foreach ($t in ($done | Select-Object -First $maxDone)) { $rows += @{ text = $t.Text; check = $true; action = "toggle:$($t.Line):$(Get-Hash $t.Text)" } } }
     if (-not $tasks.Count) { $rows += @{ text = 'No tasks yet' } }
+    elseif (-not $rows.Count) { $rows += @{ text = 'Nothing open' } } # all done and the done ones hidden
     $actions = @()
     if ($done.Count) { $actions += @{ id = 'clear'; label = 'Clear done' } }
     $actions += @{ id = 'open'; label = 'Open file'; primary = $true }

@@ -206,7 +206,7 @@ Issues assigned to you whose state type is `started` (In Progress) or `unstarted
 ### Data and errors
 
 - **Request:** one GraphQL POST: `organization { urlKey }` and `viewer.assignedIssues(first: 50, filter: state type in [started, unstarted])` with `identifier`, `title`, `url`, `priority`, `updatedAt`, `state { name type }`. Timeout 8 s.
-- **Cache:** `%TEMP%\TaskbarTiles-linear-<tileId>.json` holds the last answer and its time. `interval` always fetches. `flyout` uses the cache while it is under 2 minutes old, and fetches otherwise.
+- **Cache:** `%TEMP%\TaskbarTiles-linear-<tileId>.json` holds the last answer and its time. `interval` always fetches. `flyout` uses the cache while it is younger than the longer of 2 minutes and the `refresh` setting, and fetches otherwise.
 - **Rejected key:** HTTP 401, or a GraphQL error with code `AUTHENTICATION_ERROR`.
 - **Other failures** (network, rate limit, other GraphQL errors): with a cache, show it as stale; with none, exit 1 with "Could not reach Linear: <reason>" or "Linear: <GraphQL message>".
 - **Test seams**, both tiny:

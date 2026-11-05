@@ -116,7 +116,7 @@ The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour wind
 
 ### Clipboard peek
 
-The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. **Save** writes what is on the clipboard now to a file: an image as PNG (when there is both an image and text, the image), text as a UTF-8 .txt file, named like `clipboard-2026-11-05-143012.png`. They go to the folder in setting `"saveFolder"` (also in **Settings…**, with a folder picker; default `Pictures\Clipboard`, created when needed). The popup then shows the file; click it to see it in Explorer. Copied files and copies marked private are not saved. Apart from Save, copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
+The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. The popup stays open after copying, Clear or Save. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. **Save** writes what is on the clipboard now to a file: an image as PNG (when there is both an image and text, the image), text as a UTF-8 .txt file, named like `clipboard-2026-11-05-143012.png`. They go to the folder in setting `"saveFolder"` (also in **Settings…**, with a folder picker; default `Pictures\Clipboard`, created when needed). The popup then shows the file; click it to see it in Explorer. Copied files and copies marked private are not saved. Apart from Save, copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
 
 ### System monitor
 
@@ -151,7 +151,7 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 
 - **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass` (it asks for the key, so it stays out of your shell history).
 - **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
-- Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched. When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
+- Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
 
 ### Pixel scenes
 

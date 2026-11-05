@@ -461,6 +461,20 @@ public class BundledKindsTests
         Assert.Equal(new[] { "open" }, outcome.Value.Actions.Select(a => a.Id));
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_with_everything_done_and_done_hidden_says_nothing_open()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [x] Finished\r\n");
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md"), showDone: false), TimeSpan.FromSeconds(30));
+
+        var row = Assert.Single(outcome.Value!.Rows);
+        Assert.Equal("Nothing open", row.Text);
+        Assert.Null(row.Action);
+    }
+
     const string LinearIssues = """
         { "data": { "organization": { "urlKey": "acme" }, "viewer": { "assignedIssues": { "nodes": [
           { "identifier": "ENG-7", "title": "Old todo", "url": "https://linear.app/acme/issue/ENG-7/old", "priority": 0,

@@ -11,12 +11,18 @@ public static class ClipboardSave
     /// <summary>The popup action that shows the last saved file in Explorer.</summary>
     public const string ShowSavedAction = "show-saved";
 
-    /// <summary>"saveFolder" from settings (environment variables expanded, quotes trimmed), else Pictures\Clipboard.</summary>
+    /// <summary>
+    /// "saveFolder" from settings (environment variables expanded, quotes trimmed), else Pictures\Clipboard. A relative path
+    /// would resolve against whatever the app's working directory is, so it counts as unset.
+    /// </summary>
     public static string Folder(JsonElement settings)
     {
         if (settings.ValueKind == JsonValueKind.Object && settings.TryGetProperty("saveFolder", out var value)
             && value.ValueKind == JsonValueKind.String && value.GetString()!.Trim().Trim('"') is { Length: > 0 } folder)
-            return Environment.ExpandEnvironmentVariables(folder);
+        {
+            var expanded = Environment.ExpandEnvironmentVariables(folder);
+            if (Path.IsPathFullyQualified(expanded)) return expanded;
+        }
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Clipboard");
     }
 

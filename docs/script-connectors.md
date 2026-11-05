@@ -110,7 +110,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `image` | string | Base64 PNG or JPEG shown next to the heading. |
 | `tint` | string | A color like `"#D97757"` washed over the popup's backdrop, strongest at the top. Leave it out for the plain backdrop. |
 | `input` | object | A text box above the rows: `{ "placeholder": "Add a task", "action": "add" }`. Enter runs the `action:<action>` hook with the text in `TILE_INPUT`; empty text does nothing. `action` is required and may not start with `host:`. Add `"secret": true` for a password box that shows dots, for keys and tokens; the host never logs the text. |
-| `stayOpen` | boolean | `true` keeps the popup open after a row, button or input action: when the action is done the `flyout` hook runs again and the popup is redrawn in place. Default `false`: an action closes the popup. |
+| `stayOpen` | boolean | `true` keeps the popup open after a row, button or input action: when the action is done the `flyout` hook runs again and the popup is redrawn in place. Default `false`: an action closes the popup. Buttons with a `host:` id still close the popup, and an input action may not use a `host:` id. If the action fails, the error popup is shown in place. While an action runs the popup is dimmed and clicks and Enter are ignored. |
 
 ```json
 { "title": "1.1.1.1", "subtitle": "Last 4 pings",

@@ -179,21 +179,39 @@ public static class FlyoutWindow
             if (_busy) return;
             _busy = true;
             var window = Window;
+            var content = window?.Content is Border { Child: Border { Child: UIElement c } } ? c : null;
+            var replaced = false;
+            var placeholder = _input?.Tag;
+            // Feedback while the action runs (it can take seconds): dim the popup, ignore the mouse, say so in the box.
+            if (content is not null) { content.Opacity = 0.6; content.IsHitTestVisible = false; }
+            if (_input is not null) _input.Tag = "Working…";
             try
             {
                 await Send(id, input);
                 if (window is null || _open != window) return;
+                // Let the dispatcher run what the action queued (a failed connector shows its error popup in place) before
+                // asking the tile for its popup, so the outcome does not depend on message ordering.
+                await Dispatcher.Yield();
                 var next = await runtime.GetFlyoutAsync();
                 if (_open != window) return;
                 if (next.Outcome == FlyoutOutcome.Popup && next.Flyout is { } fresh)
                 {
+                    replaced = true;
                     Replace(window, anchor, Build(fresh), fresh.Tint, log);
                     FocusInput();
                 }
                 else CloseOpen();
             }
             catch (Exception ex) { log.Error($"Flyout action '{id}' on tile '{runtime.TileId}' failed", ex); }
-            finally { _busy = false; }
+            finally
+            {
+                _busy = false;
+                if (!replaced && content is not null && _open == window)
+                {
+                    content.Opacity = 1; content.IsHitTestVisible = true;
+                    if (_input is not null && placeholder is not null) _input.Tag = placeholder;
+                }
+            }
         }
 
         /// <summary>Enter in an input box: sends the trimmed text (never logged). Empty text, or a running action, keeps the box as is.</summary>
@@ -203,6 +221,7 @@ public static class FlyoutWindow
             e.Handled = true;
             var text = raw.Trim();
             if (text.Length == 0 || _busy) return;
+            if (action.StartsWith("host:", StringComparison.Ordinal)) return; // host ids are buttons only, never input
             clear();
             Run(state, action, text);
         }
