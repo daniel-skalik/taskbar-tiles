@@ -60,7 +60,7 @@ public static class FlyoutWindow
     /// Puts new content into an open popup's frame (and its tint), then places it again above its anchor: the height
     /// may have changed, and the popup grows upward from the taskbar.
     /// </summary>
-    static void Replace(Window window, FrameworkElement anchor, UIElement content, string? tint)
+    static void Replace(Window window, FrameworkElement anchor, UIElement content, string? tint, ITileLog log)
     {
         if (window.Content is not Border { Child: Border inner }) return;
         inner.Child = content;
@@ -68,8 +68,12 @@ public static class FlyoutWindow
         window.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             if (_open != window) return;
-            try { Position(window, anchor); }
-            catch (Exception) { /* keeps the old position; the next open places it again */ }
+            var positioned = false;
+            try { positioned = Position(window, anchor); }
+            catch (Exception ex) { log.Error("Flyout positioning failed", ex); }
+            if (positioned) return;
+            log.Warn("Flyout closed: its anchor is not on screen");
+            CloseOpen();
         });
     }
 
@@ -183,13 +187,24 @@ public static class FlyoutWindow
                 if (_open != window) return;
                 if (next.Outcome == FlyoutOutcome.Popup && next.Flyout is { } fresh)
                 {
-                    Replace(window, anchor, Build(fresh), fresh.Tint);
+                    Replace(window, anchor, Build(fresh), fresh.Tint, log);
                     FocusInput();
                 }
                 else CloseOpen();
             }
             catch (Exception ex) { log.Error($"Flyout action '{id}' on tile '{runtime.TileId}' failed", ex); }
             finally { _busy = false; }
+        }
+
+        /// <summary>Enter in an input box: sends the trimmed text (never logged). Empty text, or a running action, keeps the box as is.</summary>
+        void Submit(KeyEventArgs e, string raw, Action clear, FlyoutState state, string action)
+        {
+            if (e.Key != Key.Enter) return;
+            e.Handled = true;
+            var text = raw.Trim();
+            if (text.Length == 0 || _busy) return;
+            clear();
+            Run(state, action, text);
         }
 
         public UIElement Build(FlyoutState state)
@@ -251,12 +266,7 @@ public static class FlyoutWindow
                 box.PasswordChanged += (_, _) => box.Tag = box.Password.Length == 0 ? secret.Placeholder ?? "" : "";
                 box.KeyDown += (_, e) =>
                 {
-                    if (e.Key != Key.Enter) return;
-                    e.Handled = true;
-                    var text = box.Password.Trim();
-                    if (text.Length == 0 || _busy) return;
-                    box.Clear();
-                    Run(state, secret.Action, text);
+                    Submit(e, box.Password, box.Clear, state, secret.Action);
                 };
                 _input = box;
                 panel.Children.Add(box);
@@ -271,12 +281,7 @@ public static class FlyoutWindow
                 };
                 box.KeyDown += (_, e) =>
                 {
-                    if (e.Key != Key.Enter) return;
-                    e.Handled = true;
-                    var text = box.Text.Trim();
-                    if (text.Length == 0 || _busy) return; // keep the text while an action runs
-                    box.Clear();
-                    Run(state, input.Action, text);
+                    Submit(e, box.Text, box.Clear, state, input.Action);
                 };
                 _input = box;
                 panel.Children.Add(box);
