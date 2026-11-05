@@ -108,7 +108,8 @@ public sealed class ScriptConnector : ITileConnector
     {
         if (_settings!.Action(actionId) is not { } action)
         {
-            Ctx.Log.Warn($"No hook for action '{actionId}'; add \"action:{actionId}\" to settings.hooks.");
+            var hook = actionId.Split(':', 2)[0]; // ids like "toggle:5:ab12" share the "action:toggle" hook
+            Ctx.Log.Warn($"No hook for action '{actionId}'; add \"action:{hook}\" to settings.hooks.");
             return;
         }
         // An action that prints nothing usually changed what the status shows: refresh it.

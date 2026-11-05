@@ -640,4 +640,22 @@ public class ScriptConnectorTests
         Assert.Equal("Buy milk", calls[0].Env["TILE_INPUT"]);
         Assert.Equal("", calls[1].Env["TILE_INPUT"]);
     }
+
+    [Fact]
+    public async Task Input_text_never_appears_in_logged_warnings_or_errors()
+    {
+        const string secret = "lin_api_SECRET123";
+        var runner = new FakeRunner();
+        var ctx = new TestTileContext(settingsJson: """{ "hooks": { "action:add": { "run": "add.ps1" } } }""");
+        await using var c = Create(runner);
+        await c.StartAsync(ctx, CancellationToken.None);
+
+        await ((ITileConnector)c).OnInputAsync("add", secret, CancellationToken.None);   // hook runs
+        await ((ITileConnector)c).OnInputAsync("nohook:5:ab12", secret, CancellationToken.None); // warning path
+
+        var logged = ctx.Logged.Snapshot();
+        Assert.Contains(logged, m => m.Contains("No hook for action 'nohook:5:ab12'") && m.Contains("\"action:nohook\""));
+        Assert.DoesNotContain(logged, m => m.Contains(secret));
+        Assert.DoesNotContain(ctx.Errors, e => e.Message.Contains(secret) || e.Details.Contains(secret));
+    }
 }

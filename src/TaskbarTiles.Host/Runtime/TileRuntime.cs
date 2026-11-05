@@ -223,29 +223,21 @@ public sealed class TileRuntime : IAsyncDisposable
         }
     }
 
-    public async Task InvokeActionAsync(string actionId)
+    public Task InvokeActionAsync(string actionId) =>
+        InvokeSerializedAsync(actionId, (connector, ct) => connector.OnActionAsync(actionId, ct));
+
+    /// <summary>Text from a popup input box; like <see cref="InvokeActionAsync"/>, one call per action id at a time.</summary>
+    public Task InvokeInputAsync(string actionId, string text) =>
+        InvokeSerializedAsync(actionId, (connector, ct) => connector.OnInputAsync(actionId, text, ct));
+
+    async Task InvokeSerializedAsync(string actionId, Func<ITileConnector, CancellationToken, Task> call)
     {
         if (IsDisposed || Volatile.Read(ref _current) is not { } instance) return;
         // Repeated clicks on the same button must not pile up connector calls.
         if (!_actionsInFlight.TryAdd(actionId, 0)) return;
         try
         {
-            await RunWithTimeout(instance, async ct => { await instance.Connector.OnActionAsync(actionId, ct); return true; });
-        }
-        catch (TimeoutException) { ShowNotResponding(); }
-        catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { }
-        catch (Exception ex) { Fail(ex, instance.Generation); }
-        finally { _actionsInFlight.TryRemove(actionId, out _); }
-    }
-
-    /// <summary>Text from a popup input box; like <see cref="InvokeActionAsync"/>, one call per action id at a time.</summary>
-    public async Task InvokeInputAsync(string actionId, string text)
-    {
-        if (IsDisposed || Volatile.Read(ref _current) is not { } instance) return;
-        if (!_actionsInFlight.TryAdd(actionId, 0)) return;
-        try
-        {
-            await RunWithTimeout(instance, async ct => { await instance.Connector.OnInputAsync(actionId, text, ct); return true; });
+            await RunWithTimeout(instance, async ct => { await call(instance.Connector, ct); return true; });
         }
         catch (TimeoutException) { ShowNotResponding(); }
         catch (OperationCanceledException) when (instance.Cts.IsCancellationRequested) { }
