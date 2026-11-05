@@ -47,14 +47,18 @@ public static class FlyoutWindow
         w?.Close();
     }
 
-    /// <summary>A tile's popup; <paramref name="openSettings"/> (null when the tile has no settings) runs from the gear.</summary>
-    public static void ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light,
+    /// <summary>
+    /// A tile's popup; <paramref name="openSettings"/> (null when the tile has no settings) runs from the gear. The result
+    /// can <see cref="TilePopup.Refresh"/> it in place, for a popup first shown from the tile's last one.
+    /// </summary>
+    public static TilePopup ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light,
         TileCommands commands, ITileLog log, Action? openSettings = null)
     {
         var popup = new TilePopup(anchor, runtime, commands, log, openSettings);
         ShowPanel(anchor, popup.Build(state), light, log, WidthDip, tint: state.Tint);
         popup.Window = _open;
         popup.FocusInput();
+        return popup;
     }
 
     /// <summary>
@@ -154,9 +158,43 @@ public static class FlyoutWindow
     /// closes the popup first, as always. With it the popup stays, ignores clicks and Enter until the action is done,
     /// then asks the tile for its popup again and shows that in place; it closes if there is none.
     /// </summary>
-    sealed class TilePopup(FrameworkElement anchor, TileRuntime runtime, TileCommands commands, ITileLog log, Action? openSettings)
+    public sealed class TilePopup(FrameworkElement anchor, TileRuntime runtime, TileCommands commands, ITileLog log, Action? openSettings)
     {
         public Window? Window { get; set; }
+
+        /// <summary>
+        /// Shows <paramref name="fresh"/> in place of what this popup shows, if it is still open and no action is running
+        /// (that action redraws it anyway). What was typed in the box and the scroll position carry over.
+        /// </summary>
+        public void Refresh(FlyoutState fresh)
+        {
+            if (Window is not { } window || _open != window || _busy) return;
+            try { Redraw(window, fresh); }
+            catch (Exception ex) { log.Error($"Refreshing the popup of tile '{runtime.TileId}' failed", ex); }
+        }
+
+        /// <summary>Closes this popup if it is still the open one (not another tile's popup opened since).</summary>
+        public void Close()
+        {
+            if (Window is { } window && _open == window) CloseOpen();
+        }
+
+        /// <summary>Builds <paramref name="fresh"/> into the open window, keeping the typed text, caret and scroll offset.</summary>
+        void Redraw(Window window, FlyoutState fresh)
+        {
+            var offset = _scroll?.VerticalOffset ?? 0; // ticking a task far down must not jump back to the top
+            var typed = _input switch { TextBox t => t.Text, PasswordBox p => p.Password, _ => "" };
+            var caret = (_input as TextBox)?.CaretIndex ?? 0;
+            Replace(window, anchor, Build(fresh), fresh.Tint, log);
+            if (typed.Length > 0)
+            {
+                if (_input is TextBox box) { box.Text = typed; box.CaretIndex = Math.Min(caret, typed.Length); }
+                else if (_input is PasswordBox secret) secret.Password = typed;
+            }
+            if (_scroll is { } scroll && offset > 0)
+                scroll.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => scroll.ScrollToVerticalOffset(offset));
+            FocusInput();
+        }
         Control? _input; // a TextBox, or a PasswordBox for a secret input
         ScrollViewer? _scroll; // the rows card's, when the popup has rows
         bool _busy;
@@ -198,12 +236,8 @@ public static class FlyoutWindow
                 if (_open != window) return;
                 if (next.Outcome == FlyoutOutcome.Popup && next.Flyout is { } fresh)
                 {
-                    var offset = _scroll?.VerticalOffset ?? 0; // ticking a task far down must not jump back to the top
-                    Replace(window, anchor, Build(fresh), fresh.Tint, log);
+                    Redraw(window, fresh);
                     replaced = true; // only now: a Build that throws must not leave the old content dimmed
-                    if (_scroll is { } scroll && offset > 0)
-                        scroll.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => scroll.ScrollToVerticalOffset(offset));
-                    FocusInput();
                 }
                 else CloseOpen();
             }

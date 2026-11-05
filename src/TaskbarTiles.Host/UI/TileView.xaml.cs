@@ -287,17 +287,17 @@ public partial class TileView : UserControl
         _clickInFlight = true;
         try
         {
-            var result = await Runtime.GetFlyoutAsync();
-            switch (result.Outcome)
-            {
-                case FlyoutOutcome.NoPopup:
-                    await Runtime.InvokeActionAsync(TileActions.Click);
-                    break;
-                case FlyoutOutcome.Popup:
-                    FlyoutWindow.ShowAbove(FlyoutAnchor ?? this, result.Flyout!, Runtime, _isLightTheme(), _commands, _log,
+            var last = Runtime.LastFlyout; // before asking: the answer replaces it
+            FlyoutWindow.TilePopup? shown = null;
+            await PopupOpener.OpenAsync(Runtime.GetFlyoutAsync(), last, PopupOpener.FastEnough,
+                state =>
+                {
+                    shown = FlyoutWindow.ShowAbove(FlyoutAnchor ?? this, state, Runtime, _isLightTheme(), _commands, _log,
                         SettingsOpener?.Invoke(Runtime));
-                    break;
-            }
+                    return shown.Refresh;
+                },
+                () => Runtime.InvokeActionAsync(TileActions.Click),
+                () => shown?.Close());
         }
         catch (Exception ex)
         {

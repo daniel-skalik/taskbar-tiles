@@ -248,6 +248,12 @@ public sealed class TileRuntime : IAsyncDisposable
     /// <summary>Image and tint of the connector's last popup, so the Settings panel can look like it.</summary>
     public (byte[]? Image, string? Tint) LastFlyoutLook { get; private set; }
 
+    /// <summary>
+    /// The connector's last popup that was not an error popup, or null; a popup can show it at once while it asks for a
+    /// fresh one (script tiles take a moment to answer).
+    /// </summary>
+    public FlyoutState? LastFlyout { get; private set; }
+
     public async Task<FlyoutResult> GetFlyoutAsync()
     {
         if (IsDisposed) return FlyoutResult.Unavailable;
@@ -257,6 +263,9 @@ public sealed class TileRuntime : IAsyncDisposable
         {
             var flyout = await RunWithTimeout(instance, ct => instance.Connector.GetFlyoutAsync(ct));
             if (flyout is not null) LastFlyoutLook = (flyout.Image, flyout.Tint);
+            // An error popup (it offers host actions such as Restart tile) is never kept to be shown again.
+            if (flyout is null) LastFlyout = null;
+            else if (!flyout.Actions.Any(a => a.Id.StartsWith("host:", StringComparison.Ordinal))) LastFlyout = flyout;
             return flyout is null ? FlyoutResult.NoPopup : FlyoutResult.Of(flyout);
         }
         catch (TimeoutException) { ShowNotResponding(); return FlyoutResult.Unavailable; }

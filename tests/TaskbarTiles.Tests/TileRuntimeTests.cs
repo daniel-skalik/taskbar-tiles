@@ -236,6 +236,27 @@ public class TileRuntimeTests
     }
 
     [Fact]
+    public async Task The_last_good_popup_is_remembered_but_not_an_error_popup_or_no_popup()
+    {
+        FlyoutState? next = new("To do", null, [new FlyoutRow("a")], []);
+        var rt = Create(new FakeConnector { OnFlyout = _ => Task.FromResult<FlyoutState?>(next) }, new ImmediateDispatcher());
+        await rt.StartAsync();
+        Assert.Null(rt.LastFlyout);
+
+        var good = next;
+        await rt.GetFlyoutAsync();
+        Assert.Same(good, rt.LastFlyout);
+
+        next = new FlyoutState("Script error", "boom", [], [new FlyoutAction(TileActions.Restart, "Restart tile")]);
+        await rt.GetFlyoutAsync();
+        Assert.Same(good, rt.LastFlyout); // an error popup is never shown again as the last good one
+
+        next = null;
+        await rt.GetFlyoutAsync();
+        Assert.Null(rt.LastFlyout); // the tile stopped having a popup
+    }
+
+    [Fact]
     public async Task Flyout_null_from_connector_means_no_popup()
     {
         var rt = Create(new FakeConnector(), new ImmediateDispatcher());
