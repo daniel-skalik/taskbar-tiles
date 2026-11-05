@@ -261,6 +261,64 @@ public class ScenesTests
         Assert.StartsWith("morning", farm.Status);
     }
 
+    [Theory]
+    [InlineData(12, new[] { FarmSurprise.AppleShake, FarmSurprise.BloomWave, FarmSurprise.Hooray })]
+    [InlineData(2, new[] { FarmSurprise.MeteorShower, FarmSurprise.FireflyDance })]
+    public void Clicking_the_farm_plays_every_surprise_for_the_hour_never_the_same_twice_running(int hour, FarmSurprise[] expected)
+    {
+        var rng = new Random(9);
+        var farm = new FarmScene(rng, Prague);
+        var at = Noon.Date.AddHours(hour);
+        farm.Step(at, rng);
+        var seen = new List<FarmSurprise>();
+
+        for (int click = 0; click < 40; click++)
+        {
+            farm.OnClick(at, rng);
+            seen.Add(farm.LastSurprise!.Value);
+            for (int i = 0; i < 5; i++) farm.Step(at, rng);
+        }
+
+        Assert.Equal(expected.Order(), seen.Distinct().Order());
+        Assert.All(seen.Zip(seen.Skip(1)), pair => Assert.NotEqual(pair.First, pair.Second));
+    }
+
+    [Theory]
+    [InlineData(FarmSurprise.AppleShake, 12)]
+    [InlineData(FarmSurprise.BloomWave, 12)]
+    [InlineData(FarmSurprise.Hooray, 12)]
+    [InlineData(FarmSurprise.MeteorShower, 2)]
+    [InlineData(FarmSurprise.FireflyDance, 2)]
+    public void A_farm_surprise_is_plain_to_see_and_then_settles(FarmSurprise surprise, int hour)
+    {
+        // Two farms from the same seed; only one is surprised, so the pixels that differ are the surprise.
+        var at = Noon.Date.AddHours(hour);
+        Random calmRng = new(5), surprisedRng = new(5);
+        FarmScene calm = new(calmRng, Prague), surprised = new(surprisedRng, Prague);
+        for (int i = 0; i < 30; i++) { calm.Step(at, calmRng); surprised.Step(at, surprisedRng); }
+
+        surprised.Play(surprise, new Random(1));
+        Assert.True(surprised.Surprising);
+        int mostChanged = 0;
+        for (int i = 0; i < 15; i++)
+        {
+            calm.Step(at, calmRng);
+            surprised.Step(at, surprisedRng);
+            mostChanged = Math.Max(mostChanged, Render(calm).Zip(Render(surprised)).Count(p => p.First != p.Second));
+        }
+        Assert.True(mostChanged >= 10, $"only {mostChanged} pixels changed");
+
+        for (int i = 0; i < 400; i++) surprised.Step(at, surprisedRng);
+        Assert.False(surprised.Surprising);
+
+        static int[] Render(FarmScene scene)
+        {
+            var pixels = PixelCanvas.NewFrame(scene.Width);
+            scene.Render(pixels);
+            return pixels;
+        }
+    }
+
     [Fact]
     public void Feeding_the_fish_drops_flakes_they_eat()
     {

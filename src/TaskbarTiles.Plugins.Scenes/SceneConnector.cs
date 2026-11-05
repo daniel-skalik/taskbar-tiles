@@ -4,8 +4,8 @@ namespace TaskbarTiles.Plugins.Scenes;
 
 /// <summary>
 /// A little self-running pixel-art animation across the whole tile; each scene is its own tile kind with its own
-/// connector below. A click pokes the scene: feeds the fish, restarts the snake, starts a new race, or makes the farmer
-/// wave. Subclasses only say which scene to run.
+/// connector below. A click pokes the scene: feeds the fish, restarts the snake, starts a new race, or sets off a random
+/// farm surprise. Subclasses only say which scene to run.
 /// </summary>
 public abstract class SceneConnector : ITileConnector
 {
