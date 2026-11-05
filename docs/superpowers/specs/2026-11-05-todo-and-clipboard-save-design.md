@@ -34,7 +34,7 @@ Popup JSON gains `"stayOpen": true` (default false). `FlyoutState` gains `bool S
 - When the action finishes, the host asks for the popup again (the `flyout` hook for scripts, `GetFlyoutAsync` for DLLs) and rebuilds it in place. The popup keeps its position; its height may change.
 - Host actions (ids starting with `host:`) still close the popup.
 - While an action runs, the popup ignores further clicks and Enter. It does not queue them.
-- If rebuilding fails (an error or no popup returned), the popup closes. The tile shows the error as it does today.
+- If the action fails, the rebuilt popup is the tile's error popup (with **Restart tile** and **Open log**), shown in place. If no popup comes back, or the tile is unavailable, the popup closes.
 - An action hook that prints nothing still makes the tile refresh, as it does today.
 
 ### Checkbox rows: `check`
