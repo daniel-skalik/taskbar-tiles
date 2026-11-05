@@ -238,7 +238,7 @@ public static class FlyoutWindow
             {
                 var gear = new Button
                 {
-                    Content = "", // Settings
+                    Content = "\uE713", // Settings
                     ToolTip = "Settings",
                     Style = (Style)Application.Current.FindResource("IconButton"),
                     VerticalAlignment = VerticalAlignment.Top,
@@ -340,7 +340,7 @@ public static class FlyoutWindow
         {
             var box = new TextBlock
             {
-                Text = check ? "" : "", // ticked / empty checkbox
+                Text = check ? "\uE73A" : "\uE739", // ticked / empty checkbox
                 FontFamily = GlyphFont, FontSize = 14, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
             };
             box.SetResourceReference(TextBlock.ForegroundProperty, check ? "TileDim" : "TileForeground");
