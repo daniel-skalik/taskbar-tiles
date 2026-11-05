@@ -44,6 +44,7 @@ A popup row gains `"check": true | false`. `FlyoutRow` gains `bool? Check`.
 - With `check` set, the row shows a checkbox in place of the colored dot: an empty box for false, a ticked box for true. The row's `icon` is then ignored.
 - A row with `check: true` draws its text dim and struck through.
 - The checkbox is only drawn; the click is the row's `action`, as for any other row.
+- A row also takes `"indent": n` (0 to 4, `FlyoutRow.Indent`): each level moves it right by one checkbox width. Deeper values are drawn at 4; a negative or non-integer value is dropped with a warning.
 
 ### Docs
 
@@ -88,7 +89,7 @@ The popup has `stayOpen: true`.
 - **Title:** "To do". **Subtitle:** the file name.
 - **Input:** `{ "placeholder": "Add a task", "action": "add" }`.
 - **Rows:**
-  - Every open task, in file order, as `check: false`.
+  - Every open task, in file order, as `check: false`, with `indent` set to its nesting: the number of less indented task lines it sits under (a tab counts as 4 spaces; any other line resets the nesting to what is less indented than itself), and at most one more than the row above.
   - Then, if `showDone` is on, at most 10 done tasks, in file order, as `check: true`.
   - Each task row's action is `toggle:<line>:<hash>`. `<line>` is the 1-based line number. `<hash>` is the first 8 hex digits of the SHA-1 of the task's text, after the checkbox.
   - With no tasks at all, one plain row reads "No tasks yet".

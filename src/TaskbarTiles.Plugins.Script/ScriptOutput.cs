@@ -273,9 +273,18 @@ public static class ScriptOutput
             var icon = r.TryGetProperty("icon", out var iconEl) ? ReadIcon(iconEl, where + ".icon", w) : null;
             var action = Text(r, "action", w, where);
             list.Add(new FlyoutRow(text, Text(r, "value", w, where), icon, string.IsNullOrWhiteSpace(action) ? null : action,
-                Bool(r, "check", w, where)));
+                Bool(r, "check", w, where), ReadIndent(r, w, where)));
         }
         return list;
+    }
+
+    /// <summary>A row's "indent": a whole number from 0; deeper than <see cref="FlyoutRow.MaxIndent"/> is drawn at that depth.</summary>
+    static int ReadIndent(JsonElement r, List<string> w, string where)
+    {
+        if (!r.TryGetProperty("indent", out var v) || v.ValueKind == JsonValueKind.Null) return 0;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) && n >= 0) return Math.Min(n, FlyoutRow.MaxIndent);
+        w.Add($"\"{where}.indent\" must be a whole number from 0; got {v.GetRawText()}.");
+        return 0;
     }
 
     static IReadOnlyList<FlyoutAction> ReadActions(JsonElement o, List<string> w)

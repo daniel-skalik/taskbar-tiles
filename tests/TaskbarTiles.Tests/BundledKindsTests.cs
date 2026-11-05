@@ -450,6 +450,23 @@ public class BundledKindsTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task Todo_popup_keeps_the_file_indentation_for_open_tasks()
+    {
+        using var dir = new TempDir();
+        // Subtasks by 2 spaces, by a tab, a done parent whose open child must not jump two levels, a heading that resets.
+        File.WriteAllText(dir.File("todo.md"),
+            "- [ ] Money\n  - [ ] Network\n  - [ ] Power\n- [ ] Shelves\n\t- [ ] Get a drill\n- [x] Old\n    - [ ] Leftover\n# Later\n  - [ ] After heading\n");
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md"), showDone: false), TimeSpan.FromSeconds(30));
+
+        Assert.Empty(outcome.Warnings);
+        var rows = outcome.Value!.Rows;
+        Assert.Equal(new[] { "Money", "Network", "Power", "Shelves", "Get a drill", "Leftover", "After heading" }, rows.Select(r => r.Text));
+        Assert.Equal(new[] { 0, 1, 1, 0, 1, 1, 0 }, rows.Select(r => r.Indent));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task Todo_popup_with_no_tasks_says_so()
     {
         using var dir = new TempDir();

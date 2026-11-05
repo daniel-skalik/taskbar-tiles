@@ -57,10 +57,21 @@ function Get-Hash([string]$text) {
 }
 
 # Every task line: its 1-based line number, done or not, and its text after the checkbox.
+# Every task line: its 1-based line number, done or not, its text after the checkbox, and its nesting level. The level
+# counts how many less indented task lines it sits under (a tab counts as 4 spaces); any other line resets it to
+# what is less indented than itself, so a heading at the margin starts again at level 0.
 function Get-Tasks($doc) {
     $tasks = @()
+    $widths = New-Object System.Collections.Generic.List[int]
     for ($i = 0; $i -lt $doc.Lines.Count; $i++) {
-        if ($doc.Lines[$i] -match $taskPattern) { $tasks += @{ Line = $i + 1; Done = $Matches[2] -ne ' '; Text = $Matches[4] } }
+        $raw = $doc.Lines[$i]
+        if (-not $raw.Trim()) { continue }
+        $width = $raw.Substring(0, $raw.Length - $raw.TrimStart().Length).Replace("`t", '    ').Length
+        while ($widths.Count -and $widths[$widths.Count - 1] -ge $width) { $widths.RemoveAt($widths.Count - 1) }
+        if ($raw -match $taskPattern) {
+            $tasks += @{ Line = $i + 1; Done = $Matches[2] -ne ' '; Text = $Matches[4]; Level = $widths.Count }
+            $widths.Add($width)
+        }
     }
     return ,$tasks
 }
@@ -106,7 +117,12 @@ $done = @($tasks | Where-Object { $_.Done })
 
 if ($env:TILE_HOOK -eq 'flyout') {
     $rows = @()
-    foreach ($t in $open) { $rows += @{ text = $t.Text; check = $false; action = "toggle:$($t.Line):$(Get-Hash $t.Text)" } }
+    # Open tasks keep their nesting, at most one level deeper than the row above (its parent may be done and not listed).
+    $previous = -1
+    foreach ($t in $open) {
+        $indent = [Math]::Min($t.Level, $previous + 1); $previous = $indent
+        $rows += @{ text = $t.Text; check = $false; indent = $indent; action = "toggle:$($t.Line):$(Get-Hash $t.Text)" }
+    }
     if ($showDone) { foreach ($t in ($done | Select-Object -First $maxDone)) { $rows += @{ text = $t.Text; check = $true; action = "toggle:$($t.Line):$(Get-Hash $t.Text)" } } }
     if (-not $tasks.Count) { $rows += @{ text = 'No tasks yet' } }
     elseif (-not $rows.Count) { $rows += @{ text = 'Nothing open' } } # all done and the done ones hidden

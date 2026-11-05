@@ -22,4 +22,11 @@ public class FlyoutWindowTests
 
         Assert.NotNull(FlyoutWindow.Row(row, first: true, _ => { }));
     });
+
+    [Fact]
+    public void An_indented_row_moves_right_by_one_checkbox_per_level() => Sta.Run(() =>
+    {
+        Assert.Equal(0, FlyoutWindow.Row(new FlyoutRow("a"), first: true, _ => { }).Margin.Left);
+        Assert.Equal(48, FlyoutWindow.Row(new FlyoutRow("a", Action: "x", Check: false, Indent: 2), first: false, _ => { }).Margin.Left);
+    });
 }

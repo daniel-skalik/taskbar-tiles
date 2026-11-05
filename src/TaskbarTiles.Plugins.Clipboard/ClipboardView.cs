@@ -60,7 +60,7 @@ public static partial class ClipboardView
             "Clipboard",
             history.Count switch { 0 => "Nothing copied yet", 1 => "1 recent copy", var n => $"{n} recent copies" },
             rows,
-            [new FlyoutAction(ClipboardSave.SaveAction, "Save"), new FlyoutAction(ClearAction, "Clear")],
+            [new FlyoutAction(ClipboardSave.SaveAction, "Save latest"), new FlyoutAction(ClearAction, "Clear")],
             StayOpen: true);
     }
 

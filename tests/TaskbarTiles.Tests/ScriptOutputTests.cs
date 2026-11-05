@@ -299,4 +299,17 @@ public class ScriptOutputTests
         Assert.Null(r.Value!.Input);
         Assert.False(r.Value.StayOpen);
     }
+
+    [Fact]
+    public void Row_indent_is_read_and_bad_values_are_dropped_with_a_warning()
+    {
+        var r = ScriptOutput.ParseFlyout("""
+            { "title": "T", "rows": [ { "text": "a" }, { "text": "b", "indent": 2 }, { "text": "c", "indent": 9 },
+                                      { "text": "d", "indent": -1 }, { "text": "e", "indent": "1" } ] }
+            """);
+
+        Assert.Equal(new[] { 0, 2, 4, 0, 0 }, r.Value!.Rows.Select(x => x.Indent));
+        Assert.Contains(r.Warnings, w => w.Contains("\"rows[3].indent\" must be a whole number from 0"));
+        Assert.Contains(r.Warnings, w => w.Contains("\"rows[4].indent\" must be a whole number from 0"));
+    }
 }

@@ -20,6 +20,7 @@ public static class FlyoutWindow
     const double WidthDip = 320;
     static readonly FontFamily GlyphFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
     const int MaxInputChars = 1000;
+    const double IndentDip = 24; // a checkbox glyph (14) plus its gap (10)
     static Window? _open;
 
     static bool _holding;
@@ -392,6 +393,8 @@ public static class FlyoutWindow
         {
             Padding = new Thickness(0, 9, 0, 9),
             BorderThickness = new Thickness(0, first ? 0 : 1, 0, 0),
+            // Nested rows (subtasks) start under the text of the row above: one checkbox width per level, hairline included.
+            Margin = new Thickness(IndentDip * Math.Clamp(row.Indent, 0, FlyoutRow.MaxIndent), 0, 0, 0),
         };
         line.SetResourceReference(Border.BorderBrushProperty, "FlyoutDivider");
         if (row.Action is not { } action)
