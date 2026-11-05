@@ -18,6 +18,12 @@ public sealed record ClipEntry(long Id, ClipItem Item, DateTime Time);
 /// </summary>
 public readonly record struct ClipRead(ClipItem? Item, bool Excluded = false, bool Retry = false);
 
+/// <summary>
+/// The clipboard read for Save: raw DIB bytes and/or text as they are now. <paramref name="Files"/>: a copied file list
+/// (not saved). <paramref name="Excluded"/> and <paramref name="Retry"/> as in <see cref="ClipRead"/>; nothing was read then.
+/// </summary>
+public readonly record struct ClipSaveRead(byte[]? Dib = null, string? Text = null, bool Excluded = false, bool Retry = false, bool Files = false);
+
 /// <summary>The clipboard behind a seam, so tests need no real one.</summary>
 public interface IClipboardAccess
 {
@@ -25,6 +31,9 @@ public interface IClipboardAccess
     uint SequenceNumber { get; }
 
     ClipRead Read();
+
+    /// <summary>What Save writes: the image as DIB bytes and the text, read now; never recorded in the history.</summary>
+    ClipSaveRead ReadForSave();
 
     /// <summary>Puts text on the clipboard; returns the sequence number it now has, or null when it could not.</summary>
     uint? WriteText(string text);

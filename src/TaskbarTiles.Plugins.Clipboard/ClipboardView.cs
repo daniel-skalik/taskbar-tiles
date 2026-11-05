@@ -47,11 +47,21 @@ public static partial class ClipboardView
         return $"Copied {Time(entry)} · {chars} {(chars == 1 ? "char" : "chars")}";
     }
 
-    public static FlyoutState Flyout(IReadOnlyList<ClipEntry> history) => new(
-        "Clipboard",
-        history.Count switch { 0 => "Nothing copied yet", 1 => "1 recent copy", var n => $"{n} recent copies" },
-        history.Select(Row).ToList(),
-        [new FlyoutAction(ClearAction, "Clear")]);
+    /// <summary>
+    /// The recent copies, then <paramref name="saveRow"/> (the last Save's outcome) when there is one. Stays open, so
+    /// Save's outcome, a copy moving up and Clear show in place.
+    /// </summary>
+    public static FlyoutState Flyout(IReadOnlyList<ClipEntry> history, FlyoutRow? saveRow = null)
+    {
+        var rows = history.Select(Row).ToList();
+        if (saveRow is not null) rows.Add(saveRow);
+        return new FlyoutState(
+            "Clipboard",
+            history.Count switch { 0 => "Nothing copied yet", 1 => "1 recent copy", var n => $"{n} recent copies" },
+            rows,
+            [new FlyoutAction(ClipboardSave.SaveAction, "Save"), new FlyoutAction(ClearAction, "Clear")],
+            StayOpen: true);
+    }
 
     /// <summary>Only text can be put back, so only text rows are clickable.</summary>
     static FlyoutRow Row(ClipEntry entry) => new(

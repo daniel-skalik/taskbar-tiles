@@ -11,6 +11,7 @@ public sealed class Win32Clipboard : IClipboardAccess
     const uint CfBitmap = 2, CfDib = 8, CfUnicodeText = 13, CfHdrop = 15, CfDibV5 = 17;
     const uint GmemMoveable = 0x0002;
     const int OpenAttempts = 6, OpenRetryMs = 15;
+    const int MaxDibBytes = 256 * 1024 * 1024; // a bigger image is not saved rather than copied around
     const int MaxChars = 1_000_000; // a bigger copy is skipped rather than held in memory six times over
 
     // Registered once; the ids are fixed for the session.
@@ -29,6 +30,38 @@ public sealed class Win32Clipboard : IClipboardAccess
             return new ClipRead(ReadFiles() ?? ReadText() ?? ReadImage());
         }
         finally { CloseClipboard(); }
+    }
+
+    public ClipSaveRead ReadForSave()
+    {
+        if (!Open()) return new ClipSaveRead(Retry: true);
+        try
+        {
+            if (ClipboardPrivacy.IsExcluded(IsClipboardFormatAvailable(ExcludeId), ReadDword(CanIncludeId)))
+                return new ClipSaveRead(Excluded: true);
+            if (IsClipboardFormatAvailable(CfHdrop)) return new ClipSaveRead(Files: true);
+            return new ClipSaveRead(ReadDibBytes(), ReadText()?.Text);
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>CF_DIB as bytes (Windows makes it from CF_DIBV5 or CF_BITMAP when only those were copied); null when absent.</summary>
+    static byte[]? ReadDibBytes()
+    {
+        if (!IsClipboardFormatAvailable(CfDib)) return null;
+        var handle = GetClipboardData(CfDib);
+        if (handle == 0) return null;
+        var size = (long)GlobalSize(handle);
+        if (size < 40 || size > MaxDibBytes) return null;
+        var pointer = GlobalLock(handle);
+        if (pointer == 0) return null;
+        try
+        {
+            var bytes = new byte[size];
+            Marshal.Copy(pointer, bytes, 0, (int)size);
+            return bytes;
+        }
+        finally { GlobalUnlock(handle); }
     }
 
     public uint? WriteText(string text)

@@ -116,7 +116,7 @@ The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour wind
 
 ### Clipboard peek
 
-The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. Copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
+The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. **Save** writes what is on the clipboard now to a file: an image as PNG (when there is both an image and text, the image), text as a UTF-8 .txt file, named like `clipboard-2026-11-05-143012.png`. They go to the folder in setting `"saveFolder"` (also in **Settings…**, with a folder picker; default `Pictures\Clipboard`, created when needed). The popup then shows the file; click it to see it in Explorer. Copied files and copies marked private are not saved. Apart from Save, copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
 
 ### System monitor
 
