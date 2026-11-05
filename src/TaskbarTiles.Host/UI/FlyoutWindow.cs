@@ -349,7 +349,7 @@ public static class FlyoutWindow
     /// One line of the rows card: dot, text, and the value on the right; a hairline above all but the first. A row with
     /// an action highlights under the mouse and runs it on click.
     /// </summary>
-    static Border Row(FlyoutRow row, bool first, Action<string> invoke)
+    internal static Border Row(FlyoutRow row, bool first, Action<string> invoke)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -392,10 +392,14 @@ public static class FlyoutWindow
         {
             Padding = new Thickness(0, 9, 0, 9),
             BorderThickness = new Thickness(0, first ? 0 : 1, 0, 0),
-            Child = grid,
         };
         line.SetResourceReference(Border.BorderBrushProperty, "FlyoutDivider");
-        if (row.Action is not { } action) return line;
+        if (row.Action is not { } action)
+        {
+            line.Child = grid;
+            return line;
+        }
+        // The grid goes into the hover border only: WPF refuses an element that already has a parent.
 
         // The highlight reaches the card's edges; the hairline stays on the outer border.
         var hover = new Border
