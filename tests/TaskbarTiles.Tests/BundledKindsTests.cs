@@ -411,6 +411,18 @@ public class BundledKindsTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task Todo_clear_of_a_done_only_file_leaves_an_empty_file()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [x] A\n- [X] B\n");
+
+        await TodoAction(dir.File("todo.md"), "clear");
+
+        Assert.Empty(File.ReadAllBytes(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task Todo_popup_lists_open_tasks_then_up_to_ten_done()
     {
         using var dir = new TempDir();

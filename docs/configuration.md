@@ -141,7 +141,7 @@ The icon is green when the branch is clean and up to date, blue with local chang
 The bundled `todo` kind keeps your tasks in a plain Markdown file: every `- [ ] task` line is an open task and every `- [x] task` line a done one (`*` instead of `-` works too). The tile shows how many are open and the first of them. Click it for the list: type in the box and press Enter to add a task (it goes after the last task in the file), click a task to tick it off or back on, **Clear done** deletes the done lines, and **Open file** opens the file in its usual app. The popup stays open while you work through it.
 
 - Setting `"file"` (also in **Settings…**, with a file picker) is the Markdown file; default `%USERPROFILE%\Documents\todo.md`, created with its folder on the first task you add. Put it in OneDrive, Dropbox or an Obsidian vault to have it elsewhere too.
-- Setting `"showDone"` (default `true`) lists the last 10 done tasks under the open ones.
+- Setting `"showDone"` (default `true`) lists up to 10 done tasks under the open ones.
 - Headings, notes and blank lines in the file are kept as they are and not shown. The file keeps its line endings and encoding (UTF-8, with or without BOM), and each change replaces it in one step.
 - It reads the file every 10 seconds and right after every change, so edits made in another app show up on their own. For a second list, add a second To do tile with another file.
 

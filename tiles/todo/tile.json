@@ -6,7 +6,7 @@
   "width": 200,
   "fields": [
     { "key": "file", "label": "File", "type": "text", "browse": "file", "help": "A Markdown file with '- [ ] task' lines, for example in OneDrive or an Obsidian vault. Created on the first task you add." },
-    { "key": "showDone", "label": "Show done tasks", "type": "toggle", "help": "List the last 10 done tasks under the open ones." }
+    { "key": "showDone", "label": "Show done tasks", "type": "toggle", "help": "List up to 10 done tasks under the open ones." }
   ],
   "settings": {
     "file": "%USERPROFILE%\\Documents\\todo.md",

@@ -35,7 +35,9 @@ function Write-Todo($doc) {
     $text = [string]::Join($doc.Eol, $doc.Lines)
     if ($doc.FinalNewline -and $doc.Lines.Count -gt 0) { $text += $doc.Eol }
     $body = $utf8.GetBytes($text)
-    $bytes = if ($doc.Bom) { [byte[]](0xEF, 0xBB, 0xBF) + $body } else { $body }
+    # Plain assignment, not an if-expression: an empty array would unroll to $null there.
+    $bytes = $body
+    if ($doc.Bom) { $bytes = [byte[]](0xEF, 0xBB, 0xBF) + $body }
     $folder = Split-Path -Parent $file
     $temp = Join-Path $folder (".todo-" + [Guid]::NewGuid().ToString('N') + '.tmp')
     try {
