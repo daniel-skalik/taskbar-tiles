@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.IO;
 using TaskbarTiles.Contracts;
@@ -17,7 +19,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "media", "racers", "snake", "system", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -295,5 +297,155 @@ public class BundledKindsTests
         Assert.Equal("Set a repository in Settings", unset.Value!.Subtitle);
         Assert.True(plain.Failed);
         Assert.Contains("is not a Git repository", plain.ErrorDetails);
+    }
+
+    /// <summary>Runs todo.ps1 on <paramref name="file"/>; action hooks get TILE_ACTION and TILE_INPUT.</summary>
+    static Task<ScriptResult> RunTodo(string hook, string file, string action = "", string input = "", bool showDone = true) =>
+        RunBundled("todo", "todo.ps1", hook,
+            settingsJson: $$"""{ "file": "{{file.Replace('\\', '/')}}", "showDone": {{(showDone ? "true" : "false")}} }""",
+            extraEnv: new Dictionary<string, string> { ["TILE_ACTION"] = action, ["TILE_INPUT"] = input });
+
+    static string TodoHash(string text) => Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(text)))[..8].ToLowerInvariant();
+
+    static async Task TodoAction(string file, string action, string input = "")
+    {
+        var result = await RunTodo("action", file, action, input);
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.Equal("", result.StdOut.Trim()); // prints nothing, so the host refreshes
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_counts_open_tasks_and_shows_the_first()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "# Work\r\n- [ ] Write spec\r\n- [x] Old\r\n* [ ] Ship\r\n");
+
+        var outcome = HookResults.ForTile("interval", await RunTodo("interval", dir.File("todo.md")), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("2 to do", outcome.Value!.Title);
+        Assert.Equal("Write spec", outcome.Value.Subtitle);
+        Assert.Equal(new TileIcon("check", TileColor.Accent), outcome.Value.Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_without_a_file_asks_for_a_task()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForTile("interval", await RunTodo("interval", dir.File("none.md")), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal("All done", outcome.Value!.Title);
+        Assert.Equal("Add a task", outcome.Value.Subtitle);
+        Assert.Equal(TileColor.Ok, outcome.Value.Icon!.Color);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_add_creates_the_file_and_its_folder()
+    {
+        using var dir = new TempDir();
+        var file = Path.Combine(dir.File("sub"), "deeper", "todo.md");
+
+        await TodoAction(file, "add", "  Buy\nmilk  ");
+
+        Assert.Equal("- [ ] Buy milk\r\n", File.ReadAllText(file));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_add_goes_after_the_last_task_and_keeps_LF()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "# A\n- [ ] One\n\nNotes\n");
+
+        await TodoAction(dir.File("todo.md"), "add", "Two");
+
+        Assert.Equal("# A\n- [ ] One\n- [ ] Two\n\nNotes\n", File.ReadAllText(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_toggle_flips_the_line_named_by_number_and_hash()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [ ] One\n- [ ] Two\n");
+
+        await TodoAction(dir.File("todo.md"), $"toggle:2:{TodoHash("Two")}");
+        Assert.Equal("- [ ] One\n- [x] Two\n", File.ReadAllText(dir.File("todo.md")));
+
+        await TodoAction(dir.File("todo.md"), $"toggle:2:{TodoHash("Two")}");
+        Assert.Equal("- [ ] One\n- [ ] Two\n", File.ReadAllText(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_toggle_finds_the_task_by_text_after_an_edit_and_ignores_a_gone_one()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [ ] Zero\n- [ ] One\n- [ ] Two\n"); // "Zero" was added after the popup opened
+
+        await TodoAction(dir.File("todo.md"), $"toggle:2:{TodoHash("Two")}");
+        Assert.Equal("- [ ] Zero\n- [ ] One\n- [x] Two\n", File.ReadAllText(dir.File("todo.md")));
+
+        await TodoAction(dir.File("todo.md"), $"toggle:1:{TodoHash("Nope")}");
+        Assert.Equal("- [ ] Zero\n- [ ] One\n- [x] Two\n", File.ReadAllText(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_clear_removes_done_tasks_and_keeps_the_rest_BOM_and_ending()
+    {
+        using var dir = new TempDir();
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+        File.WriteAllBytes(dir.File("todo.md"), [.. bom, .. Encoding.UTF8.GetBytes("# H\r\n- [x] A\r\n- [ ] B\r\n- [X] C")]);
+
+        await TodoAction(dir.File("todo.md"), "clear");
+
+        Assert.Equal([.. bom, .. Encoding.UTF8.GetBytes("# H\r\n- [ ] B")], File.ReadAllBytes(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_lists_open_tasks_then_up_to_ten_done()
+    {
+        using var dir = new TempDir();
+        var lines = new List<string> { "- [ ] Open one" };
+        for (var i = 1; i <= 12; i++) lines.Add($"- [x] Done {i}");
+        File.WriteAllText(dir.File("todo.md"), string.Join("\n", lines) + "\n");
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md")), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        Assert.Equal("To do", f.Title);
+        Assert.Equal("todo.md", f.Subtitle);
+        Assert.True(f.StayOpen);
+        Assert.Equal(new FlyoutInput("add", "Add a task"), f.Input);
+        Assert.Equal(11, f.Rows.Count);
+        Assert.Equal(("Open one", false, $"toggle:1:{TodoHash("Open one")}"), (f.Rows[0].Text, f.Rows[0].Check!.Value, f.Rows[0].Action!));
+        Assert.Equal(("Done 1", true), (f.Rows[1].Text, f.Rows[1].Check!.Value));
+        Assert.Equal(new[] { "clear", "open" }, f.Actions.Select(a => a.Id));
+
+        var hidden = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md"), showDone: false), TimeSpan.FromSeconds(30));
+        Assert.Single(hidden.Value!.Rows);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_with_no_tasks_says_so()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md")), TimeSpan.FromSeconds(30));
+
+        Assert.Equal("No tasks yet", Assert.Single(outcome.Value!.Rows).Text);
+        Assert.Null(outcome.Value.Rows[0].Action);
+        Assert.Equal(new[] { "open" }, outcome.Value.Actions.Select(a => a.Id));
     }
 }
