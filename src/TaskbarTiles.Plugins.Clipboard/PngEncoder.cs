@@ -7,6 +7,7 @@ namespace TaskbarTiles.Plugins.Clipboard;
 /// <summary>BMP file bytes to PNG through Windows' own imaging (WinRT), so the plugin needs neither WPF nor WinForms.</summary>
 public static class PngEncoder
 {
+    /// <summary>Decodes BMP file bytes and re-encodes them as PNG; an all-zero alpha channel becomes opaque. Throws when Windows cannot decode them.</summary>
     public static async Task<byte[]> FromBmpAsync(byte[] bmp)
     {
         using var input = new InMemoryRandomAccessStream();

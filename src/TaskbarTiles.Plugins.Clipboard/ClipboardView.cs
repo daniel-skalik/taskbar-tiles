@@ -8,6 +8,7 @@ namespace TaskbarTiles.Plugins.Clipboard;
 public static partial class ClipboardView
 {
     public const string CopyPrefix = "copy:";
+    /// <summary>The popup action that empties the history.</summary>
     public const string ClearAction = "clear";
     const int PopupPreview = 40, TooltipChars = 300;
 

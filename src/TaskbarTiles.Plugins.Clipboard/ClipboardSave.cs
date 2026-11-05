@@ -5,7 +5,10 @@ namespace TaskbarTiles.Plugins.Clipboard;
 /// <summary>Where Save writes, the file name, and turning clipboard image bytes into a BMP file. Pure.</summary>
 public static class ClipboardSave
 {
+    /// <summary>The popup action that writes the clipboard to a file.</summary>
     public const string SaveAction = "save";
+
+    /// <summary>The popup action that shows the last saved file in Explorer.</summary>
     public const string ShowSavedAction = "show-saved";
 
     /// <summary>"saveFolder" from settings (environment variables expanded, quotes trimmed), else Pictures\Clipboard.</summary>
@@ -28,7 +31,9 @@ public static class ClipboardSave
 
     /// <summary>
     /// A BMP file from a packed DIB (CF_DIB: header, masks, palette, pixels): the 14-byte file header in front, pointing
-    /// past the header, the three BI_BITFIELDS masks a 40-byte header leaves out, and the palette. Null when too short.
+    /// past the header, the three BI_BITFIELDS masks a 40-byte header leaves out, and the palette. Null when too short, when the
+    /// pixels are JPEG or PNG compressed (BI_JPEG, BI_PNG: a printer format a BMP cannot hold), or when the pixel offset
+    /// falls outside the data.
     /// </summary>
     public static byte[]? BmpFromDib(byte[] dib)
     {
@@ -38,15 +43,17 @@ public static class ClipboardSave
         var bitCount = BitConverter.ToUInt16(dib, 14);
         var compression = BitConverter.ToUInt32(dib, 16);
         var colorsUsed = BitConverter.ToUInt32(dib, 32);
+        if (compression is 4 or 5) return null; // BI_JPEG, BI_PNG
         var masks = headerSize == 40 && compression == 3 ? 12 : headerSize == 40 && compression == 6 ? 16 : 0; // BI_BITFIELDS, BI_ALPHABITFIELDS
         var palette = colorsUsed != 0 ? colorsUsed : bitCount <= 8 ? 1u << bitCount : 0;
-        var offset = 14 + headerSize + masks + (int)palette * 4;
+        var offset = 14L + headerSize + masks + palette * 4L;
+        if (offset > 14L + dib.Length) return null;
 
         var bmp = new byte[14 + dib.Length];
         bmp[0] = (byte)'B';
         bmp[1] = (byte)'M';
         BitConverter.GetBytes(bmp.Length).CopyTo(bmp, 2);
-        BitConverter.GetBytes(offset).CopyTo(bmp, 10);
+        BitConverter.GetBytes((int)offset).CopyTo(bmp, 10);
         dib.CopyTo(bmp, 14);
         return bmp;
     }

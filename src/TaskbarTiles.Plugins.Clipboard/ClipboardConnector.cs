@@ -25,7 +25,7 @@ public sealed class ClipboardConnector : ITileConnector
     ClipHistory _history = new(DefaultHistory);
     volatile IReadOnlyList<ClipEntry> _last = [];
     volatile FlyoutRow? _saveRow; // the last Save's outcome, in memory only
-    string? _savedPath;           // only touched under the gate
+    volatile string? _savedPath;  // written under the gate, read by ShowSaved without it
     uint _seenSequence; // only touched under the gate
     Task? _loop;
 
@@ -170,13 +170,26 @@ public sealed class ClipboardConnector : ITileConnector
                 _saveRow = new FlyoutRow("Could not save: the clipboard could not be read");
                 return;
             }
-            if (read.Retry) { _saveRow = new FlyoutRow("Could not save: another app holds the clipboard"); return; }
-            var bmp = read.Dib is { } dib ? ClipboardSave.BmpFromDib(dib) : null;
-            if (read.Excluded || read.Files || (bmp is null && string.IsNullOrEmpty(read.Text)))
+            if (read.Retry)
             {
-                _saveRow = new FlyoutRow("Nothing to save");
+                ctx.Log.Warn("Could not save the clipboard: another app holds it.");
+                _saveRow = new FlyoutRow("Could not save: another app holds the clipboard");
                 return;
             }
+            if (read.Excluded || read.Files) { _saveRow = new FlyoutRow("Nothing to save"); return; }
+            var bmp = read.Dib is { } dib ? ClipboardSave.BmpFromDib(dib) : null;
+            // An image that cannot be saved says so rather than quietly saving the text next to it.
+            var problem = read.ImageTooLarge ? "the image is too large"
+                : read.Dib is not null && bmp is null ? "the image format is not supported"
+                : bmp is null && read.TextTooLarge ? "the text is too large"
+                : null;
+            if (problem is not null)
+            {
+                ctx.Log.Warn($"Could not save the clipboard: {problem}.");
+                _saveRow = new FlyoutRow($"Could not save: {problem}");
+                return;
+            }
+            if (bmp is null && string.IsNullOrWhiteSpace(read.Text)) { _saveRow = new FlyoutRow("Nothing to save"); return; }
 
             try
             {
@@ -190,8 +203,7 @@ public sealed class ClipboardConnector : ITileConnector
                 _saveRow = new FlyoutRow($"Saved {name}", Action: ClipboardSave.ShowSavedAction);
                 ctx.Log.Info($"Clipboard saved to {path}.");
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException
-                                           or System.Runtime.InteropServices.COMException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 ctx.Log.Warn($"Could not save the clipboard: {ex.Message}");
                 _saveRow = new FlyoutRow($"Could not save: {ex.Message}");

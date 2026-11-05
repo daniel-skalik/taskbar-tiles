@@ -369,15 +369,39 @@ public class ClipboardConnectorTests
         Assert.Equal(14 + 48, BitConverter.ToInt32(bmp, 2));
         Assert.Equal(14 + 40, BitConverter.ToInt32(bmp, 10));
 
-        var bitfields = TinyDib();
+        var bitfields = TinyDib().Concat(new byte[12]).ToArray(); // room for the masks
         BitConverter.GetBytes(3u).CopyTo(bitfields, 16); // BI_BITFIELDS: three masks follow a 40-byte header
         Assert.Equal(14 + 40 + 12, BitConverter.ToInt32(ClipboardSave.BmpFromDib(bitfields)!, 10));
 
-        var paletted = TinyDib();
+        var paletted = TinyDib().Concat(new byte[1024]).ToArray(); // room for the palette
         BitConverter.GetBytes((ushort)8).CopyTo(paletted, 14); // 8 bpp, biClrUsed 0: a 256-entry palette
         Assert.Equal(14 + 40 + 256 * 4, BitConverter.ToInt32(ClipboardSave.BmpFromDib(paletted)!, 10));
 
         Assert.Null(ClipboardSave.BmpFromDib(new byte[10]));
+    }
+
+    [Fact]
+    public void A_DIB_that_is_JPEG_or_PNG_compressed_or_points_past_its_data_is_not_a_BMP()
+    {
+        foreach (var compression in new[] { 4u, 5u })
+        {
+            var packed = TinyDib();
+            BitConverter.GetBytes(compression).CopyTo(packed, 16);
+            Assert.Null(ClipboardSave.BmpFromDib(packed));
+        }
+
+        var truncatedPalette = TinyDib();
+        BitConverter.GetBytes((ushort)8).CopyTo(truncatedPalette, 14); // 8 bpp: a 1024-byte palette the data lacks
+        BitConverter.GetBytes(0xFFFFFFFFu).CopyTo(truncatedPalette, 32); // biClrUsed huge; must not overflow
+        Assert.Null(ClipboardSave.BmpFromDib(truncatedPalette));
+        Assert.Null(ClipboardSave.BmpFromDib(WithBitCount(8))); // header only, palette missing
+    }
+
+    static byte[] WithBitCount(ushort bits)
+    {
+        var dib = TinyDib()[..40]; // header only, no palette or pixels
+        BitConverter.GetBytes(bits).CopyTo(dib, 14);
+        return dib;
     }
 
     [Fact]
@@ -451,5 +475,98 @@ public class ClipboardConnectorTests
         var last = (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1];
         Assert.Equal("Nothing to save", last.Text);
         Assert.Null(last.Action);
+    }
+
+    [Fact]
+    public async Task Whitespace_only_text_is_nothing_to_save()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: " \r\n\t");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal("Nothing to save", (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
+        Assert.False(Directory.Exists(dir.File("clips")));
+    }
+
+    [Fact]
+    public async Task A_failed_write_shows_the_reason_and_logs_it_without_content()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("occupied"), "x"); // the save folder is an existing file
+        var (c, ctx, clip) = await SaveSetup(dir.File("occupied"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: "top secret text");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        var last = (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1];
+        Assert.StartsWith("Could not save: ", last.Text);
+        Assert.Null(last.Action);
+        var log = ctx.Logged.Snapshot();
+        Assert.Contains(log, m => m.StartsWith("WARN") && m.Contains("Could not save"));
+        Assert.DoesNotContain(log, m => m.Contains("top secret"));
+    }
+
+    [Fact]
+    public async Task Save_while_another_app_holds_the_clipboard_says_so_and_logs_a_warning()
+    {
+        using var dir = new TempDir();
+        var (c, ctx, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Retry: true);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal("Could not save: another app holds the clipboard", (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
+        Assert.Contains(ctx.Logged.Snapshot(), m => m.StartsWith("WARN") && m.Contains("another app"));
+        Assert.False(Directory.Exists(dir.File("clips")));
+    }
+
+    [Fact]
+    public async Task Text_over_the_history_limit_is_still_saved()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        var big = new string('a', 1_500_000);
+        clip.ForSave = new ClipSaveRead(Text: big);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal(big, File.ReadAllText(Path.Combine(dir.File("clips"), "clipboard-2026-11-05-143012.txt")));
+    }
+
+    [Theory]
+    [InlineData(true, "Could not save: the image is too large")]
+    [InlineData(false, "Could not save: the image format is not supported")]
+    public async Task An_image_that_cannot_be_saved_does_not_fall_back_to_the_text(bool tooLarge, string expected)
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        var jpegDib = TinyDib();
+        BitConverter.GetBytes(4u).CopyTo(jpegDib, 16); // BI_JPEG
+        clip.ForSave = tooLarge ? new ClipSaveRead(Text: "also text", ImageTooLarge: true) : new ClipSaveRead(Dib: jpegDib, Text: "also text");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal(expected, (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
+        Assert.False(Directory.Exists(dir.File("clips")));
+    }
+
+    [Fact]
+    public async Task Text_too_large_to_read_says_so()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(TextTooLarge: true);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal("Could not save: the text is too large", (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
     }
 }

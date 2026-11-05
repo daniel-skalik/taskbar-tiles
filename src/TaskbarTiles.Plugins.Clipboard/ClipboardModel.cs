@@ -21,8 +21,11 @@ public readonly record struct ClipRead(ClipItem? Item, bool Excluded = false, bo
 /// <summary>
 /// The clipboard read for Save: raw DIB bytes and/or text as they are now. <paramref name="Files"/>: a copied file list
 /// (not saved). <paramref name="Excluded"/> and <paramref name="Retry"/> as in <see cref="ClipRead"/>; nothing was read then.
+/// <paramref name="ImageTooLarge"/>: there is an image but it was too big to read. <paramref name="TextTooLarge"/>: likewise
+/// for text. Either way <see cref="Dib"/> / <see cref="Text"/> is null.
 /// </summary>
-public readonly record struct ClipSaveRead(byte[]? Dib = null, string? Text = null, bool Excluded = false, bool Retry = false, bool Files = false);
+public readonly record struct ClipSaveRead(byte[]? Dib = null, string? Text = null, bool Excluded = false, bool Retry = false, bool Files = false,
+    bool ImageTooLarge = false, bool TextTooLarge = false);
 
 /// <summary>The clipboard behind a seam, so tests need no real one.</summary>
 public interface IClipboardAccess
