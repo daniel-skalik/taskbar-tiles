@@ -915,7 +915,7 @@ git commit -m "feat(popup): draw the input box and checkbox rows; keep stayOpen 
     }
 ```
 
-  `TempDir`, `RunBundled` and `HookResults` already exist in this test file or the test project. `ScriptResult` exposes `ExitCode`, `Stdout` and `Stderr`; check the names with `grep -n "record ScriptResult" -r src` and adapt if they differ.
+  `TempDir`, `RunBundled` and `HookResults` already exist in this test file or the test project. `ScriptResult` is `(int ExitCode, string StdOut, string StdErr, ...)`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
