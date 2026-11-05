@@ -19,7 +19,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "linear", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -459,5 +459,179 @@ public class BundledKindsTests
         Assert.Equal("No tasks yet", Assert.Single(outcome.Value!.Rows).Text);
         Assert.Null(outcome.Value.Rows[0].Action);
         Assert.Equal(new[] { "open" }, outcome.Value.Actions.Select(a => a.Id));
+    }
+
+    const string LinearIssues = """
+        { "data": { "organization": { "urlKey": "acme" }, "viewer": { "assignedIssues": { "nodes": [
+          { "identifier": "ENG-7", "title": "Old todo", "url": "https://linear.app/acme/issue/ENG-7/old", "priority": 0,
+            "updatedAt": "2026-11-01T10:00:00Z", "state": { "name": "Todo", "type": "unstarted" } },
+          { "identifier": "ENG-9", "title": "Urgent todo", "url": "https://linear.app/acme/issue/ENG-9/urgent", "priority": 1,
+            "updatedAt": "2026-11-02T10:00:00Z", "state": { "name": "Todo", "type": "unstarted" } },
+          { "identifier": "ENG-3", "title": "Fix login", "url": "https://linear.app/acme/issue/ENG-3/fix", "priority": 3,
+            "updatedAt": "2026-11-03T10:00:00Z", "state": { "name": "In Progress", "type": "started" } }
+        ] } } } }
+        """;
+
+    const string LinearRejected = """{ "errors": [ { "message": "Authentication required", "extensions": { "code": "AUTHENTICATION_ERROR" } } ] }""";
+
+    /// <summary>
+    /// Runs linear.ps1 with dir\key.txt standing in for Credential Manager and <paramref name="response"/> for the API,
+    /// so no test reaches the real credential store or the network.
+    /// </summary>
+    static Task<ScriptResult> RunLinear(TempDir dir, string hook, string response = LinearIssues, string action = "", string input = "")
+    {
+        File.WriteAllText(dir.File("response.json"), response);
+        return RunBundled("linear", "linear.ps1", hook, extraEnv: new Dictionary<string, string>
+        {
+            ["TILE_LINEAR_KEYFILE"] = dir.File("key.txt"), ["TILE_LINEAR_RESPONSE"] = dir.File("response.json"),
+            ["TILE_ACTION"] = action, ["TILE_INPUT"] = input,
+        });
+    }
+
+    static TempDir LinearDirWithKey()
+    {
+        var dir = new TempDir();
+        File.WriteAllText(dir.File("key.txt"), "lin_api_saved");
+        return dir;
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_counts_in_progress_and_shows_the_top_issue()
+    {
+        using var dir = LinearDirWithKey();
+
+        var outcome = HookResults.ForTile("interval", await RunLinear(dir, "interval"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("1 in progress", outcome.Value!.Title);
+        Assert.Equal("ENG-3 Fix login", outcome.Value.Subtitle);
+        Assert.Equal(new TileIcon("activity", TileColor.Accent), outcome.Value.Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_popup_orders_issues_and_links_each_one()
+    {
+        using var dir = LinearDirWithKey();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        Assert.Equal("Linear", f.Title);
+        Assert.Equal("1 in progress · 2 to do", f.Subtitle);
+        Assert.Equal(new[] { "ENG-3 Fix login", "ENG-9 Urgent todo", "ENG-7 Old todo" }, f.Rows.Select(r => r.Text));
+        Assert.Equal(new[] { "In Progress", "Todo", "Todo" }, f.Rows.Select(r => r.Value));
+        Assert.Equal("open:https://linear.app/acme/issue/ENG-3/fix", f.Rows[0].Action);
+        Assert.Equal(TileColor.Accent, f.Rows[0].Icon!.Color);
+        Assert.Equal(TileColor.Neutral, f.Rows[1].Icon!.Color);
+        Assert.Equal(new[] { "forget", "open:https://linear.app/acme/my-issues/assigned" }, f.Actions.Select(a => a.Id));
+        Assert.Null(f.Input);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_without_a_key_offers_setup()
+    {
+        using var dir = new TempDir();
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval"), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("Linear", "Click to set up"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Empty(popup.Warnings);
+        var f = popup.Value!;
+        Assert.Equal("Paste your personal API key", f.Subtitle);
+        Assert.Equal(new FlyoutInput("setkey", "Personal API key", Secret: true), f.Input);
+        Assert.True(f.StayOpen);
+        Assert.Equal(new[] { "open:https://linear.app/settings/account/security" }, f.Actions.Select(a => a.Id));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_stores_a_key_Linear_accepts()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunLinear(dir, "action", action: "setkey", input: " lin_api_new ");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.Equal("", result.StdOut.Trim());
+        Assert.Equal("lin_api_new", File.ReadAllText(dir.File("key.txt")));
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Null(popup.Value!.Input); // the issue list now
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_keeps_out_a_rejected_key_and_says_why_once()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunLinear(dir, "action", LinearRejected, "setkey", "lin_api_bad");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.DoesNotContain("lin_api_bad", result.StdOut + result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+        var first = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("Key rejected by Linear", first.Value!.Subtitle);
+        var second = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("Paste your personal API key", second.Value!.Subtitle);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_forget_removes_the_key()
+    {
+        using var dir = LinearDirWithKey();
+
+        var result = await RunLinear(dir, "action", action: "forget");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_open_refuses_a_link_outside_Linear()
+    {
+        using var dir = LinearDirWithKey();
+
+        var result = await RunLinear(dir, "action", action: "open:https://example.com/x");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Not a Linear link", result.StdErr);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_with_a_rejected_saved_key_offers_setup_again()
+    {
+        using var dir = LinearDirWithKey();
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", LinearRejected), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("Linear", "Key rejected"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout", LinearRejected), TimeSpan.FromSeconds(30));
+        Assert.Equal("Linear rejected the saved key", popup.Value!.Subtitle);
+        Assert.Equal("setkey", popup.Value.Input!.Action);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_error_without_a_cache_fails_with_the_message()
+    {
+        using var dir = LinearDirWithKey();
+        const string limited = """{ "errors": [ { "message": "Rate limit exceeded", "extensions": { "code": "RATELIMITED" } } ] }""";
+
+        var outcome = HookResults.ForTile("interval", await RunLinear(dir, "interval", limited), TimeSpan.FromSeconds(30));
+
+        Assert.True(outcome.Failed);
+        Assert.Contains("Linear: Rate limit exceeded", $"{outcome.ErrorMessage} {outcome.ErrorDetails}");
     }
 }

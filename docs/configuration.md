@@ -145,6 +145,14 @@ The bundled `todo` kind keeps your tasks in a plain Markdown file: every `- [ ] 
 - Headings, notes and blank lines in the file are kept as they are and not shown. The file keeps its line endings and encoding (UTF-8, with or without BOM), and each change replaces it in one step.
 - It reads the file every 10 seconds and right after every change, so edits made in another app show up on their own. For a second list, add a second To do tile with another file.
 
+### Linear
+
+The bundled `linear` kind shows the Linear issues assigned to you that are in progress or still to do (state types *started* and *unstarted*, every team): how many are in progress and the most pressing one. Click it for up to 15 of them, in progress first, then by priority and the most recently updated; click one to open it in your browser. **Open Linear** opens your assigned issues there.
+
+- **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass:<key>`.
+- **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
+- Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched. When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
+
 ### Pixel scenes
 
 Four bundled kinds draw a tiny animated world across the whole tile; click to join in, hover for the score or status. In the + picker they are under **Fun**.
