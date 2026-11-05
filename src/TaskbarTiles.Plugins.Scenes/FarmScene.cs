@@ -5,12 +5,16 @@ namespace TaskbarTiles.Plugins.Scenes;
 /// golden sunset and a starry night, the sun and moon cross it, and everything on the ground is lit to match. A farmer
 /// walks the flower field and waters the flowers during working hours (sunrise to sunset unless set otherwise), then
 /// goes home (the window lights up after dark, the house sleeps from 23:00 to 5:30) and comes out again next morning.
-/// Smoke curls from the chimney; birds and butterflies pass by day, fireflies glow at night. A click makes the farmer
-/// wave and a bird fly by, or at night sends a shooting star.
+/// Smoke curls from the chimney; birds and butterflies pass by day, fireflies glow at night. A click plays a random
+/// <see cref="FarmSurprise"/>, never the same one twice in a row: by day the apple tree shakes, a bloom ripples across
+/// the field or the farmer jumps for joy; at night a meteor shower falls or the fireflies dance.
 /// </summary>
 public sealed class FarmScene : IScene
 {
     enum Doing { Inside, Walking, Watering, Resting, Waving, GoingHome }
+
+    static readonly FarmSurprise[] DaySurprises = [FarmSurprise.AppleShake, FarmSurprise.BloomWave, FarmSurprise.Hooray];
+    static readonly FarmSurprise[] NightSurprises = [FarmSurprise.MeteorShower, FarmSurprise.FireflyDance];
 
     const int H = PixelCanvas.Height;
     const int HouseY = 6, PathY = 17, FieldLeft = 14, TreeX = 1, TreeY = 4;
@@ -66,6 +70,7 @@ public sealed class FarmScene : IScene
 
     static readonly string[] BirdUp = ["1.1", ".1."];
     static readonly string[] BirdDown = [".1.", "1.1"];
+    static readonly string[] Heart = ["1.1", "111", ".1."];
     static readonly string[] Sun = [".11.", "1111", "1111", ".11."];
     static readonly string[] Moon = [".111", "11..", "11..", ".111"];
     static readonly string[][] Clouds =
@@ -89,7 +94,14 @@ public sealed class FarmScene : IScene
     readonly float[] _cloudX;
     readonly int[] _cloudY;
     readonly Mote[] _smoke = new Mote[14], _fireflies = new Mote[9], _butterflies = new Mote[2], _drops = new Mote[8], _zs = new Mote[3];
-    Mote _bird, _shootingStar;
+    Mote _bird;
+
+    // Click surprises. Phase is a delay in frames before an apple falls or a meteor shows; a petal keeps its color there.
+    readonly Mote[] _apples = new Mote[6], _petals = new Mote[28], _hearts = new Mote[4], _flock = new Mote[5], _meteors = new Mote[6];
+    readonly int[] _flowerPop;
+    readonly int[] _heartPalette = [Rgb(0xFF5C8A)];
+    FarmSurprise? _lastSurprise;
+    int _shake, _hop, _dance, _bloomFront = -1;
     Doing _doing = Doing.Resting;
     readonly FarmOptions _options;
     float _farmerX = 30, _targetX = 30, _hour, _clock;
@@ -123,6 +135,7 @@ public sealed class FarmScene : IScene
         _flowerBase = new int[flowers];
         _flowerHeight = new int[flowers];
         _flowerColor = new int[flowers];
+        _flowerPop = new int[flowers];
         for (int i = 0; i < flowers; i++)
         {
             _flowerX[i] = FieldLeft + i * (FieldRight - FieldLeft) / flowers + rng.Next(2);
@@ -162,6 +175,19 @@ public sealed class FarmScene : IScene
     public bool FarmerInside => _doing == Doing.Inside;
     public int FlowersWatered => _watered;
 
+    /// <summary>The surprise the last click played, for tests.</summary>
+    public FarmSurprise? LastSurprise => _lastSurprise;
+
+    /// <summary>Whether a click surprise is still playing out, for tests.</summary>
+    public bool Surprising =>
+        _shake > 0 || _hop > 0 || _dance > 0 || _bloomFront >= 0 || _flowerPop.Any(p => p > 0)
+        || Alive(_apples) || Alive(_petals) || Alive(_hearts) || Alive(_flock) || Alive(_meteors);
+
+    /// <summary>Where the flock's leader is, or null when no flock is flying, for tests.</summary>
+    public float? FlockX => _flock[0].Life > 0 ? _flock[0].X : null;
+
+    static bool Alive(Mote[] pool) => pool.Any(m => m.Life > 0);
+
     public void Step(DateTime now, Random rng)
     {
         _frame++;
@@ -185,23 +211,63 @@ public sealed class FarmScene : IScene
         StepFarmer(rng);
         StepSky(rng);
         StepCritters(rng);
+        StepSurprises(rng);
         UpdateStatus();
     }
 
+    /// <summary>Plays a random surprise for the time of day, never the one the last click played.</summary>
     public void OnClick(DateTime now, Random rng)
     {
-        if (Awake() || _light > 120)
+        var choices = Awake() || _light > 120 ? DaySurprises : NightSurprises;
+        int pick = rng.Next(choices.Length);
+        if (choices[pick] == _lastSurprise) pick = (pick + 1 + rng.Next(choices.Length - 1)) % choices.Length;
+        Play(choices[pick], rng);
+    }
+
+    /// <summary>Starts <paramref name="surprise"/> whatever the time of day; a click picks one with <see cref="OnClick"/>.</summary>
+    public void Play(FarmSurprise surprise, Random rng)
+    {
+        _lastSurprise = surprise;
+        switch (surprise)
         {
-            if (_doing != Doing.Inside && _doing != Doing.GoingHome)
-            {
-                _waveBack = (int)_doing;
-                _doing = Doing.Waving;
-                _timer = 24;
-            }
-            SendBird(rng);
+            case FarmSurprise.AppleShake:
+                // The canopy shakes and a few apples let go one after another, bounce in the grass and lie there a while.
+                _shake = 18;
+                for (int k = 0, n = 3 + rng.Next(2); k < n; k++)
+                    Add(_apples, new Mote
+                    {
+                        X = TreeX + 1 + rng.Next(8), Y = TreeY + 2 + rng.Next(3), Vx = ((float)rng.NextDouble() - 0.5f) * 0.2f,
+                        Life = 110, Phase = 3 + k * 5,
+                    });
+                break;
+            case FarmSurprise.BloomWave:
+                _bloomFront = FieldLeft - 2;
+                break;
+            case FarmSurprise.Hooray:
+                // The farmer jumps and waves (or the door swings open), hearts float up and a flock flies over.
+                if (_doing != Doing.Inside && _doing != Doing.GoingHome)
+                {
+                    if (_doing != Doing.Waving) _waveBack = (int)_doing;
+                    _doing = Doing.Waving;
+                    _timer = 30;
+                }
+                else _doorOpen = 30;
+                _hop = 30;
+                SendFlock(rng);
+                break;
+            case FarmSurprise.MeteorShower:
+                for (int k = 0; k < _meteors.Length; k++)
+                    _meteors[k] = new Mote
+                    {
+                        X = W / 4 + rng.Next(Math.Max(1, W * 3 / 4)), Y = rng.Next(3),
+                        Vx = -0.8f - (float)rng.NextDouble() * 0.4f, Vy = 0.3f + (float)rng.NextDouble() * 0.15f,
+                        Life = 14 + rng.Next(6), Phase = k * 5 + rng.Next(4),
+                    };
+                break;
+            case FarmSurprise.FireflyDance:
+                _dance = 70;
+                break;
         }
-        else if (_shootingStar.Life <= 0)
-            _shootingStar = new Mote { X = W * 2 / 5 + rng.Next(Math.Max(1, W * 11 / 20)), Y = rng.Next(3), Vx = -0.9f, Vy = 0.35f, Life = 16 };
     }
 
     /// <summary>Within the farmer's working hours (which may run past midnight when the end is before the start).</summary>
@@ -324,12 +390,6 @@ public sealed class FarmScene : IScene
         }
         if (_frame % 12 == 0) Spawn(_smoke, HouseX + 10.5f, HouseY - 1, 0.03f, -0.07f, 60);
         if (Asleep() && _frame % 30 == 0) Spawn(_zs, HouseX + 9, HouseY + 7, 0.04f, -0.06f, 50);
-        if (_shootingStar.Life > 0)
-        {
-            _shootingStar.X += _shootingStar.Vx;
-            _shootingStar.Y += _shootingStar.Vy;
-            _shootingStar.Life--;
-        }
         Move(_smoke, wind: true);
         Move(_zs, wind: true);
         Move(_drops, wind: false);
@@ -358,11 +418,20 @@ public sealed class FarmScene : IScene
                 b.Y = Math.Clamp(b.Y + b.Vy + MathF.Sin((_frame + b.Phase * 7) * 0.4f) * 0.1f, 9, 14);
             }
 
+        float right = Math.Max(3, HouseX - 2), cx = (2 + right) / 2, radius = Math.Min(9, (right - 2) / 2);
         for (int i = 0; i < _fireflies.Length; i++)
         {
             ref var f = ref _fireflies[i];
-            if (rng.Next(30) == 0) { f.Vx = ((float)rng.NextDouble() - 0.5f) * 0.12f; f.Vy = ((float)rng.NextDouble() - 0.5f) * 0.08f; }
-            f.X = Math.Clamp(f.X + f.Vx, 2, Math.Max(3, HouseX - 2));
+            if (_dance > 0)
+            {
+                // A ring of fireflies twirling over the field, which loosens as the dance ends.
+                float a = _frame * 0.18f + i * MathF.Tau / _fireflies.Length, r = radius * Math.Min(1, _dance / 20f + 0.3f);
+                f.X += (cx + MathF.Cos(a) * r - f.X) * 0.2f;
+                f.Y += (11 + MathF.Sin(a) * 3.5f - f.Y) * 0.2f;
+                f.Vx = f.Vy = 0;
+            }
+            else if (rng.Next(30) == 0) { f.Vx = ((float)rng.NextDouble() - 0.5f) * 0.12f; f.Vy = ((float)rng.NextDouble() - 0.5f) * 0.08f; }
+            f.X = Math.Clamp(f.X + f.Vx, 2, right);
             f.Y = Math.Clamp(f.Y + f.Vy, 7, 16);
         }
     }
@@ -371,6 +440,111 @@ public sealed class FarmScene : IScene
     {
         bool fromLeft = rng.Next(2) == 0;
         _bird = new Mote { X = fromLeft ? -3 : W + 2, Y = 2 + rng.Next(5), Vx = (fromLeft ? 1 : -1) * (0.35f + (float)rng.NextDouble() * 0.2f), Life = 1 };
+    }
+
+    /// <summary>A little V of birds crossing the whole sky; one already on its way flies on rather than starting over.</summary>
+    void SendFlock(Random rng)
+    {
+        if (Alive(_flock)) return;
+        bool fromLeft = rng.Next(2) == 0;
+        float vx = (fromLeft ? 1 : -1) * 0.6f;
+        int y = 2 + rng.Next(3);
+        for (int k = 0; k < _flock.Length; k++)
+        {
+            int rank = (k + 1) / 2, side = k % 2 == 0 ? 1 : -1; // the leader, then pairs further back
+            _flock[k] = new Mote { X = (fromLeft ? -3 : W + 2) - Math.Sign(vx) * rank * 4, Y = y + rank * side, Vx = vx, Life = 1, Phase = k };
+        }
+    }
+
+    void StepSurprises(Random rng)
+    {
+        if (_shake > 0) _shake--;
+        if (_dance > 0) _dance--;
+        if (_hop > 0)
+        {
+            if (_hop % 7 == 0)
+            {
+                // Hearts rise above the farmer, or from the door when they are indoors.
+                bool outside = _doing != Doing.Inside;
+                Spawn(_hearts, outside ? _farmerX + 1 + _facing * 0.5f : DoorX, outside ? PathY - 10 : HouseY + 4, (float)(rng.NextDouble() - 0.5) * 0.1f, -0.12f, 28);
+            }
+            _hop--;
+        }
+
+        for (int i = 0; i < _apples.Length; i++)
+        {
+            ref var a = ref _apples[i];
+            if (a.Life <= 0) continue;
+            if (a.Phase > 0) { a.Phase--; continue; }
+            a.Life--;
+            a.Vy += 0.07f;
+            a.X += a.Vx;
+            a.Y += a.Vy;
+            float ground = _near[Math.Clamp((int)MathF.Round(a.X), 0, W - 1)];
+            if (a.Y >= ground)
+            {
+                a.Y = ground;
+                a.Vy = MathF.Abs(a.Vy) > 0.25f ? -a.Vy * 0.45f : 0;
+                a.Vx *= 0.6f;
+            }
+        }
+
+        if (_bloomFront >= 0)
+        {
+            // The ripple runs two pixels a frame; each flower it passes pops up and throws a puff of petals.
+            int from = _bloomFront;
+            _bloomFront += 2;
+            for (int i = 0; i < _flowerX.Length; i++)
+            {
+                if (_flowerX[i] < from || _flowerX[i] >= _bloomFront) continue;
+                _flowerPop[i] = 9;
+                for (int k = 0; k < 2; k++)
+                    Add(_petals, new Mote
+                    {
+                        X = _flowerX[i], Y = _flowerBase[i] - _flowerHeight[i] - 1,
+                        Vx = ((float)rng.NextDouble() - 0.5f) * 0.35f, Vy = -0.35f - (float)rng.NextDouble() * 0.25f,
+                        Life = 16 + rng.Next(6), Phase = _flowerColor[i],
+                    });
+            }
+            if (_bloomFront > FieldRight + 2) _bloomFront = -1;
+        }
+        for (int i = 0; i < _flowerPop.Length; i++)
+            if (_flowerPop[i] > 0) _flowerPop[i]--;
+        for (int i = 0; i < _petals.Length; i++)
+        {
+            ref var p = ref _petals[i];
+            if (p.Life <= 0) continue;
+            p.Life--;
+            p.Vy += 0.045f;
+            p.X += p.Vx;
+            p.Y += p.Vy;
+        }
+
+        for (int i = 0; i < _flock.Length; i++)
+        {
+            ref var b = ref _flock[i];
+            if (b.Life <= 0) continue;
+            b.X += b.Vx;
+            b.Y += MathF.Sin((_frame + b.Phase * 2) * 0.25f) * 0.06f;
+            if (b.Vx > 0 ? b.X > W + 24 : b.X < -24) b.Life = 0;
+        }
+        for (int i = 0; i < _meteors.Length; i++)
+        {
+            ref var m = ref _meteors[i];
+            if (m.Life <= 0) continue;
+            if (m.Phase > 0) { m.Phase--; continue; }
+            m.X += m.Vx;
+            m.Y += m.Vy;
+            m.Life--;
+        }
+        Move(_hearts, wind: true);
+    }
+
+    /// <summary>Puts <paramref name="mote"/> in the first free slot of <paramref name="pool"/>, if any.</summary>
+    static void Add(Mote[] pool, Mote mote)
+    {
+        for (int i = 0; i < pool.Length; i++)
+            if (pool[i].Life <= 0) { pool[i] = mote; return; }
     }
 
     static void Spawn(Mote[] pool, float x, float y, float vx, float vy, int life)
@@ -440,16 +614,17 @@ public sealed class FarmScene : IScene
     void DrawStars(PixelCanvas c)
     {
         int alpha = Math.Clamp((150 - _light) * 2, 0, 230);
-        if (alpha == 0) return;
-        for (int i = 0; i < _starX.Length; i++)
+        for (int i = 0; i < _starX.Length && alpha > 0; i++)
         {
             bool twinkle = (_frame / 2 + i * 7) % 47 < 3;
             int a = twinkle ? alpha / 3 : (i % 3 == 0 ? alpha : alpha * 2 / 3);
             c.Set(_starX[i], _starY[i], Rgba(0xFFF8E0, a));
         }
-        if (_shootingStar.Life > 0)
-            for (int k = 0; k < 5; k++)
-                c.Set((int)(_shootingStar.X - _shootingStar.Vx * k), (int)(_shootingStar.Y - _shootingStar.Vy * k), Rgba(0xFFFFFF, 255 - k * 50));
+        // Meteors show at any hour once clicked (Play can run one by day), so they are drawn whatever the star alpha.
+        foreach (var m in _meteors)
+            if (m.Life > 0 && m.Phase <= 0)
+                for (int k = 0; k < 7; k++)
+                    c.Set((int)(m.X - m.Vx * k), (int)(m.Y - m.Vy * k), Rgba(k < 2 ? 0xFFFFFF : 0xFFF2C0, 255 - k * 34));
     }
 
     void DrawSunAndMoon(PixelCanvas c)
@@ -508,9 +683,21 @@ public sealed class FarmScene : IScene
         _treePalette[2] = Lit(Rgb(0x7A5232));
         _treePalette[3] = Lit(Rgb(0xE84A4A));
         // The canopy rustles: every few seconds it shifts a pixel, as if in a breeze.
-        int sway = (_frame / 25) % 8 == 0 ? 1 : 0;
+        // A click shakes it hard, left and right every other frame.
+        int sway = _shake > 0 ? (_shake / 2 % 2 == 0 ? 1 : -1) : (_frame / 25) % 8 == 0 ? 1 : 0;
         c.Sprite(TreeX, TreeY + TreeTop.Length, TreeTrunk, _treePalette);
         c.Sprite(TreeX + sway, TreeY, TreeTop, _treePalette);
+        foreach (var a in _apples)
+        {
+            if (a.Life <= 0 || a.Phase > 0) continue;
+            int x = (int)MathF.Round(a.X), y = (int)MathF.Round(a.Y);
+            int alpha = Math.Min(255, a.Life * 13); // fades over its last 20 frames
+            int red = Lit(Rgb(0xFF4A3A)), shade = Lit(Rgb(0xB02A24));
+            c.Set(x, y - 1, PixelCanvas.Rgba(red, alpha));
+            c.Set(x + 1, y - 1, PixelCanvas.Rgba(Lit(Rgb(0xFFB0A0)), alpha)); // a shine
+            c.Set(x, y, PixelCanvas.Rgba(shade, alpha));
+            c.Set(x + 1, y, PixelCanvas.Rgba(red, alpha));
+        }
     }
 
     void DrawHouse(PixelCanvas c)
@@ -556,12 +743,16 @@ public sealed class FarmScene : IScene
             int sway = MathF.Sin(_frame * 0.09f - x * 0.25f) > 0.55f ? 1 : 0;
             for (int k = 0; k < h; k++) c.Set(x, b - k, stem);
             int head = Lit(_flowerColor[i]);
-            int hx = x + sway, hy = b - h;
+            bool pop = _flowerPop[i] > 0; // a bloom wave stretches it a pixel taller and opens it wide
+            int hx = x + sway, hy = b - h - (pop ? 1 : 0);
+            if (pop) c.Set(x, b - h, stem);
             c.Set(hx, hy, head);
-            if (i % 3 == 0) { c.Set(hx - 1, hy, head); c.Set(hx + 1, hy, head); c.Set(hx, hy - 1, head); } // a few big ones
+            if (pop || i % 3 == 0) { c.Set(hx - 1, hy, head); c.Set(hx + 1, hy, head); c.Set(hx, hy - 1, head); } // a few big ones
         }
         foreach (var d in _drops)
             if (d.Life > 0) c.Set((int)MathF.Round(d.X), (int)MathF.Round(d.Y), Rgba(0x7EC8FF, 220));
+        foreach (var p in _petals)
+            if (p.Life > 0) c.Set((int)MathF.Round(p.X), (int)MathF.Round(p.Y), PixelCanvas.Rgba(Lit(p.Phase), Math.Min(255, p.Life * 30)));
     }
 
     void DrawFarmer(PixelCanvas c)
@@ -578,7 +769,8 @@ public sealed class FarmScene : IScene
         _farmerPalette[6] = Rgb(0x2A1A10);
         bool walking = _doing is Doing.Walking or Doing.GoingHome;
         var art = walking ? ((_frame / 4) % 2 == 0 ? FarmerStepA : FarmerStepB) : FarmerStand;
-        int x = (int)MathF.Round(_farmerX), y = PathY - 5 - (walking && (_frame / 4) % 2 == 0 ? 1 : 0) + 0;
+        int hop = _hop > 0 ? (int)MathF.Round(MathF.Abs(MathF.Sin(_hop * MathF.PI / 10)) * 3) : 0; // three jumps for joy
+        int x = (int)MathF.Round(_farmerX), y = PathY - 5 - (walking && (_frame / 4) % 2 == 0 ? 1 : 0) - hop;
         bool flip = _facing < 0;
         int front = flip ? x - 1 : x + 4, back = flip ? x + 4 : x - 1;
         int dir = flip ? -1 : 1;
@@ -643,6 +835,15 @@ public sealed class FarmScene : IScene
             _birdPalette[0] = PixelCanvas.Lerp(Rgb(0x14141E), Rgb(0x3A3A4A), _light);
             c.Sprite((int)_bird.X, (int)_bird.Y, (_frame / 3) % 2 == 0 ? BirdUp : BirdDown, _birdPalette);
         }
+        _birdPalette[0] = PixelCanvas.Lerp(Rgb(0x14141E), Rgb(0x3A3A4A), _light);
+        foreach (var b in _flock)
+            if (b.Life > 0) c.Sprite((int)b.X, (int)b.Y, ((_frame + b.Phase) / 3) % 2 == 0 ? BirdUp : BirdDown, _birdPalette);
+        foreach (var h in _hearts)
+            if (h.Life > 0)
+            {
+                _heartPalette[0] = Rgba(0xFF5C8A, Math.Min(255, h.Life * 18));
+                c.Sprite((int)MathF.Round(h.X) - 1, (int)MathF.Round(h.Y), Heart, _heartPalette);
+            }
         if (_light > 170)
             for (int i = 0; i < _butterflies.Length; i++)
             {
@@ -653,16 +854,40 @@ public sealed class FarmScene : IScene
                 if ((_frame + i) % 4 < 2) c.Set(x + 1, y, color); // wings open and shut
             }
         int glow = Math.Clamp((140 - _light) * 2, 0, 255);
+        if (_dance > 0) glow = Math.Max(glow, 200); // dancing fireflies shine whatever the hour
         if (glow > 0)
             for (int i = 0; i < _fireflies.Length; i++)
             {
                 var f = _fireflies[i];
                 int phase = (_frame + f.Phase) % 50;
-                int a = phase < 20 ? glow * (20 - Math.Abs(10 - phase) * 2 + 0) / 20 : 0;
-                c.Set((int)MathF.Round(f.X), (int)MathF.Round(f.Y), Rgba(0xE6FF7A, a));
+                int a = _dance > 0 ? glow : phase < 20 ? glow * (20 - Math.Abs(10 - phase) * 2 + 0) / 20 : 0;
+                int fx = (int)MathF.Round(f.X), fy = (int)MathF.Round(f.Y);
+                c.Set(fx, fy, Rgba(0xE6FF7A, a));
+                if (_dance > 0) // a soft halo while they dance
+                {
+                    c.Set(fx - 1, fy, Rgba(0xE6FF7A, a / 4));
+                    c.Set(fx + 1, fy, Rgba(0xE6FF7A, a / 4));
+                    c.Set(fx, fy - 1, Rgba(0xE6FF7A, a / 4));
+                    c.Set(fx, fy + 1, Rgba(0xE6FF7A, a / 4));
+                }
             }
     }
 
     static int Rgb(int rgb) => PixelCanvas.Rgb(rgb);
     static int Rgba(int rgb, int a) => PixelCanvas.Rgba(rgb, a);
+}
+
+/// <summary>What a click on the farm sets off; the first three by day, the last two at night.</summary>
+public enum FarmSurprise
+{
+    /// <summary>The apple tree shakes and apples drop and bounce in the grass.</summary>
+    AppleShake,
+    /// <summary>A ripple runs across the field: each flower pops up and throws petals.</summary>
+    BloomWave,
+    /// <summary>The farmer jumps for joy and waves, hearts float up and a flock of birds flies over.</summary>
+    Hooray,
+    /// <summary>A shower of shooting stars.</summary>
+    MeteorShower,
+    /// <summary>The fireflies gather into a glowing ring and twirl over the field.</summary>
+    FireflyDance,
 }

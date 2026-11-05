@@ -158,7 +158,7 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 Four bundled kinds draw a tiny animated world across the whole tile; click to join in, hover for the score or status. In the + picker they are under **Fun**.
 
 - `aquarium`: fish, bubbles and a treasure chest; a click drops food.
-- `cozy-farm`: a farm that follows your clock and the real sun: dawn at sunrise, golden hour before sunset, then a starry night with fireflies. A click makes the farmer wave, or at night sends a shooting star. Settings, also in **Settings…**:
+- `cozy-farm`: a farm that follows your clock and the real sun: dawn at sunrise, golden hour before sunset, then a starry night with fireflies. A click sets off a random surprise: by day the apple tree shakes, a bloom ripples across the field or the farmer jumps for joy; at night a meteor shower falls or the fireflies dance. Settings, also in **Settings…**:
   - `"workStart"` and `"workEnd"`: when the farmer is out in the field: `"sunrise"`, `"sunset"` or a 24-hour time such as `"7:30"` (default sunrise to sunset). The house sleeps from 23:00 to 5:30 whatever the hours.
   - `"latitude"` and `"longitude"`: where to compute sunrise and sunset, in degrees (north and east positive). Empty: the middle of the country set in Windows (Settings › Time & language › Region); no location permission is used.
 - `snake`: plays itself; a click starts over. Keeps its best score.
