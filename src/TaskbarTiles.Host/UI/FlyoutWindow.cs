@@ -196,8 +196,8 @@ public static class FlyoutWindow
                 if (_open != window) return;
                 if (next.Outcome == FlyoutOutcome.Popup && next.Flyout is { } fresh)
                 {
-                    replaced = true;
                     Replace(window, anchor, Build(fresh), fresh.Tint, log);
+                    replaced = true; // only now: a Build that throws must not leave the old content dimmed
                     FocusInput();
                 }
                 else CloseOpen();
