@@ -350,6 +350,15 @@ public static class FlyoutWindow
     /// One line of the rows card: dot, text, and the value on the right; a hairline above all but the first. A row with
     /// an action highlights under the mouse and runs it on click.
     /// </summary>
+    /// <summary>A row icon: its shape when the glyph names one (<see cref="Theme.RowShape"/>), else a colored dot.</summary>
+    static FrameworkElement RowIcon(TileIcon icon)
+    {
+        var mark = Theme.RowShape(icon.Glyph, icon.Color)
+            ?? new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Background = Theme.ColorFor(icon.Color) };
+        mark.VerticalAlignment = VerticalAlignment.Center;
+        return mark;
+    }
+
     internal static Border Row(FlyoutRow row, bool first, Action<string> invoke)
     {
         var grid = new Grid();
@@ -367,11 +376,11 @@ public static class FlyoutWindow
             grid.Children.Add(box);
         }
         else if (row.Icon is { } icon)
-            grid.Children.Add(new Border
-            {
-                Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 10, 0),
-                Background = Theme.ColorFor(icon.Color), VerticalAlignment = VerticalAlignment.Center,
-            });
+        {
+            var mark = RowIcon(icon);
+            mark.Margin = new Thickness(0, 0, 10, 0);
+            grid.Children.Add(mark);
+        }
         var text = Text(row.Text, 13, FontWeights.Normal, "TileForeground");
         text.TextTrimming = TextTrimming.CharacterEllipsis;
         if (row.Check == true)
@@ -388,6 +397,14 @@ public static class FlyoutWindow
             value.Margin = new Thickness(12, 0, 0, 0);
             Grid.SetColumn(value, 2);
             grid.Children.Add(value);
+        }
+        if (row.EndIcon is { } end)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var mark = RowIcon(end);
+            mark.Margin = new Thickness(12, 0, 0, 0);
+            Grid.SetColumn(mark, 3);
+            grid.Children.Add(mark);
         }
         var line = new Border
         {

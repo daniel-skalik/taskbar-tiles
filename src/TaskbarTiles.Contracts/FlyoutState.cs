@@ -4,9 +4,11 @@ namespace TaskbarTiles.Contracts;
 /// A popup line; with <paramref name="Action"/> it is clickable and sends that action id to the connector.
 /// <paramref name="Check"/>: draw a checkbox (ticked when true, the text dim and struck through) instead of the icon dot.
 /// <paramref name="Indent"/>: nesting level, 0 to <see cref="FlyoutRow.MaxIndent"/>; each level moves the row right.
+/// <paramref name="EndIcon"/>: an icon at the right end, after the value. Row icons named <c>ring</c>, <c>half-ring</c>,
+/// <c>bars-1</c> to <c>bars-3</c>, <c>dashes</c> or <c>alert</c> draw as that shape; any other name draws a colored dot.
 /// </summary>
 public sealed record FlyoutRow(string Text, string? Value = null, TileIcon? Icon = null, string? Action = null, bool? Check = null,
-    int Indent = 0)
+    int Indent = 0, TileIcon? EndIcon = null)
 {
     /// <summary>The deepest nesting a popup draws; deeper levels are drawn at this one.</summary>
     public const int MaxIndent = 4;

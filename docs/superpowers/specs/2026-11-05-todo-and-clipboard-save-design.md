@@ -194,7 +194,8 @@ Issues assigned to you whose state type is `started` (In Progress) or `unstarted
   - Action `open:https://linear.app/settings/account/security`, labelled "Get a key", primary.
 - **Issue popup:**
   - Title "Linear". Subtitle "2 in progress · 3 to do".
-  - Rows: up to 15 issues in order. Text `ENG-142 Fix login redirect`, value the state name, icon dot `accent` for started and `neutral` for unstarted. Action `open:<issue url>`.
+  - Rows: up to 15 issues in order. Text `ENG-142 Fix login redirect`, no value. Icon: `half-ring` in `warn` for started, `ring` in `neutral` for unstarted. `endIcon` the priority: Urgent `alert` in `bad`, High `bars-3`, Medium `bars-2`, Low `bars-1`, none `dashes` (all `neutral`). Action `open:<issue url>`.
+  - Tile, setup popup and issue popup carry `image`: `linear.png`, the Linear icon from Linear's brand kit at 64 px.
   - With no issues, one plain row: "Nothing in In Progress or Todo".
   - Actions: `forget`, labelled "Forget key"; `open:https://linear.app/<urlKey>/my-issues/assigned`, labelled "Open Linear", primary.
 

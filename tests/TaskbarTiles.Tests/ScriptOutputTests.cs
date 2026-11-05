@@ -312,4 +312,13 @@ public class ScriptOutputTests
         Assert.Contains(r.Warnings, w => w.Contains("\"rows[3].indent\" must be a whole number from 0"));
         Assert.Contains(r.Warnings, w => w.Contains("\"rows[4].indent\" must be a whole number from 0"));
     }
+
+    [Fact]
+    public void Row_end_icon_is_read()
+    {
+        var r = ScriptOutput.ParseFlyout("""{ "title": "T", "rows": [ { "text": "a", "endIcon": { "glyph": "bars-2", "color": "neutral" } } ] }""");
+
+        Assert.Empty(r.Warnings);
+        Assert.Equal(new TileIcon("bars-2", TileColor.Neutral), r.Value!.Rows[0].EndIcon);
+    }
 }

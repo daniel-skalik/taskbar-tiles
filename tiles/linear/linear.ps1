@@ -123,6 +123,24 @@ function Sort-Issues($nodes) {
 }
 
 # The popup that takes a key. A message left by a failed setkey replaces the subtitle once.
+# The Linear icon from Linear's brand kit (linear.app/brand), bundled as linear.png; null if it is missing.
+function Get-Logo {
+    $path = Join-Path $PSScriptRoot 'linear.png'
+    if (Test-Path -LiteralPath $path) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) } else { $null }
+}
+$logo = Get-Logo
+
+# Linear's priority as a row shape: Urgent (1) a red "!", High to Low (2-4) three to one bars, No priority (0) dashes.
+function Get-PriorityIcon($priority) {
+    switch ([int]$priority) {
+        1 { @{ glyph = 'alert'; color = 'bad' } }
+        2 { @{ glyph = 'bars-3'; color = 'neutral' } }
+        3 { @{ glyph = 'bars-2'; color = 'neutral' } }
+        4 { @{ glyph = 'bars-1'; color = 'neutral' } }
+        default { @{ glyph = 'dashes'; color = 'neutral' } }
+    }
+}
+
 function Write-Setup([string]$subtitle) {
     if (Test-Path -LiteralPath $note) {
         $waiting = (Get-Content -LiteralPath $note -Raw).Trim()
@@ -130,18 +148,22 @@ function Write-Setup([string]$subtitle) {
         if ($waiting) { $subtitle = $waiting }
     }
     $sep = [char]0x203A
-    @{
+    $popup = @{
         title    = 'Linear'
         subtitle = $subtitle
         stayOpen = $true
         input    = @{ placeholder = 'Personal API key'; action = 'setkey'; secret = $true }
         rows     = @("Linear $sep Settings $sep Security & access")
         actions  = @(@{ id = "open:$keyPage"; label = 'Get a key'; primary = $true })
-    } | ConvertTo-Json -Depth 5 -Compress
+    }
+    if ($logo) { $popup.image = $logo }
+    $popup | ConvertTo-Json -Depth 5 -Compress
 }
 
 function Write-SetupTile([string]$subtitle) {
-    @{ title = 'Linear'; subtitle = $subtitle; icon = @{ glyph = 'activity'; color = 'neutral' } } | ConvertTo-Json -Depth 5 -Compress
+    $tile = @{ title = 'Linear'; subtitle = $subtitle; icon = @{ glyph = 'activity'; color = 'neutral' } }
+    if ($logo) { $tile.image = $logo }
+    $tile | ConvertTo-Json -Depth 5 -Compress
 }
 
 $hook = $env:TILE_HOOK
@@ -222,30 +244,34 @@ if ($hook -eq 'flyout') {
     $rows = @()
     foreach ($i in @($issues | Select-Object -First 15)) {
         $rows += @{
-            text   = "$($i.identifier) $($i.title)"
-            value  = $i.state.name
-            icon   = @{ glyph = 'info'; color = $(if ($i.state.type -eq 'started') { 'accent' } else { 'neutral' }) }
-            action = "open:$($i.url)"
+            text    = "$($i.identifier) $($i.title)"
+            icon    = $(if ($i.state.type -eq 'started') { @{ glyph = 'half-ring'; color = 'warn' } } else { @{ glyph = 'ring'; color = 'neutral' } })
+            endIcon = Get-PriorityIcon $i.priority
+            action  = "open:$($i.url)"
         }
     }
     if (-not $rows.Count) { $rows = @('Nothing in In Progress or Todo') }
-    @{
+    $popup = @{
         title    = 'Linear'
         subtitle = $summary
         rows     = $rows
         actions  = @(
             @{ id = 'forget'; label = 'Forget key' },
             @{ id = "open:https://linear.app/$($data.organization.urlKey)/my-issues/assigned"; label = 'Open Linear'; primary = $true })
-    } | ConvertTo-Json -Depth 6 -Compress
+    }
+    if ($logo) { $popup.image = $logo }
+    $popup | ConvertTo-Json -Depth 6 -Compress
     exit 0
 }
 
 # interval prints the tile.
 $tip = @($summary) + @($issues | Select-Object -First 5 | ForEach-Object { "$($_.identifier) $($_.title)" })
 if ($stale) { $tip += "Stale: $stale" }
-@{
+$tile = @{
     title    = $(if ($doing) { "$doing in progress" } elseif ($todo) { "$todo to do" } else { 'All clear' })
     subtitle = $(if ($issues.Count) { "$($issues[0].identifier) $($issues[0].title)" } else { 'Nothing assigned' })
     icon     = @{ glyph = 'activity'; color = $(if ($issues.Count) { 'accent' } else { 'ok' }) }
     tooltip  = $tip -join "`n"
-} | ConvertTo-Json -Depth 5 -Compress
+}
+if ($logo) { $tile.image = $logo }
+$tile | ConvertTo-Json -Depth 5 -Compress

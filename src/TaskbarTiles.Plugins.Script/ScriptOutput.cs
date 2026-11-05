@@ -273,7 +273,8 @@ public static class ScriptOutput
             var icon = r.TryGetProperty("icon", out var iconEl) ? ReadIcon(iconEl, where + ".icon", w) : null;
             var action = Text(r, "action", w, where);
             list.Add(new FlyoutRow(text, Text(r, "value", w, where), icon, string.IsNullOrWhiteSpace(action) ? null : action,
-                Bool(r, "check", w, where), ReadIndent(r, w, where)));
+                Bool(r, "check", w, where), ReadIndent(r, w, where),
+                r.TryGetProperty("endIcon", out var endEl) ? ReadIcon(endEl, where + ".endIcon", w) : null));
         }
         return list;
     }

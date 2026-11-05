@@ -539,6 +539,7 @@ public class BundledKindsTests
         Assert.Equal("1 in progress", outcome.Value!.Title);
         Assert.Equal("ENG-3 Fix login", outcome.Value.Subtitle);
         Assert.Equal(new TileIcon("activity", TileColor.Accent), outcome.Value.Icon);
+        Assert.NotNull(outcome.Value.Image); // the Linear icon, bundled as linear.png
     }
 
     [Fact]
@@ -555,10 +556,11 @@ public class BundledKindsTests
         Assert.Equal("Linear", f.Title);
         Assert.Equal("1 in progress · 2 to do", f.Subtitle);
         Assert.Equal(new[] { "ENG-3 Fix login", "ENG-9 Urgent todo", "ENG-7 Old todo" }, f.Rows.Select(r => r.Text));
-        Assert.Equal(new[] { "In Progress", "Todo", "Todo" }, f.Rows.Select(r => r.Value));
+        Assert.All(f.Rows, r => Assert.Null(r.Value)); // state and priority are icons now
+        Assert.Equal(new[] { new TileIcon("half-ring", TileColor.Warn), new TileIcon("ring"), new TileIcon("ring") }, f.Rows.Select(r => r.Icon));
+        Assert.Equal(new[] { new TileIcon("bars-2"), new TileIcon("alert", TileColor.Bad), new TileIcon("dashes") }, f.Rows.Select(r => r.EndIcon));
+        Assert.NotNull(f.Image);
         Assert.Equal("open:https://linear.app/acme/issue/ENG-3/fix", f.Rows[0].Action);
-        Assert.Equal(TileColor.Accent, f.Rows[0].Icon!.Color);
-        Assert.Equal(TileColor.Neutral, f.Rows[1].Icon!.Color);
         Assert.Equal(new[] { "forget", "open:https://linear.app/acme/my-issues/assigned" }, f.Actions.Select(a => a.Id));
         Assert.Null(f.Input);
     }
