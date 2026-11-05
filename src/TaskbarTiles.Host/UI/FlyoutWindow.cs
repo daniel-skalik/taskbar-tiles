@@ -158,6 +158,7 @@ public static class FlyoutWindow
     {
         public Window? Window { get; set; }
         Control? _input; // a TextBox, or a PasswordBox for a secret input
+        ScrollViewer? _scroll; // the rows card's, when the popup has rows
         bool _busy;
 
         public void FocusInput()
@@ -197,8 +198,11 @@ public static class FlyoutWindow
                 if (_open != window) return;
                 if (next.Outcome == FlyoutOutcome.Popup && next.Flyout is { } fresh)
                 {
+                    var offset = _scroll?.VerticalOffset ?? 0; // ticking a task far down must not jump back to the top
                     Replace(window, anchor, Build(fresh), fresh.Tint, log);
                     replaced = true; // only now: a Build that throws must not leave the old content dimmed
+                    if (_scroll is { } scroll && offset > 0)
+                        scroll.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => scroll.ScrollToVerticalOffset(offset));
                     FocusInput();
                 }
                 else CloseOpen();
@@ -230,6 +234,7 @@ public static class FlyoutWindow
         public UIElement Build(FlyoutState state)
         {
             _input = null;
+            _scroll = null;
             var panel = new StackPanel();
 
             var header = new Grid();
@@ -311,13 +316,7 @@ public static class FlyoutWindow
             {
                 var rows = new StackPanel();
                 for (var i = 0; i < state.Rows.Count; i++) rows.Children.Add(Row(state.Rows[i], first: i == 0, id => Run(state, id, null)));
-                var card = new Border
-                {
-                    CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 14, 0, 0),
-                    Child = rows,
-                };
-                card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
-                panel.Children.Add(card);
+                panel.Children.Add(RowsCard(rows, out _scroll));
             }
 
             if (state.Actions.Count > 0)
@@ -350,6 +349,25 @@ public static class FlyoutWindow
     /// One line of the rows card: dot, text, and the value on the right; a hairline above all but the first. A row with
     /// an action highlights under the mouse and runs it on click.
     /// </summary>
+    /// <summary>About ten rows; a popup with more scrolls its rows card while the header, box and buttons stay.</summary>
+    internal const double RowsMaxHeight = 420;
+
+    /// <summary>The rounded card that holds the rows, scrolling once they are taller than <see cref="RowsMaxHeight"/>.</summary>
+    internal static Border RowsCard(UIElement rows, out ScrollViewer scroll)
+    {
+        // The rows keep the card's side padding; the scroll bar sits in the right padding, clear of the text.
+        var inner = new Border { Padding = new Thickness(12, 0, 12, 0), Child = rows };
+        scroll = new ScrollViewer
+        {
+            MaxHeight = RowsMaxHeight, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = inner,
+        };
+        if (Application.Current?.TryFindResource("FlyoutScrollViewer") is Style style) scroll.Style = style;
+        var card = new Border { CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 14, 0, 0), Child = scroll };
+        card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
+        return card;
+    }
+
     /// <summary>A row icon: its shape when the glyph names one (<see cref="Theme.RowShape"/>), else a colored dot.</summary>
     static FrameworkElement RowIcon(TileIcon icon)
     {

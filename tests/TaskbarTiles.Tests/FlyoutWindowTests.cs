@@ -56,4 +56,14 @@ public class FlyoutWindowTests
         Assert.Equal(3, grid.Children.Count); // start shape, text, end shape
         Assert.Contains(grid.Children.Cast<System.Windows.UIElement>(), c => System.Windows.Controls.Grid.GetColumn(c) == 3);
     });
+
+    [Fact]
+    public void The_rows_card_scrolls_beyond_about_ten_rows() => Sta.Run(() =>
+    {
+        var card = FlyoutWindow.RowsCard(new StackPanel(), out var scroll);
+
+        Assert.Same(scroll, card.Child);
+        Assert.Equal(FlyoutWindow.RowsMaxHeight, scroll.MaxHeight);
+        Assert.Equal(System.Windows.Controls.ScrollBarVisibility.Auto, scroll.VerticalScrollBarVisibility);
+    });
 }
