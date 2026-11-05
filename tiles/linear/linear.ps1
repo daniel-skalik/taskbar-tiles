@@ -156,7 +156,7 @@ if ($hook -eq 'action') {
     if ($action -eq 'setkey') {
         $key = "$env:TILE_INPUT".Trim()
         if (-not $key) { exit 0 }
-        if ($key -notmatch '^[!-~]+$') { Set-Content -LiteralPath $note -Value 'That does not look like a Linear API key' -Encoding UTF8; exit 0 }
+        if ($key -cnotmatch '^[!-~]+$') { Set-Content -LiteralPath $note -Value 'That does not look like a Linear API key' -Encoding UTF8; exit 0 }
         $result = Invoke-Linear $key
         if ($result.Error) { Set-Content -LiteralPath $note -Value $result.Error -Encoding UTF8; exit 0 }
         Set-Key $key
