@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.Taskbar;
@@ -16,6 +18,8 @@ namespace TaskbarTiles.Host.UI;
 public static class FlyoutWindow
 {
     const double WidthDip = 320;
+    static readonly FontFamily GlyphFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
+    const int MaxInputChars = 1000;
     static Window? _open;
 
     static bool _holding;
@@ -44,8 +48,30 @@ public static class FlyoutWindow
 
     /// <summary>A tile's popup; <paramref name="openSettings"/> (null when the tile has no settings) runs from the gear.</summary>
     public static void ShowAbove(FrameworkElement anchor, FlyoutState state, TileRuntime runtime, bool light,
-        TileCommands commands, ITileLog log, Action? openSettings = null) =>
-        ShowPanel(anchor, Build(state, runtime, commands, log, openSettings), light, log, WidthDip, tint: state.Tint);
+        TileCommands commands, ITileLog log, Action? openSettings = null)
+    {
+        var popup = new TilePopup(anchor, runtime, commands, log, openSettings);
+        ShowPanel(anchor, popup.Build(state), light, log, WidthDip, tint: state.Tint);
+        popup.Window = _open;
+        popup.FocusInput();
+    }
+
+    /// <summary>
+    /// Puts new content into an open popup's frame (and its tint), then places it again above its anchor: the height
+    /// may have changed, and the popup grows upward from the taskbar.
+    /// </summary>
+    static void Replace(Window window, FrameworkElement anchor, UIElement content, string? tint)
+    {
+        if (window.Content is not Border { Child: Border inner }) return;
+        inner.Child = content;
+        inner.Background = TintBrush(tint) ?? Brushes.Transparent;
+        window.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (_open != window) return;
+            try { Position(window, anchor); }
+            catch (Exception) { /* keeps the old position; the next open places it again */ }
+        });
+    }
 
     /// <summary>
     /// Shows any content in the popup frame above <paramref name="anchor"/>: 320 DIP wide by default, or as wide as the
@@ -118,97 +144,181 @@ public static class FlyoutWindow
         }
     }
 
-    static UIElement Build(FlyoutState state, TileRuntime runtime, TileCommands commands, ITileLog log, Action? openSettings)
+    /// <summary>
+    /// One tile popup: builds its content and runs its actions. Without <see cref="FlyoutState.StayOpen"/> an action
+    /// closes the popup first, as always. With it the popup stays, ignores clicks and Enter until the action is done,
+    /// then asks the tile for its popup again and shows that in place; it closes if there is none.
+    /// </summary>
+    sealed class TilePopup(FrameworkElement anchor, TileRuntime runtime, TileCommands commands, ITileLog log, Action? openSettings)
     {
-        var panel = new StackPanel();
+        public Window? Window { get; set; }
+        Control? _input; // a TextBox, or a PasswordBox for a secret input
+        bool _busy;
 
-        var header = new Grid();
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        if (Theme.Decode(state.Image, 112) is { } img)
-            header.Children.Add(new Border
-            {
-                Width = 56, Height = 56, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 12, 0),
-                Background = new ImageBrush(img) { Stretch = Stretch.UniformToFill },
-            });
-        var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var title = Text(state.Title, 15, FontWeights.SemiBold, "TileForeground");
-        title.TextTrimming = TextTrimming.CharacterEllipsis;
-        titles.Children.Add(title);
-        if (!string.IsNullOrEmpty(state.Subtitle))
+        public void FocusInput()
         {
-            var subtitle = Text(state.Subtitle, 12, FontWeights.Normal, "TileDim");
-            subtitle.TextTrimming = TextTrimming.CharacterEllipsis;
-            titles.Children.Add(subtitle);
+            var box = _input;
+            box?.Dispatcher.BeginInvoke(DispatcherPriority.Input, () => box.Focus());
         }
-        Grid.SetColumn(titles, 1);
-        header.Children.Add(titles);
-        if (openSettings is not null)
-        {
-            var gear = new Button
-            {
-                Content = "", // Settings
-                ToolTip = "Settings",
-                Style = (Style)Application.Current.FindResource("IconButton"),
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(8, -6, -6, 0),
-            };
-            gear.Click += (_, _) =>
-            {
-                try { CloseOpen(); openSettings(); }
-                catch (Exception ex) { log.Error($"Opening the settings of tile '{runtime.TileId}' failed", ex); }
-            };
-            Grid.SetColumn(gear, 2);
-            header.Children.Add(gear);
-        }
-        panel.Children.Add(header);
 
-        if (state.Rows.Count > 0)
+        Task Send(string id, string? input) =>
+            input is null ? commands.InvokeAsync(runtime, id) : commands.InvokeInputAsync(runtime, id, input);
+
+        async void Run(FlyoutState state, string id, string? input)
         {
-            var rows = new StackPanel();
-            async void Invoke(string id)
+            if (!state.StayOpen || id.StartsWith("host:", StringComparison.Ordinal))
             {
-                try { CloseOpen(); await commands.InvokeAsync(runtime, id); }
-                catch (Exception ex) { log.Error($"Flyout row action '{id}' on tile '{runtime.TileId}' failed", ex); }
+                try { CloseOpen(); await Send(id, input); }
+                catch (Exception ex) { log.Error($"Flyout action '{id}' on tile '{runtime.TileId}' failed", ex); }
+                return;
             }
-            for (var i = 0; i < state.Rows.Count; i++) rows.Children.Add(Row(state.Rows[i], first: i == 0, Invoke));
-            var card = new Border
+            if (_busy) return;
+            _busy = true;
+            var window = Window;
+            try
             {
-                CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 14, 0, 0),
-                Child = rows,
-            };
-            card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
-            panel.Children.Add(card);
-        }
-
-        if (state.Actions.Count > 0)
-        {
-            // Buttons share the width: one button spans the popup.
-            var actions = new UniformGrid { Rows = 1, Margin = new Thickness(0, 14, 0, 0) };
-            for (var i = 0; i < state.Actions.Count; i++)
-            {
-                var a = state.Actions[i];
-                var button = new Button
+                await Send(id, input);
+                if (window is null || _open != window) return;
+                var next = await runtime.GetFlyoutAsync();
+                if (_open != window) return;
+                if (next.Outcome == FlyoutOutcome.Popup && next.Flyout is { } fresh)
                 {
-                    Content = a.Label,
-                    Style = (Style)Application.Current.FindResource(a.Primary ? "FlyoutPrimaryButton" : "FlyoutButton"),
-                    Margin = new Thickness(i == 0 ? 0 : 8, 0, 0, 0),
-                    Padding = new Thickness(12, 6, 12, 6),
-                };
-                var id = a.Id;
-                // Host ids (Restart tile, Open log) become commands; the rest go to the connector.
-                button.Click += async (_, _) =>
-                {
-                    try { CloseOpen(); await commands.InvokeAsync(runtime, id); }
-                    catch (Exception ex) { log.Error($"Flyout action '{id}' on tile '{runtime.TileId}' failed", ex); }
-                };
-                actions.Children.Add(button);
+                    Replace(window, anchor, Build(fresh), fresh.Tint);
+                    FocusInput();
+                }
+                else CloseOpen();
             }
-            panel.Children.Add(actions);
+            catch (Exception ex) { log.Error($"Flyout action '{id}' on tile '{runtime.TileId}' failed", ex); }
+            finally { _busy = false; }
         }
 
-        return panel;
+        public UIElement Build(FlyoutState state)
+        {
+            _input = null;
+            var panel = new StackPanel();
+
+            var header = new Grid();
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            if (Theme.Decode(state.Image, 112) is { } img)
+                header.Children.Add(new Border
+                {
+                    Width = 56, Height = 56, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 12, 0),
+                    Background = new ImageBrush(img) { Stretch = Stretch.UniformToFill },
+                });
+            var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var title = Text(state.Title, 15, FontWeights.SemiBold, "TileForeground");
+            title.TextTrimming = TextTrimming.CharacterEllipsis;
+            titles.Children.Add(title);
+            if (!string.IsNullOrEmpty(state.Subtitle))
+            {
+                var subtitle = Text(state.Subtitle, 12, FontWeights.Normal, "TileDim");
+                subtitle.TextTrimming = TextTrimming.CharacterEllipsis;
+                titles.Children.Add(subtitle);
+            }
+            Grid.SetColumn(titles, 1);
+            header.Children.Add(titles);
+            if (openSettings is not null)
+            {
+                var gear = new Button
+                {
+                    Content = "", // Settings
+                    ToolTip = "Settings",
+                    Style = (Style)Application.Current.FindResource("IconButton"),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(8, -6, -6, 0),
+                };
+                gear.Click += (_, _) =>
+                {
+                    try { CloseOpen(); openSettings(); }
+                    catch (Exception ex) { log.Error($"Opening the settings of tile '{runtime.TileId}' failed", ex); }
+                };
+                Grid.SetColumn(gear, 2);
+                header.Children.Add(gear);
+            }
+            panel.Children.Add(header);
+
+            if (state.Input is { Secret: true } secret)
+            {
+                // Dots instead of text. Tag is the FlyoutPasswordBox style's placeholder, emptied while the box holds
+                // text (a PasswordBox has no bindable text for a trigger). The text goes to the connector only, never the log.
+                var box = new PasswordBox
+                {
+                    Tag = secret.Placeholder ?? "", MaxLength = MaxInputChars, Margin = new Thickness(0, 14, 0, 0),
+                    Style = (Style)Application.Current.FindResource("FlyoutPasswordBox"),
+                };
+                box.PasswordChanged += (_, _) => box.Tag = box.Password.Length == 0 ? secret.Placeholder ?? "" : "";
+                box.KeyDown += (_, e) =>
+                {
+                    if (e.Key != Key.Enter) return;
+                    e.Handled = true;
+                    var text = box.Password.Trim();
+                    if (text.Length == 0 || _busy) return;
+                    box.Clear();
+                    Run(state, secret.Action, text);
+                };
+                _input = box;
+                panel.Children.Add(box);
+            }
+            else if (state.Input is { } input)
+            {
+                // Tag is the FlyoutTextBox style's placeholder.
+                var box = new TextBox
+                {
+                    Tag = input.Placeholder ?? "", MaxLength = MaxInputChars, Margin = new Thickness(0, 14, 0, 0),
+                    Style = (Style)Application.Current.FindResource("FlyoutTextBox"),
+                };
+                box.KeyDown += (_, e) =>
+                {
+                    if (e.Key != Key.Enter) return;
+                    e.Handled = true;
+                    var text = box.Text.Trim();
+                    if (text.Length == 0 || _busy) return; // keep the text while an action runs
+                    box.Clear();
+                    Run(state, input.Action, text);
+                };
+                _input = box;
+                panel.Children.Add(box);
+            }
+
+            if (state.Rows.Count > 0)
+            {
+                var rows = new StackPanel();
+                for (var i = 0; i < state.Rows.Count; i++) rows.Children.Add(Row(state.Rows[i], first: i == 0, id => Run(state, id, null)));
+                var card = new Border
+                {
+                    CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 14, 0, 0),
+                    Child = rows,
+                };
+                card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
+                panel.Children.Add(card);
+            }
+
+            if (state.Actions.Count > 0)
+            {
+                // Buttons share the width: one button spans the popup.
+                var actions = new UniformGrid { Rows = 1, Margin = new Thickness(0, 14, 0, 0) };
+                for (var i = 0; i < state.Actions.Count; i++)
+                {
+                    var a = state.Actions[i];
+                    var button = new Button
+                    {
+                        Content = a.Label,
+                        Style = (Style)Application.Current.FindResource(a.Primary ? "FlyoutPrimaryButton" : "FlyoutButton"),
+                        Margin = new Thickness(i == 0 ? 0 : 8, 0, 0, 0),
+                        Padding = new Thickness(12, 6, 12, 6),
+                    };
+                    var id = a.Id;
+                    // Host ids (Restart tile, Open log) become commands; the rest go to the connector.
+                    button.Click += (_, _) => Run(state, id, null);
+                    actions.Children.Add(button);
+                }
+                panel.Children.Add(actions);
+            }
+
+            return panel;
+        }
     }
 
     /// <summary>
@@ -221,7 +331,17 @@ public static class FlyoutWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        if (row.Icon is { } icon)
+        if (row.Check is { } check)
+        {
+            var box = new TextBlock
+            {
+                Text = check ? "" : "", // ticked / empty checkbox
+                FontFamily = GlyphFont, FontSize = 14, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
+            };
+            box.SetResourceReference(TextBlock.ForegroundProperty, check ? "TileDim" : "TileForeground");
+            grid.Children.Add(box);
+        }
+        else if (row.Icon is { } icon)
             grid.Children.Add(new Border
             {
                 Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 10, 0),
@@ -229,6 +349,11 @@ public static class FlyoutWindow
             });
         var text = Text(row.Text, 13, FontWeights.Normal, "TileForeground");
         text.TextTrimming = TextTrimming.CharacterEllipsis;
+        if (row.Check == true)
+        {
+            text.TextDecorations = TextDecorations.Strikethrough;
+            text.SetResourceReference(TextBlock.ForegroundProperty, "TileDim");
+        }
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
         if (row.Value is not null)

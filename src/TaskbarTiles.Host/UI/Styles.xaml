@@ -240,4 +240,31 @@
             </Setter.Value>
         </Setter>
     </Style>
+
+    <!-- Popup secret input: looks like FlyoutTextBox, shows dots. Tag is the placeholder; FlyoutWindow empties it while the box holds text. -->
+    <Style x:Key="FlyoutPasswordBox" TargetType="PasswordBox">
+        <Setter Property="Foreground" Value="{DynamicResource TileForeground}"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource TileForeground}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="8,5"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border x:Name="Bd" CornerRadius="5" BorderThickness="1" Padding="0,5"
+                            Background="{DynamicResource TileFill}" BorderBrush="{DynamicResource TileOutline}">
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                            <TextBlock Text="{TemplateBinding Tag}" Margin="{TemplateBinding Padding}" Padding="2,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TileDim}" IsHitTestVisible="False"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#4C7CE0"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>
