@@ -283,6 +283,23 @@ public class ScenesTests
         Assert.All(seen.Zip(seen.Skip(1)), pair => Assert.NotEqual(pair.First, pair.Second));
     }
 
+    [Fact]
+    public void Another_hooray_lets_the_flock_already_flying_fly_on()
+    {
+        var rng = new Random(3);
+        var farm = new FarmScene(rng, Prague);
+        farm.Step(Noon, rng);
+
+        farm.Play(FarmSurprise.Hooray, rng);
+        var start = farm.FlockX!.Value;
+        for (int i = 0; i < 40; i++) farm.Step(Noon, rng);
+        var flown = farm.FlockX!.Value;
+        Assert.NotEqual(start, flown);
+
+        farm.Play(FarmSurprise.Hooray, rng);
+        Assert.Equal(flown, farm.FlockX);
+    }
+
     [Theory]
     [InlineData(FarmSurprise.AppleShake, 12)]
     [InlineData(FarmSurprise.BloomWave, 12)]

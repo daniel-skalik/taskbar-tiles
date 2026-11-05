@@ -183,6 +183,9 @@ public sealed class FarmScene : IScene
         _shake > 0 || _hop > 0 || _dance > 0 || _bloomFront >= 0 || _flowerPop.Any(p => p > 0)
         || Alive(_apples) || Alive(_petals) || Alive(_hearts) || Alive(_flock) || Alive(_meteors);
 
+    /// <summary>Where the flock's leader is, or null when no flock is flying, for tests.</summary>
+    public float? FlockX => _flock[0].Life > 0 ? _flock[0].X : null;
+
     static bool Alive(Mote[] pool) => pool.Any(m => m.Life > 0);
 
     public void Step(DateTime now, Random rng)
@@ -439,9 +442,10 @@ public sealed class FarmScene : IScene
         _bird = new Mote { X = fromLeft ? -3 : W + 2, Y = 2 + rng.Next(5), Vx = (fromLeft ? 1 : -1) * (0.35f + (float)rng.NextDouble() * 0.2f), Life = 1 };
     }
 
-    /// <summary>A little V of birds crossing the whole sky.</summary>
+    /// <summary>A little V of birds crossing the whole sky; one already on its way flies on rather than starting over.</summary>
     void SendFlock(Random rng)
     {
+        if (Alive(_flock)) return;
         bool fromLeft = rng.Next(2) == 0;
         float vx = (fromLeft ? 1 : -1) * 0.6f;
         int y = 2 + rng.Next(3);
@@ -682,7 +686,7 @@ public sealed class FarmScene : IScene
         // A click shakes it hard, left and right every other frame.
         int sway = _shake > 0 ? (_shake / 2 % 2 == 0 ? 1 : -1) : (_frame / 25) % 8 == 0 ? 1 : 0;
         c.Sprite(TreeX, TreeY + TreeTop.Length, TreeTrunk, _treePalette);
-        c.Sprite(TreeX + sway, TreeY - (_shake > 0 && _shake % 4 == 1 ? 1 : 0), TreeTop, _treePalette);
+        c.Sprite(TreeX + sway, TreeY, TreeTop, _treePalette);
         foreach (var a in _apples)
         {
             if (a.Life <= 0 || a.Phase > 0) continue;
