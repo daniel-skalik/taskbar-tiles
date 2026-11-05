@@ -135,7 +135,7 @@ function Write-Setup([string]$subtitle) {
         subtitle = $subtitle
         stayOpen = $true
         input    = @{ placeholder = 'Personal API key'; action = 'setkey'; secret = $true }
-        rows     = @("Create one in Linear: Settings $sep Security & access $sep Personal API keys")
+        rows     = @("Linear $sep Settings $sep Security & access")
         actions  = @(@{ id = "open:$keyPage"; label = 'Get a key'; primary = $true })
     } | ConvertTo-Json -Depth 5 -Compress
 }

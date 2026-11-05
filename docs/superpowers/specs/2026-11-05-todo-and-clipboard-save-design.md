@@ -189,7 +189,7 @@ Issues assigned to you whose state type is `started` (In Progress) or `unstarted
 - **Setup popup** (no key, or key rejected): `stayOpen: true`.
   - Title "Linear". Subtitle: the note message if one is waiting, else "Paste your personal API key".
   - Input: `{ "placeholder": "Personal API key", "action": "setkey", "secret": true }`.
-  - One plain row: "Create one in Linear: Settings › Security & access › Personal API keys".
+  - One plain row: "Linear › Settings › Security & access" (where personal API keys are made; it must fit the 320 px popup).
   - Action `open:https://linear.app/settings/account/security`, labelled "Get a key", primary.
 - **Issue popup:**
   - Title "Linear". Subtitle "2 in progress · 3 to do".
