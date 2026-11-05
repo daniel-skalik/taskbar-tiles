@@ -577,10 +577,64 @@ public class BundledKindsTests
         Assert.True(result.ExitCode == 0, result.StdErr);
         Assert.DoesNotContain("lin_api_bad", result.StdOut + result.StdErr);
         Assert.False(File.Exists(dir.File("key.txt")));
+        Assert.DoesNotContain("lin_api_bad", File.ReadAllText(dir.File("key.txt.note")));
         var first = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
         Assert.Equal("Key rejected by Linear", first.Value!.Subtitle);
         var second = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
         Assert.Equal("Paste your personal API key", second.Value!.Subtitle);
+    }
+
+    static string LinearSingle(string identifier, string title, string stateName, string stateType) => $$"""
+        { "data": { "organization": { "urlKey": "acme" }, "viewer": { "assignedIssues": { "nodes": [
+          { "identifier": "{{identifier}}", "title": "{{title}}", "url": "https://linear.app/acme/issue/{{identifier}}/x", "priority": 3,
+            "updatedAt": "2026-11-03T10:00:00Z", "state": { "name": "{{stateName}}", "type": "{{stateType}}" } }
+        ] } } } }
+        """;
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_handles_a_single_started_issue()
+    {
+        using var dir = LinearDirWithKey();
+        var response = LinearSingle("ENG-3", "Fix login", "In Progress", "started");
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", response), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("1 in progress", "ENG-3 Fix login"), (tile.Value!.Title, tile.Value.Subtitle));
+        Assert.Equal(new TileIcon("activity", TileColor.Accent), tile.Value.Icon);
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout", response), TimeSpan.FromSeconds(30));
+        Assert.Equal("1 in progress · 0 to do", popup.Value!.Subtitle);
+        Assert.Equal("ENG-3 Fix login", Assert.Single(popup.Value.Rows).Text);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_handles_a_single_unstarted_issue()
+    {
+        using var dir = LinearDirWithKey();
+        var response = LinearSingle("ENG-4", "Write docs", "Todo", "unstarted");
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", response), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("1 to do", "ENG-4 Write docs"), (tile.Value!.Title, tile.Value.Subtitle));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_refuses_a_key_with_characters_outside_printable_ASCII()
+    {
+        using var dir = new TempDir();
+        var input = "lin_api_x\u2026";
+
+        var result = await RunLinear(dir, "action", action: "setkey", input: input);
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.DoesNotContain(input, result.StdOut + result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+        Assert.DoesNotContain(input, File.ReadAllText(dir.File("key.txt.note")));
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("That does not look like a Linear API key", popup.Value!.Subtitle);
     }
 
     [Fact]

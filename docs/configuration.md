@@ -147,9 +147,9 @@ The bundled `todo` kind keeps your tasks in a plain Markdown file: every `- [ ] 
 
 ### Linear
 
-The bundled `linear` kind shows the Linear issues assigned to you that are in progress or still to do (state types *started* and *unstarted*, every team): how many are in progress and the most pressing one. Click it for up to 15 of them, in progress first, then by priority and the most recently updated; click one to open it in your browser. **Open Linear** opens your assigned issues there.
+The bundled `linear` kind shows the Linear issues assigned to you that are in progress or still to do (state types *started* and *unstarted*, every team; at most 50 issues are counted): how many are in progress and the most pressing one. Click it for up to 15 of them, in progress first, then by priority and the most recently updated; click one to open it in your browser. **Open Linear** opens your assigned issues there.
 
-- **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass:<key>`.
+- **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass` (it asks for the key, so it stays out of your shell history).
 - **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
 - Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched. When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
 

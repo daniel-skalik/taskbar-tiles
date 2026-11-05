@@ -89,7 +89,9 @@ function Invoke-Linear([string]$key) {
         try { $r = $failure.ErrorDetails.Message | ConvertFrom-Json } catch { $r = $null }
         if (-not $r -or -not $r.errors) {
             if ($status -eq 401) { return @{ Auth = $true; Error = 'Key rejected by Linear' } }
-            return @{ Auth = $false; Error = "Could not reach Linear: $($failure.Exception.Message)" }
+            $msg = "$($failure.Exception.Message)"
+            if ($key) { $msg = $msg.Replace($key, '<key>') }
+            return @{ Auth = $false; Error = "Could not reach Linear: $msg" }
         }
     }
     if ($r.errors) {
@@ -154,6 +156,7 @@ if ($hook -eq 'action') {
     if ($action -eq 'setkey') {
         $key = "$env:TILE_INPUT".Trim()
         if (-not $key) { exit 0 }
+        if ($key -notmatch '^[!-~]+$') { Set-Content -LiteralPath $note -Value 'That does not look like a Linear API key' -Encoding UTF8; exit 0 }
         $result = Invoke-Linear $key
         if ($result.Error) { Set-Content -LiteralPath $note -Value $result.Error -Encoding UTF8; exit 0 }
         Set-Key $key
@@ -195,7 +198,7 @@ if ($hook -eq 'flyout' -and $cached -and ([DateTimeOffset]::UtcNow - [DateTimeOf
     }
 }
 
-$issues = Sort-Issues $data.viewer.assignedIssues.nodes
+$issues = @(Sort-Issues $data.viewer.assignedIssues.nodes)
 $doing = @($issues | Where-Object { $_.state.type -eq 'started' }).Count
 $todo = $issues.Count - $doing
 $summary = "$doing in progress $dot $todo to do"
