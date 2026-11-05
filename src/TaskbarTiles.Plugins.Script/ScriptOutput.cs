@@ -21,7 +21,7 @@ public static class ScriptOutput
         { "title", "subtitle", "tooltip", "icon", "image", "buttons", "progress", "progressMark", "progressForecast", "sparkline", "urgent" };
 
     static readonly HashSet<string> FlyoutFields = new(StringComparer.Ordinal)
-        { "title", "subtitle", "rows", "actions", "image", "tint" };
+        { "title", "subtitle", "rows", "actions", "image", "tint", "input", "stayOpen" };
 
     public static ParseResult<TileState> ParseTile(string? text) => Parse(text, ReadTile);
 
@@ -70,7 +70,8 @@ public static class ScriptOutput
         WarnUnknown(o, FlyoutFields, w);
         var title = Text(o, "title", w);
         if (title is null) w.Add("\"title\" is missing.");
-        return new FlyoutState(title ?? "", Text(o, "subtitle", w), ReadRows(o, w), ReadActions(o, w), ReadImage(o, w), ReadTint(o, w));
+        return new FlyoutState(title ?? "", Text(o, "subtitle", w), ReadRows(o, w), ReadActions(o, w), ReadImage(o, w), ReadTint(o, w),
+            ReadInput(o, w), Bool(o, "stayOpen", w) ?? false);
     }
 
     /// <summary>"tint": "#RRGGBB" (the # is optional), returned as "#RRGGBB".</summary>
@@ -82,6 +83,29 @@ public static class ScriptOutput
         if (hex.Length == 6 && hex.All(Uri.IsHexDigit)) return "#" + hex.ToUpperInvariant();
         w.Add($"\"tint\" must be a color like \"#D97757\"; got \"{text}\".");
         return null;
+    }
+
+    /// <summary>"input": { "action", "placeholder", "secret" }. Without a usable action the box is dropped: it could not send anything.</summary>
+    static FlyoutInput? ReadInput(JsonElement o, List<string> w)
+    {
+        if (!o.TryGetProperty("input", out var v) || v.ValueKind == JsonValueKind.Null) return null;
+        if (v.ValueKind != JsonValueKind.Object)
+        {
+            w.Add($"\"input\" must be an object; got {Kind(v)}.");
+            return null;
+        }
+        var action = Text(v, "action", w, "input")?.Trim();
+        if (string.IsNullOrEmpty(action))
+        {
+            w.Add("\"input.action\" is missing; the input box is dropped.");
+            return null;
+        }
+        if (action.StartsWith("host:", StringComparison.Ordinal))
+        {
+            w.Add("\"input.action\" uses a reserved id; ids starting with \"host:\" are reserved for the host. The input box is dropped.");
+            return null;
+        }
+        return new FlyoutInput(action, Text(v, "placeholder", w, "input"), Bool(v, "secret", w, "input") ?? false);
     }
 
     static void WarnUnknown(JsonElement o, HashSet<string> known, List<string> w)
@@ -248,7 +272,8 @@ public static class ScriptOutput
             }
             var icon = r.TryGetProperty("icon", out var iconEl) ? ReadIcon(iconEl, where + ".icon", w) : null;
             var action = Text(r, "action", w, where);
-            list.Add(new FlyoutRow(text, Text(r, "value", w, where), icon, string.IsNullOrWhiteSpace(action) ? null : action));
+            list.Add(new FlyoutRow(text, Text(r, "value", w, where), icon, string.IsNullOrWhiteSpace(action) ? null : action,
+                Bool(r, "check", w, where)));
         }
         return list;
     }
