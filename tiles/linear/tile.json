@@ -1,0 +1,20 @@
+{
+  "name": "Linear",
+  "description": "Your Linear issues in In Progress and Todo; click one to open it",
+  "group": "Productivity",
+  "connector": "script",
+  "width": 200,
+  "fields": [
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often your issues are fetched from Linear." }
+  ],
+  "settings": {
+    "refresh": "2m",
+    "hooks": {
+      "interval":      { "every": "$refresh", "run": "linear.ps1" },
+      "flyout":        { "run": "linear.ps1" },
+      "action:open":   { "run": "linear.ps1" },
+      "action:setkey": { "run": "linear.ps1" },
+      "action:forget": { "run": "linear.ps1" }
+    }
+  }
+}

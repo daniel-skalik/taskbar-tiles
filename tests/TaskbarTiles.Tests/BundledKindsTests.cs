@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.IO;
 using TaskbarTiles.Contracts;
@@ -17,7 +19,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "media", "racers", "snake", "system", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "linear", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -295,5 +297,428 @@ public class BundledKindsTests
         Assert.Equal("Set a repository in Settings", unset.Value!.Subtitle);
         Assert.True(plain.Failed);
         Assert.Contains("is not a Git repository", plain.ErrorDetails);
+    }
+
+    /// <summary>Runs todo.ps1 on <paramref name="file"/>; action hooks get TILE_ACTION and TILE_INPUT.</summary>
+    static Task<ScriptResult> RunTodo(string hook, string file, string action = "", string input = "", bool showDone = true) =>
+        RunBundled("todo", "todo.ps1", hook,
+            settingsJson: $$"""{ "file": "{{file.Replace('\\', '/')}}", "showDone": {{(showDone ? "true" : "false")}} }""",
+            extraEnv: new Dictionary<string, string> { ["TILE_ACTION"] = action, ["TILE_INPUT"] = input });
+
+    static string TodoHash(string text) => Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(text)))[..8].ToLowerInvariant();
+
+    static async Task TodoAction(string file, string action, string input = "")
+    {
+        var result = await RunTodo("action", file, action, input);
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.Equal("", result.StdOut.Trim()); // prints nothing, so the host refreshes
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_counts_open_tasks_and_shows_the_first()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "# Work\r\n- [ ] Write spec\r\n- [x] Old\r\n* [ ] Ship\r\n");
+
+        var outcome = HookResults.ForTile("interval", await RunTodo("interval", dir.File("todo.md")), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("2 to do", outcome.Value!.Title);
+        Assert.Equal("Write spec", outcome.Value.Subtitle);
+        Assert.Equal(new TileIcon("check", TileColor.Accent), outcome.Value.Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_without_a_file_asks_for_a_task()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForTile("interval", await RunTodo("interval", dir.File("none.md")), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal("All done", outcome.Value!.Title);
+        Assert.Equal("Add a task", outcome.Value.Subtitle);
+        Assert.Equal(TileColor.Ok, outcome.Value.Icon!.Color);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_add_creates_the_file_and_its_folder()
+    {
+        using var dir = new TempDir();
+        var file = Path.Combine(dir.File("sub"), "deeper", "todo.md");
+
+        await TodoAction(file, "add", "  Buy\nmilk  ");
+
+        Assert.Equal("- [ ] Buy milk\r\n", File.ReadAllText(file));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_add_goes_after_the_last_task_and_keeps_LF()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "# A\n- [ ] One\n\nNotes\n");
+
+        await TodoAction(dir.File("todo.md"), "add", "Two");
+
+        Assert.Equal("# A\n- [ ] One\n- [ ] Two\n\nNotes\n", File.ReadAllText(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_toggle_flips_the_line_named_by_number_and_hash()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [ ] One\n- [ ] Two\n");
+
+        await TodoAction(dir.File("todo.md"), $"toggle:2:{TodoHash("Two")}");
+        Assert.Equal("- [ ] One\n- [x] Two\n", File.ReadAllText(dir.File("todo.md")));
+
+        await TodoAction(dir.File("todo.md"), $"toggle:2:{TodoHash("Two")}");
+        Assert.Equal("- [ ] One\n- [ ] Two\n", File.ReadAllText(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_toggle_finds_the_task_by_text_after_an_edit_and_ignores_a_gone_one()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [ ] Zero\n- [ ] One\n- [ ] Two\n"); // "Zero" was added after the popup opened
+
+        await TodoAction(dir.File("todo.md"), $"toggle:2:{TodoHash("Two")}");
+        Assert.Equal("- [ ] Zero\n- [ ] One\n- [x] Two\n", File.ReadAllText(dir.File("todo.md")));
+
+        await TodoAction(dir.File("todo.md"), $"toggle:1:{TodoHash("Nope")}");
+        Assert.Equal("- [ ] Zero\n- [ ] One\n- [x] Two\n", File.ReadAllText(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_clear_removes_done_tasks_and_keeps_the_rest_BOM_and_ending()
+    {
+        using var dir = new TempDir();
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+        File.WriteAllBytes(dir.File("todo.md"), [.. bom, .. Encoding.UTF8.GetBytes("# H\r\n- [x] A\r\n- [ ] B\r\n- [X] C")]);
+
+        await TodoAction(dir.File("todo.md"), "clear");
+
+        Assert.Equal([.. bom, .. Encoding.UTF8.GetBytes("# H\r\n- [ ] B")], File.ReadAllBytes(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_clear_of_a_done_only_file_leaves_an_empty_file()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [x] A\n- [X] B\n");
+
+        await TodoAction(dir.File("todo.md"), "clear");
+
+        Assert.Empty(File.ReadAllBytes(dir.File("todo.md")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_lists_open_tasks_then_up_to_ten_done()
+    {
+        using var dir = new TempDir();
+        var lines = new List<string> { "- [ ] Open one" };
+        for (var i = 1; i <= 12; i++) lines.Add($"- [x] Done {i}");
+        File.WriteAllText(dir.File("todo.md"), string.Join("\n", lines) + "\n");
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md")), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        Assert.Equal("To do", f.Title);
+        Assert.Equal("todo.md", f.Subtitle);
+        Assert.True(f.StayOpen);
+        Assert.Equal(new FlyoutInput("add", "Add a task"), f.Input);
+        Assert.Equal(11, f.Rows.Count);
+        Assert.Equal(("Open one", false, $"toggle:1:{TodoHash("Open one")}"), (f.Rows[0].Text, f.Rows[0].Check!.Value, f.Rows[0].Action!));
+        Assert.Equal(("Done 1", true), (f.Rows[1].Text, f.Rows[1].Check!.Value));
+        Assert.Equal(new[] { "clear", "open" }, f.Actions.Select(a => a.Id));
+
+        var hidden = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md"), showDone: false), TimeSpan.FromSeconds(30));
+        Assert.Single(hidden.Value!.Rows);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_keeps_the_file_indentation_for_open_tasks()
+    {
+        using var dir = new TempDir();
+        // Subtasks by 2 spaces, by a tab, a done parent whose open child must not jump two levels, a heading that resets.
+        File.WriteAllText(dir.File("todo.md"),
+            "- [ ] Money\n  - [ ] Network\n  - [ ] Power\n- [ ] Shelves\n\t- [ ] Get a drill\n- [x] Old\n    - [ ] Leftover\n# Later\n  - [ ] After heading\n");
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md"), showDone: false), TimeSpan.FromSeconds(30));
+
+        Assert.Empty(outcome.Warnings);
+        var rows = outcome.Value!.Rows;
+        Assert.Equal(new[] { "Money", "Network", "Power", "Shelves", "Get a drill", "Leftover", "After heading" }, rows.Select(r => r.Text));
+        Assert.Equal(new[] { 0, 1, 1, 0, 1, 1, 0 }, rows.Select(r => r.Indent));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_with_no_tasks_says_so()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md")), TimeSpan.FromSeconds(30));
+
+        Assert.Equal("No tasks yet", Assert.Single(outcome.Value!.Rows).Text);
+        Assert.Null(outcome.Value.Rows[0].Action);
+        Assert.Equal(new[] { "open" }, outcome.Value.Actions.Select(a => a.Id));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Todo_popup_with_everything_done_and_done_hidden_says_nothing_open()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("todo.md"), "- [x] Finished\r\n");
+
+        var outcome = HookResults.ForFlyout("flyout", await RunTodo("flyout", dir.File("todo.md"), showDone: false), TimeSpan.FromSeconds(30));
+
+        var row = Assert.Single(outcome.Value!.Rows);
+        Assert.Equal("Nothing open", row.Text);
+        Assert.Null(row.Action);
+    }
+
+    const string LinearIssues = """
+        { "data": { "organization": { "urlKey": "acme" }, "viewer": { "assignedIssues": { "nodes": [
+          { "identifier": "ENG-7", "title": "Old todo", "url": "https://linear.app/acme/issue/ENG-7/old", "priority": 0,
+            "updatedAt": "2026-11-01T10:00:00Z", "state": { "name": "Todo", "type": "unstarted" } },
+          { "identifier": "ENG-9", "title": "Urgent todo", "url": "https://linear.app/acme/issue/ENG-9/urgent", "priority": 1,
+            "updatedAt": "2026-11-02T10:00:00Z", "state": { "name": "Todo", "type": "unstarted" } },
+          { "identifier": "ENG-3", "title": "Fix login", "url": "https://linear.app/acme/issue/ENG-3/fix", "priority": 3,
+            "updatedAt": "2026-11-03T10:00:00Z", "state": { "name": "In Progress", "type": "started" } }
+        ] } } } }
+        """;
+
+    const string LinearRejected = """{ "errors": [ { "message": "Authentication required", "extensions": { "code": "AUTHENTICATION_ERROR" } } ] }""";
+
+    /// <summary>
+    /// Runs linear.ps1 with dir\key.txt standing in for Credential Manager and <paramref name="response"/> for the API,
+    /// so no test reaches the real credential store or the network.
+    /// </summary>
+    static Task<ScriptResult> RunLinear(TempDir dir, string hook, string response = LinearIssues, string action = "", string input = "")
+    {
+        File.WriteAllText(dir.File("response.json"), response);
+        return RunBundled("linear", "linear.ps1", hook, extraEnv: new Dictionary<string, string>
+        {
+            ["TILE_LINEAR_KEYFILE"] = dir.File("key.txt"), ["TILE_LINEAR_RESPONSE"] = dir.File("response.json"),
+            ["TILE_ACTION"] = action, ["TILE_INPUT"] = input,
+        });
+    }
+
+    static TempDir LinearDirWithKey()
+    {
+        var dir = new TempDir();
+        File.WriteAllText(dir.File("key.txt"), "lin_api_saved");
+        return dir;
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_counts_in_progress_and_shows_the_top_issue()
+    {
+        using var dir = LinearDirWithKey();
+
+        var outcome = HookResults.ForTile("interval", await RunLinear(dir, "interval"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("1 in progress", outcome.Value!.Title);
+        Assert.Equal("ENG-3 Fix login", outcome.Value.Subtitle);
+        Assert.Equal(new TileIcon("activity", TileColor.Accent), outcome.Value.Icon);
+        Assert.NotNull(outcome.Value.Image); // the Linear icon, bundled as linear.png
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_popup_orders_issues_and_links_each_one()
+    {
+        using var dir = LinearDirWithKey();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        Assert.Equal("Linear", f.Title);
+        Assert.Equal("1 in progress · 2 to do", f.Subtitle);
+        Assert.Equal(new[] { "ENG-3 Fix login", "ENG-9 Urgent todo", "ENG-7 Old todo" }, f.Rows.Select(r => r.Text));
+        Assert.All(f.Rows, r => Assert.Null(r.Value)); // state and priority are icons now
+        Assert.Equal(new[] { new TileIcon("half-ring", TileColor.Warn), new TileIcon("ring"), new TileIcon("ring") }, f.Rows.Select(r => r.Icon));
+        Assert.Equal(new[] { new TileIcon("bars-2"), new TileIcon("alert", TileColor.Bad), new TileIcon("dashes") }, f.Rows.Select(r => r.EndIcon));
+        Assert.NotNull(f.Image);
+        Assert.Equal("open:https://linear.app/acme/issue/ENG-3/fix", f.Rows[0].Action);
+        Assert.Equal(new[] { "forget", "open:https://linear.app/acme/my-issues/assigned" }, f.Actions.Select(a => a.Id));
+        Assert.Null(f.Input);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_without_a_key_offers_setup()
+    {
+        using var dir = new TempDir();
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval"), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("Linear", "Click to set up"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Empty(popup.Warnings);
+        var f = popup.Value!;
+        Assert.Equal("Paste your personal API key", f.Subtitle);
+        Assert.Equal(new FlyoutInput("setkey", "Personal API key", Secret: true), f.Input);
+        Assert.True(f.StayOpen);
+        Assert.Equal(new[] { "open:https://linear.app/settings/account/security" }, f.Actions.Select(a => a.Id));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_stores_a_key_Linear_accepts()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunLinear(dir, "action", action: "setkey", input: " lin_api_new ");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.Equal("", result.StdOut.Trim());
+        Assert.Equal("lin_api_new", File.ReadAllText(dir.File("key.txt")));
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Null(popup.Value!.Input); // the issue list now
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_keeps_out_a_rejected_key_and_says_why_once()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunLinear(dir, "action", LinearRejected, "setkey", "lin_api_bad");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.DoesNotContain("lin_api_bad", result.StdOut + result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+        Assert.DoesNotContain("lin_api_bad", File.ReadAllText(dir.File("key.txt.note")));
+        var first = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("Key rejected by Linear", first.Value!.Subtitle);
+        var second = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("Paste your personal API key", second.Value!.Subtitle);
+    }
+
+    static string LinearSingle(string identifier, string title, string stateName, string stateType) => $$"""
+        { "data": { "organization": { "urlKey": "acme" }, "viewer": { "assignedIssues": { "nodes": [
+          { "identifier": "{{identifier}}", "title": "{{title}}", "url": "https://linear.app/acme/issue/{{identifier}}/x", "priority": 3,
+            "updatedAt": "2026-11-03T10:00:00Z", "state": { "name": "{{stateName}}", "type": "{{stateType}}" } }
+        ] } } } }
+        """;
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_handles_a_single_started_issue()
+    {
+        using var dir = LinearDirWithKey();
+        var response = LinearSingle("ENG-3", "Fix login", "In Progress", "started");
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", response), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("1 in progress", "ENG-3 Fix login"), (tile.Value!.Title, tile.Value.Subtitle));
+        Assert.Equal(new TileIcon("activity", TileColor.Accent), tile.Value.Icon);
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout", response), TimeSpan.FromSeconds(30));
+        Assert.Equal("1 in progress · 0 to do", popup.Value!.Subtitle);
+        Assert.Equal("ENG-3 Fix login", Assert.Single(popup.Value.Rows).Text);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_handles_a_single_unstarted_issue()
+    {
+        using var dir = LinearDirWithKey();
+        var response = LinearSingle("ENG-4", "Write docs", "Todo", "unstarted");
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", response), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("1 to do", "ENG-4 Write docs"), (tile.Value!.Title, tile.Value.Subtitle));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_setkey_refuses_a_key_with_characters_outside_printable_ASCII()
+    {
+        using var dir = new TempDir();
+        var input = "lin_api_x\u2026";
+
+        var result = await RunLinear(dir, "action", action: "setkey", input: input);
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.DoesNotContain(input, result.StdOut + result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+        Assert.DoesNotContain(input, File.ReadAllText(dir.File("key.txt.note")));
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout"), TimeSpan.FromSeconds(30));
+        Assert.Equal("That does not look like a Linear API key", popup.Value!.Subtitle);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_forget_removes_the_key()
+    {
+        using var dir = LinearDirWithKey();
+
+        var result = await RunLinear(dir, "action", action: "forget");
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.False(File.Exists(dir.File("key.txt")));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_open_refuses_a_link_outside_Linear()
+    {
+        using var dir = LinearDirWithKey();
+
+        var result = await RunLinear(dir, "action", action: "open:https://example.com/x");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Not a Linear link", result.StdErr);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_with_a_rejected_saved_key_offers_setup_again()
+    {
+        using var dir = LinearDirWithKey();
+
+        var tile = HookResults.ForTile("interval", await RunLinear(dir, "interval", LinearRejected), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("Linear", "Key rejected"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunLinear(dir, "flyout", LinearRejected), TimeSpan.FromSeconds(30));
+        Assert.Equal("Linear rejected the saved key", popup.Value!.Subtitle);
+        Assert.Equal("setkey", popup.Value.Input!.Action);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Linear_error_without_a_cache_fails_with_the_message()
+    {
+        using var dir = LinearDirWithKey();
+        const string limited = """{ "errors": [ { "message": "Rate limit exceeded", "extensions": { "code": "RATELIMITED" } } ] }""";
+
+        var outcome = HookResults.ForTile("interval", await RunLinear(dir, "interval", limited), TimeSpan.FromSeconds(30));
+
+        Assert.True(outcome.Failed);
+        Assert.Contains("Linear: Rate limit exceeded", $"{outcome.ErrorMessage} {outcome.ErrorDetails}");
     }
 }

@@ -63,11 +63,13 @@ public sealed class FakeConnector : ITileConnector
     public Func<string, CancellationToken, Task> OnAction { get; set; } = (_, _) => Task.CompletedTask;
     public Func<CancellationToken, Task<FlyoutState?>> OnFlyout { get; set; } = _ => Task.FromResult<FlyoutState?>(null);
     public List<string> Actions { get; } = [];
+    public List<(string ActionId, string Text)> Inputs { get; } = [];
     public bool Disposed { get; private set; }
     public Action OnDispose { get; set; } = () => { };
 
     public Task StartAsync(ITileContext ctx, CancellationToken ct) { Context = ctx; return OnStart(ctx, ct); }
     public Task OnActionAsync(string actionId, CancellationToken ct) { Actions.Add(actionId); return OnAction(actionId, ct); }
+    public Task OnInputAsync(string actionId, string text, CancellationToken ct) { Inputs.Add((actionId, text)); return Task.CompletedTask; }
     public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => OnFlyout(ct);
     public ValueTask DisposeAsync() { OnDispose(); Disposed = true; return ValueTask.CompletedTask; }
 }

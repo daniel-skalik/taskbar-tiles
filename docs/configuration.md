@@ -116,7 +116,7 @@ The bundled `claude-usage` kind shows your Claude plan's limits: the 5-hour wind
 
 ### Clipboard peek
 
-The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. Copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
+The bundled `clipboard` kind shows the last thing you copied: text as one line with when and how long, an image as its size, files as their count and first name. Click it for your recent copies; click one to copy it again (text only). **Clear** empties the list. The popup stays open after copying, Clear or Save latest. Setting `"history"` (default 15, 1 to 50, also in **Settings…**) is how many it keeps. **Save latest** writes what is on the clipboard now (the top copy) to a file: an image as PNG (when there is both an image and text, the image), text as a UTF-8 .txt file, named like `clipboard-2026-11-05-143012.png`. They go to the folder in setting `"saveFolder"` (also in **Settings…**, with a folder picker; default `Pictures\Clipboard`, created when needed). The popup then shows the file; click it to see it in Explorer. Copied files and copies marked private are not saved. Apart from Save, copies stay in memory only, never on disk or in the log, and are gone when the app closes. Copies that password managers mark as private (Windows' "exclude from clipboard history" flag) are skipped.
 
 ### System monitor
 
@@ -135,6 +135,23 @@ The bundled `git` kind follows one repository: its folder and branch on the firs
 - `"refresh"`: how often it reads `git status` (default `"15s"`, `5s` to `10m`). Setting `"git"` names another `git.exe`.
 
 The icon is green when the branch is clean and up to date, blue with local changes or commits to push, orange when it is behind its upstream, and red with conflicts. Click it for the branch, upstream, change counts and last commit; **Fetch** fetches now and **Open folder** opens the repository in Explorer. It reads without taking Git's index lock, so it never gets in the way of your own Git commands.
+
+### To do
+
+The bundled `todo` kind keeps your tasks in a plain Markdown file: every `- [ ] task` line is an open task and every `- [x] task` line a done one (`*` instead of `-` works too). The tile shows how many are open and the first of them. Click it for the list: type in the box and press Enter to add a task (it goes after the last task in the file), click a task to tick it off or back on, **Clear done** deletes the done lines, and **Open file** opens the file in its usual app. The popup stays open while you work through it. Indented tasks (subtasks, by spaces or tabs) stay indented under their parent in the popup; done tasks are listed flat below.
+
+- Setting `"file"` (also in **Settings…**, with a file picker) is the Markdown file; default `%USERPROFILE%\Documents\todo.md`, created with its folder on the first task you add. Put it in OneDrive, Dropbox or an Obsidian vault to have it elsewhere too.
+- Setting `"showDone"` (default `true`) lists up to 10 done tasks under the open ones.
+- Headings, notes and blank lines in the file are kept as they are and not shown. The file keeps its line endings and encoding (UTF-8, with or without BOM), and each change replaces it in one step.
+- It reads the file every 10 seconds and right after every change, so edits made in another app show up on their own. For a second list, add a second To do tile with another file.
+
+### Linear
+
+The bundled `linear` kind shows the Linear issues assigned to you that are in progress or still to do (state types *started* and *unstarted*, every team; at most 50 issues are counted): how many are in progress and the most pressing one. Click it for up to 15 of them, in progress first, then by priority and the most recently updated; each row shows its state (a half-filled circle in progress, an empty one to do) and its priority on the right (a red "!" for urgent, three to one bars for high to low, dashes for none). Click one to open it in your browser. The tile and popup show the Linear icon from Linear's brand kit. **Open Linear** opens your assigned issues there.
+
+- **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass` (it asks for the key, so it stays out of your shell history).
+- **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
+- Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
 
 ### Pixel scenes
 

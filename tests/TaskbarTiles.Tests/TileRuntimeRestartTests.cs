@@ -330,4 +330,17 @@ public class TileRuntimeRestartTests
         await rt.InvokeActionAsync("next");
         Assert.Equal(2, c.Actions.Count(a => a == "next"));
     }
+
+    [Fact]
+    public async Task InvokeInputAsync_passes_action_id_and_text_to_the_connector()
+    {
+        var f = new Factory();
+        var rt = Create(f.Create);
+        await rt.StartAsync();
+
+        await rt.InvokeInputAsync("add", "Buy milk");
+
+        Assert.Equal([("add", "Buy milk")], f[0].Inputs);
+        await rt.DisposeAsync();
+    }
 }

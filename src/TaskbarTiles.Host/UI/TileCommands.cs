@@ -120,6 +120,9 @@ public sealed class TileCommands(string configFile, string logsDir, Action<strin
     public Task InvokeAsync(TileRuntime runtime, string actionId) =>
         TryFromActionId(actionId, out var command) ? ExecuteAsync(runtime, command) : runtime.InvokeActionAsync(actionId);
 
+    /// <summary>Text typed into a popup input box: always goes to the connector (input actions are never host ids).</summary>
+    public Task InvokeInputAsync(TileRuntime runtime, string actionId, string text) => runtime.InvokeInputAsync(actionId, text);
+
     public async Task ExecuteAsync(TileRuntime runtime, TileCommand command)
     {
         try

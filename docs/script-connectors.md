@@ -37,7 +37,7 @@ A tile can override the kind's other settings in `config.json`, key by key: `"pi
 | `watch` `{ run }` | `watch` | At start; meant to run forever. Every line it prints is one tile update. When it exits it is started again after 2 s, 10 s, 1 min, then every 5 min (back to 2 s after a valid line). A non-zero exit or a failure to start shows the error look until the next valid line; a clean exit is only logged. | One tile JSON object per line |
 | `click` `{ run }` | `click` | On a plain click, only when the tile has no popup. | Tile JSON, or nothing |
 | `flyout` `{ run }` | `flyout` | When the tile is clicked, to build its popup. | Popup JSON; print nothing for no popup (the click then goes to `click`) |
-| `action:<id>` `{ run }` | `action` | When a tile button or popup action with that `id` is pressed. `TILE_ACTION` holds the id. | Tile JSON, or nothing |
+| `action:<id>` `{ run }` | `action` | When a tile button or popup action with that `id` is pressed. `TILE_ACTION` holds the id. An id with a colon, such as `toggle:5:ab12cd34`, runs the `action:toggle` hook when there is no hook for the whole id, so one hook can serve ids that carry data. | Tile JSON, or nothing |
 | `startup` `{ run }` | `startup` | Once at start, before the first `interval` run. Also on "Refresh now" when there is no `interval`. | Tile JSON |
 | `resume` `{ run }` | `resume` | After the PC wakes from sleep. | Tile JSON |
 
@@ -71,6 +71,7 @@ Scripts run hidden, with the kind folder as the working directory and no input (
 | `TILE_ID` | The tile's id from `config.json`, e.g. `ping` |
 | `TILE_HOOK` | `interval`, `watch`, `click`, `flyout`, `action`, `startup` or `resume` |
 | `TILE_ACTION` | The action id for `action:<id>` hooks (e.g. `ping`); empty otherwise |
+| `TILE_INPUT` | For an action sent by the popup's input box: the text typed, trimmed (at most 1000 characters). Empty for every other run. |
 | `TILE_SETTINGS_JSON` | The tile's effective settings as JSON: the kind's `settings` from `tile.json` (including `hooks`) with the tile's own `settings` from `config.json` replacing keys of the same name. Put your own options next to `hooks` (like `"host"` in the `ping` example in configuration.md). |
 
 One script can serve several hooks by looking at `TILE_HOOK`, as both bundled kinds do.
@@ -104,10 +105,12 @@ Print one JSON object. Every field is optional; field names are camelCase.
 |---|---|---|
 | `title` | string | Popup heading. Without it the popup gets a warning in the log and an empty heading. |
 | `subtitle` | string | Under the heading. |
-| `rows` | array | Each row is a string, or `{ "text": "Build #41", "value": "2 min", "icon": { "glyph": "check", "color": "ok" } }`; the icon shows as a colored dot. Add `"action": "<id>"` to make the row clickable: a click closes the popup and runs the `action:<id>` hook. |
+| `rows` | array | Each row is a string, or `{ "text": "Build #41", "value": "2 min", "icon": { "glyph": "check", "color": "ok" } }`; the icon shows as a colored dot. Add `"action": "<id>"` to make the row clickable: a click closes the popup (unless the popup has `stayOpen`) and runs the `action:<id>` hook. Add `"check": false` or `true` to draw a checkbox instead of the dot (ticked when true, with the text dim and struck through); the click is still the row's `action`. Add `"indent": 1` (up to 4) to nest a row under the one above, for example a subtask. Add `"endIcon"` (same form as `icon`) for an icon at the right end. In rows, the glyphs `ring`, `half-ring`, `bars-1` to `bars-3`, `dashes` and `alert` draw as small shapes (a state, a level out of three, no level, an alert); any other glyph is a colored dot. Past about ten rows the rows scroll; the heading, input box and buttons stay in view. |
 | `actions` | array | Buttons at the bottom: `{ "id": "rerun", "label": "Run again", "primary": true }`. `id` is required and runs the `action:<id>` hook; `label` defaults to the id. Ids starting with `host:` are reserved for the host (for example `host:restart` and `host:show-log` on the error popup); do not use them. |
 | `image` | string | Base64 PNG or JPEG shown next to the heading. |
 | `tint` | string | A color like `"#D97757"` washed over the popup's backdrop, strongest at the top. Leave it out for the plain backdrop. |
+| `input` | object | A text box above the rows: `{ "placeholder": "Add a task", "action": "add" }`. Enter runs the `action:<action>` hook with the text in `TILE_INPUT`; empty text does nothing. `action` is required and may not start with `host:`. Add `"secret": true` for a password box that shows dots, for keys and tokens; the host never logs the text. |
+| `stayOpen` | boolean | `true` keeps the popup open after a row, button or input action: when the action is done the `flyout` hook runs again and the popup is redrawn in place. Default `false`: an action closes the popup. Buttons with a `host:` id still close the popup, and an input action may not use a `host:` id. If the action fails, the error popup is shown in place. While an action runs the popup is dimmed and clicks and Enter are ignored. |
 
 ```json
 { "title": "1.1.1.1", "subtitle": "Last 4 pings",

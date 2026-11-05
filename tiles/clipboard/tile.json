@@ -5,7 +5,8 @@
   "connector": "clipboard",
   "width": 200,
   "fields": [
-    { "key": "history", "label": "Keep", "type": "number", "min": 1, "max": 50, "help": "How many recent copies the popup lists. They stay in memory only and are gone when the app closes." }
+    { "key": "history", "label": "Keep", "type": "number", "min": 1, "max": 50, "help": "How many recent copies the popup lists. They stay in memory only and are gone when the app closes." },
+    { "key": "saveFolder", "label": "Save to", "type": "text", "browse": "folder", "help": "Where Save latest in the popup writes the clipboard: an image as PNG, text as a .txt file. Empty: Pictures\\Clipboard." }
   ],
-  "settings": { "history": 15 }
+  "settings": { "history": 15, "saveFolder": "" }
 }

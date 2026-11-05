@@ -1,3 +1,5 @@
+using System.IO;
+using System.Text;
 using System.Text.Json;
 using TaskbarTiles.Contracts;
 using TaskbarTiles.Plugins.Clipboard;
@@ -113,7 +115,8 @@ public class ClipboardViewTests
         Assert.Equal("3 recent copies", flyout.Subtitle);
         Assert.Equal(new string?[] { "copy:7", null, null }, flyout.Rows.Select(r => r.Action));
         Assert.All(flyout.Rows, r => Assert.Equal("14:03", r.Value));
-        Assert.Equal(ClipboardView.ClearAction, Assert.Single(flyout.Actions).Id);
+        Assert.Equal(new[] { ClipboardSave.SaveAction, ClipboardView.ClearAction }, flyout.Actions.Select(a => a.Id));
+        Assert.True(flyout.StayOpen);
     }
 
     [Fact]
@@ -164,6 +167,8 @@ public class ClipboardConnectorTests
         ClipRead _current = new(null);
         public List<string> Written { get; } = [];
         public bool WriteFails { get; set; }
+        public ClipSaveRead ForSave { get; set; }
+        public ClipSaveRead ReadForSave() { lock (_lock) return ForSave; }
 
         public uint SequenceNumber { get { lock (_lock) return _sequence; } }
         public ClipRead Read() { lock (_lock) return _current; }
@@ -320,5 +325,271 @@ public class ClipboardConnectorTests
 
         await connector.DisposeAsync();
         await connector.DisposeAsync();
+    }
+
+    [Fact]
+    public void Save_names_carry_the_time_and_count_up_when_taken()
+    {
+        var now = new DateTime(2026, 11, 5, 14, 30, 12);
+        var taken = new HashSet<string> { "clipboard-2026-11-05-143012.png", "clipboard-2026-11-05-143012-2.png" };
+
+        Assert.Equal("clipboard-2026-11-05-143012.txt", ClipboardSave.FileName(now, ".txt", taken.Contains));
+        Assert.Equal("clipboard-2026-11-05-143012-3.png", ClipboardSave.FileName(now, ".png", taken.Contains));
+    }
+
+    [Fact]
+    public void Save_folder_comes_from_settings_with_variables_expanded_else_pictures()
+    {
+        using var doc = JsonDocument.Parse("""{ "saveFolder": " \"%TEMP%\\clips\" " }""");
+        using var empty = JsonDocument.Parse("""{ "saveFolder": "" }""");
+
+        Assert.Equal(Path.Combine(Environment.GetEnvironmentVariable("TEMP")!, "clips"), ClipboardSave.Folder(doc.RootElement));
+        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Clipboard"), ClipboardSave.Folder(empty.RootElement));
+    }
+
+    [Fact]
+    public void A_relative_save_folder_falls_back_to_pictures()
+    {
+        using var relative = JsonDocument.Parse("""{ "saveFolder": "clips/here" }""");
+
+        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Clipboard"), ClipboardSave.Folder(relative.RootElement));
+    }
+
+    /// <summary>A 2x1 32-bit BI_RGB DIB: 40-byte header, then two pixels (B, G, R, A) with alpha 0, as most apps copy them.</summary>
+    static byte[] TinyDib()
+    {
+        var dib = new byte[40 + 8];
+        BitConverter.GetBytes(40).CopyTo(dib, 0);           // header size
+        BitConverter.GetBytes(2).CopyTo(dib, 4);            // width
+        BitConverter.GetBytes(1).CopyTo(dib, 8);            // height (bottom-up)
+        BitConverter.GetBytes((ushort)1).CopyTo(dib, 12);   // planes
+        BitConverter.GetBytes((ushort)32).CopyTo(dib, 14);  // bits per pixel
+        new byte[] { 0, 0, 255, 0, 255, 0, 0, 0 }.CopyTo(dib, 40); // red, blue
+        return dib;
+    }
+
+    [Fact]
+    public void A_DIB_becomes_a_BMP_file_with_the_pixel_offset_after_header_masks_and_palette()
+    {
+        var bmp = ClipboardSave.BmpFromDib(TinyDib())!;
+        Assert.Equal((byte)'B', bmp[0]);
+        Assert.Equal((byte)'M', bmp[1]);
+        Assert.Equal(14 + 48, BitConverter.ToInt32(bmp, 2));
+        Assert.Equal(14 + 40, BitConverter.ToInt32(bmp, 10));
+
+        var bitfields = TinyDib().Concat(new byte[12]).ToArray(); // room for the masks
+        BitConverter.GetBytes(3u).CopyTo(bitfields, 16); // BI_BITFIELDS: three masks follow a 40-byte header
+        Assert.Equal(14 + 40 + 12, BitConverter.ToInt32(ClipboardSave.BmpFromDib(bitfields)!, 10));
+
+        var paletted = TinyDib().Concat(new byte[1024]).ToArray(); // room for the palette
+        BitConverter.GetBytes((ushort)8).CopyTo(paletted, 14); // 8 bpp, biClrUsed 0: a 256-entry palette
+        Assert.Equal(14 + 40 + 256 * 4, BitConverter.ToInt32(ClipboardSave.BmpFromDib(paletted)!, 10));
+
+        Assert.Null(ClipboardSave.BmpFromDib(new byte[10]));
+    }
+
+    [Fact]
+    public void A_DIB_that_is_JPEG_or_PNG_compressed_or_points_past_its_data_is_not_a_BMP()
+    {
+        foreach (var compression in new[] { 4u, 5u })
+        {
+            var packed = TinyDib();
+            BitConverter.GetBytes(compression).CopyTo(packed, 16);
+            Assert.Null(ClipboardSave.BmpFromDib(packed));
+        }
+
+        var truncatedPalette = TinyDib();
+        BitConverter.GetBytes((ushort)8).CopyTo(truncatedPalette, 14); // 8 bpp: a 1024-byte palette the data lacks
+        BitConverter.GetBytes(0xFFFFFFFFu).CopyTo(truncatedPalette, 32); // biClrUsed huge; must not overflow
+        Assert.Null(ClipboardSave.BmpFromDib(truncatedPalette));
+        Assert.Null(ClipboardSave.BmpFromDib(WithBitCount(8))); // header only, palette missing
+    }
+
+    static byte[] WithBitCount(ushort bits)
+    {
+        var dib = TinyDib()[..40]; // header only, no palette or pixels
+        BitConverter.GetBytes(bits).CopyTo(dib, 14);
+        return dib;
+    }
+
+    [Fact]
+    public void Pixels_with_no_alpha_at_all_become_opaque_and_real_alpha_stays()
+    {
+        var none = new byte[] { 1, 2, 3, 0, 4, 5, 6, 0 };
+        ClipboardSave.OpaqueIfNoAlpha(none);
+        Assert.Equal(new byte[] { 1, 2, 3, 255, 4, 5, 6, 255 }, none);
+
+        var some = new byte[] { 1, 2, 3, 0, 4, 5, 6, 128 };
+        ClipboardSave.OpaqueIfNoAlpha(some);
+        Assert.Equal(new byte[] { 1, 2, 3, 0, 4, 5, 6, 128 }, some);
+    }
+
+    static async Task<(ClipboardConnector Connector, TestTileContext Ctx, FakeClipboard Clip)> SaveSetup(string folder)
+    {
+        var clip = new FakeClipboard();
+        var ctx = new TestTileContext(settingsJson: $$"""{ "saveFolder": "{{folder.Replace('\\', '/')}}" }""");
+        var c = new ClipboardConnector(clip, TimeSpan.FromHours(1), () => new DateTime(2026, 11, 5, 14, 30, 12));
+        await c.StartAsync(ctx, CancellationToken.None);
+        return (c, ctx, clip);
+    }
+
+    [Fact]
+    public async Task Save_writes_text_as_UTF8_and_the_popup_says_where()
+    {
+        using var dir = new TempDir();
+        var folder = Path.Combine(dir.File("out"), "clips"); // created on save
+        var (c, _, clip) = await SaveSetup(folder);
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: "héllo");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        var path = Path.Combine(folder, "clipboard-2026-11-05-143012.txt");
+        Assert.Equal(Encoding.UTF8.GetBytes("héllo"), File.ReadAllBytes(path)); // no BOM
+        var popup = (await c.GetFlyoutAsync(CancellationToken.None))!;
+        Assert.True(popup.StayOpen);
+        Assert.Equal(new[] { ClipboardSave.SaveAction, ClipboardView.ClearAction }, popup.Actions.Select(a => a.Id));
+        Assert.Equal(("Saved clipboard-2026-11-05-143012.txt", ClipboardSave.ShowSavedAction), (popup.Rows[^1].Text, popup.Rows[^1].Action!));
+    }
+
+    [Fact]
+    public async Task Clear_removes_the_save_result_row()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: "hello");
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+        Assert.Contains((await c.GetFlyoutAsync(CancellationToken.None))!.Rows, r => r.Action == ClipboardSave.ShowSavedAction);
+
+        await c.OnActionAsync(ClipboardView.ClearAction, CancellationToken.None);
+
+        Assert.DoesNotContain((await c.GetFlyoutAsync(CancellationToken.None))!.Rows, r => r.Action == ClipboardSave.ShowSavedAction);
+    }
+
+    [Fact]
+    public async Task Save_writes_an_image_as_PNG_when_there_is_also_text()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Dib: TinyDib(), Text: "also text");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        var png = File.ReadAllBytes(Path.Combine(dir.File("clips"), "clipboard-2026-11-05-143012.png"));
+        Assert.Equal(new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G' }, png[..4]);
+    }
+
+    [Theory]
+    [InlineData(false, true)]  // a copied file list
+    [InlineData(true, false)]  // marked private
+    [InlineData(false, false)] // empty
+    public async Task Nothing_to_save_writes_nothing(bool excluded, bool files)
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: excluded ? "secret" : null, Excluded: excluded, Files: files);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.False(Directory.Exists(dir.File("clips")));
+        var last = (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1];
+        Assert.Equal("Nothing to save", last.Text);
+        Assert.Null(last.Action);
+    }
+
+    [Fact]
+    public async Task Whitespace_only_text_is_nothing_to_save()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: " \r\n\t");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal("Nothing to save", (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
+        Assert.False(Directory.Exists(dir.File("clips")));
+    }
+
+    [Fact]
+    public async Task A_failed_write_shows_the_reason_and_logs_it_without_content()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("occupied"), "x"); // the save folder is an existing file
+        var (c, ctx, clip) = await SaveSetup(dir.File("occupied"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Text: "top secret text");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        var last = (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1];
+        Assert.StartsWith("Could not save: ", last.Text);
+        Assert.Null(last.Action);
+        var log = ctx.Logged.Snapshot();
+        Assert.Contains(log, m => m.StartsWith("WARN") && m.Contains("Could not save"));
+        Assert.DoesNotContain(log, m => m.Contains("top secret"));
+    }
+
+    [Fact]
+    public async Task Save_while_another_app_holds_the_clipboard_says_so_and_logs_a_warning()
+    {
+        using var dir = new TempDir();
+        var (c, ctx, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(Retry: true);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal("Could not save: another app holds the clipboard", (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
+        Assert.Contains(ctx.Logged.Snapshot(), m => m.StartsWith("WARN") && m.Contains("another app"));
+        Assert.False(Directory.Exists(dir.File("clips")));
+    }
+
+    [Fact]
+    public async Task Text_over_the_history_limit_is_still_saved()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        var big = new string('a', 1_500_000);
+        clip.ForSave = new ClipSaveRead(Text: big);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal(big, File.ReadAllText(Path.Combine(dir.File("clips"), "clipboard-2026-11-05-143012.txt")));
+    }
+
+    [Theory]
+    [InlineData(true, "Could not save: the image is too large")]
+    [InlineData(false, "Could not save: the image format is not supported")]
+    public async Task An_image_that_cannot_be_saved_does_not_fall_back_to_the_text(bool tooLarge, string expected)
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        var jpegDib = TinyDib();
+        BitConverter.GetBytes(4u).CopyTo(jpegDib, 16); // BI_JPEG
+        clip.ForSave = tooLarge ? new ClipSaveRead(Text: "also text", ImageTooLarge: true) : new ClipSaveRead(Dib: jpegDib, Text: "also text");
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal(expected, (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
+        Assert.False(Directory.Exists(dir.File("clips")));
+    }
+
+    [Fact]
+    public async Task Text_too_large_to_read_says_so()
+    {
+        using var dir = new TempDir();
+        var (c, _, clip) = await SaveSetup(dir.File("clips"));
+        await using var _ = c;
+        clip.ForSave = new ClipSaveRead(TextTooLarge: true);
+
+        await c.OnActionAsync(ClipboardSave.SaveAction, CancellationToken.None);
+
+        Assert.Equal("Could not save: the text is too large", (await c.GetFlyoutAsync(CancellationToken.None))!.Rows[^1].Text);
     }
 }

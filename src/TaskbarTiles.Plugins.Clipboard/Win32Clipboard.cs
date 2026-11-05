@@ -11,7 +11,9 @@ public sealed class Win32Clipboard : IClipboardAccess
     const uint CfBitmap = 2, CfDib = 8, CfUnicodeText = 13, CfHdrop = 15, CfDibV5 = 17;
     const uint GmemMoveable = 0x0002;
     const int OpenAttempts = 6, OpenRetryMs = 15;
+    const int MaxDibBytes = 256 * 1024 * 1024; // a bigger image is not saved rather than copied around
     const int MaxChars = 1_000_000; // a bigger copy is skipped rather than held in memory six times over
+    const int MaxSaveChars = 64 * 1024 * 1024; // Save writes straight to a file, so it takes far more than the history does
 
     // Registered once; the ids are fixed for the session.
     static readonly uint ExcludeId = RegisterClipboardFormat(ClipboardPrivacy.ExcludeFormat);
@@ -29,6 +31,68 @@ public sealed class Win32Clipboard : IClipboardAccess
             return new ClipRead(ReadFiles() ?? ReadText() ?? ReadImage());
         }
         finally { CloseClipboard(); }
+    }
+
+    /// <summary>
+    /// What Save writes: the CF_DIB bytes (or a too-large flag) and the text, with no history limit on the text (up to 64M
+    /// characters, then a too-large flag). Whitespace-only text counts as no text. Never recorded anywhere.
+    /// </summary>
+    public ClipSaveRead ReadForSave()
+    {
+        if (!Open()) return new ClipSaveRead(Retry: true);
+        try
+        {
+            if (ClipboardPrivacy.IsExcluded(IsClipboardFormatAvailable(ExcludeId), ReadDword(CanIncludeId)))
+                return new ClipSaveRead(Excluded: true);
+            if (IsClipboardFormatAvailable(CfHdrop)) return new ClipSaveRead(Files: true);
+            var dib = ReadDibBytes(out var imageTooLarge);
+            var text = ReadSaveText(out var textTooLarge);
+            return new ClipSaveRead(dib, text, ImageTooLarge: imageTooLarge, TextTooLarge: textTooLarge);
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>CF_DIB as bytes (Windows makes it from CF_DIBV5 or CF_BITMAP when only those were copied); null when absent or too large.</summary>
+    static byte[]? ReadDibBytes(out bool tooLarge)
+    {
+        tooLarge = false;
+        if (!IsClipboardFormatAvailable(CfDib)) return null;
+        var handle = GetClipboardData(CfDib);
+        if (handle == 0) return null;
+        var size = (long)GlobalSize(handle);
+        if (size > MaxDibBytes) { tooLarge = true; return null; }
+        if (size < 40) return null;
+        var pointer = GlobalLock(handle);
+        if (pointer == 0) return null;
+        try
+        {
+            var bytes = new byte[size];
+            Marshal.Copy(pointer, bytes, 0, (int)size);
+            return bytes;
+        }
+        finally { GlobalUnlock(handle); }
+    }
+
+    /// <summary>CF_UNICODETEXT up to <see cref="MaxSaveChars"/>; null when absent or only whitespace.</summary>
+    static string? ReadSaveText(out bool tooLarge)
+    {
+        tooLarge = false;
+        if (!IsClipboardFormatAvailable(CfUnicodeText)) return null;
+        var handle = GetClipboardData(CfUnicodeText);
+        if (handle == 0) return null;
+        var size = (long)GlobalSize(handle);
+        var pointer = GlobalLock(handle);
+        if (pointer == 0) return null;
+        try
+        {
+            var chars = (int)Math.Min(size / 2, MaxSaveChars + 1L);
+            var text = Marshal.PtrToStringUni(pointer, chars);
+            var end = text.IndexOf('\0');
+            if (end >= 0) text = text[..end];
+            if (text.Length > MaxSaveChars) { tooLarge = true; return null; }
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+        finally { GlobalUnlock(handle); }
     }
 
     public uint? WriteText(string text)

@@ -5,8 +5,8 @@ namespace TaskbarTiles.Plugins.Clipboard;
 
 /// <summary>
 /// The last thing copied on the tile, and the recent copies in the popup, where a text one can be copied again.
-/// Setting "history": how many copies to keep, 1..50, default 15. Copies live in memory only: never written to disk
-/// or the log, and anything a password manager marks private is not recorded at all.
+/// Setting "history": how many copies to keep, 1..50, default 15. Copies live in memory only: never written to the log,
+/// and to disk only when you press Save. Anything a password manager marks private is not recorded at all.
 /// </summary>
 [TileConnector("clipboard", Width = 200)]
 public sealed class ClipboardConnector : ITileConnector
@@ -24,6 +24,8 @@ public sealed class ClipboardConnector : ITileConnector
     ITileContext? _ctx;
     ClipHistory _history = new(DefaultHistory);
     volatile IReadOnlyList<ClipEntry> _last = [];
+    volatile FlyoutRow? _saveRow; // the last Save's outcome, in memory only
+    volatile string? _savedPath;  // written under the gate, read by ShowSaved without it
     uint _seenSequence; // only touched under the gate
     Task? _loop;
 
@@ -110,6 +112,8 @@ public sealed class ClipboardConnector : ITileConnector
     {
         var ctx = _ctx;
         if (ctx is null || _disposed) return;
+        if (actionId == ClipboardSave.SaveAction) { await SaveAsync(ctx, ct); return; }
+        if (actionId == ClipboardSave.ShowSavedAction) { ShowSaved(ctx); return; }
         if (actionId != ClipboardView.ClearAction && ClipboardView.CopyId(actionId) is not { } id) return;
 
         try { await _gate.WaitAsync(ct); }
@@ -120,6 +124,7 @@ public sealed class ClipboardConnector : ITileConnector
             if (actionId == ClipboardView.ClearAction)
             {
                 _history.Clear();
+                _saveRow = null; _savedPath = null;
                 Publish(ctx);
                 ctx.Log.Info("Clipboard history cleared.");
                 return;
@@ -147,7 +152,76 @@ public sealed class ClipboardConnector : ITileConnector
         finally { _gate.Release(); }
     }
 
-    public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => Task.FromResult<FlyoutState?>(ClipboardView.Flyout(_last));
+    /// <summary>
+    /// Writes what is on the clipboard now into the save folder: an image as PNG (it wins over text), text as UTF-8.
+    /// The outcome becomes the popup's last row. Content never reaches the log.
+    /// </summary>
+    async Task SaveAsync(ITileContext ctx, CancellationToken ct)
+    {
+        try { await _gate.WaitAsync(ct); }
+        catch (OperationCanceledException) { return; }
+        try
+        {
+            if (_disposed) return;
+            ClipSaveRead read;
+            try { read = await Task.Run(_clipboard.ReadForSave, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                ctx.Log.Warn($"Could not read the clipboard to save it: {ex.Message}");
+                _saveRow = new FlyoutRow("Could not save: the clipboard could not be read");
+                return;
+            }
+            if (read.Retry)
+            {
+                ctx.Log.Warn("Could not save the clipboard: another app holds it.");
+                _saveRow = new FlyoutRow("Could not save: another app holds the clipboard");
+                return;
+            }
+            if (read.Excluded || read.Files) { _saveRow = new FlyoutRow("Nothing to save"); return; }
+            var bmp = read.Dib is { } dib ? ClipboardSave.BmpFromDib(dib) : null;
+            // An image that cannot be saved says so rather than quietly saving the text next to it.
+            var problem = read.ImageTooLarge ? "the image is too large"
+                : read.Dib is not null && bmp is null ? "the image format is not supported"
+                : bmp is null && read.TextTooLarge ? "the text is too large"
+                : null;
+            if (problem is not null)
+            {
+                ctx.Log.Warn($"Could not save the clipboard: {problem}.");
+                _saveRow = new FlyoutRow($"Could not save: {problem}");
+                return;
+            }
+            if (bmp is null && string.IsNullOrWhiteSpace(read.Text)) { _saveRow = new FlyoutRow("Nothing to save"); return; }
+
+            try
+            {
+                var folder = ClipboardSave.Folder(ctx.Settings);
+                Directory.CreateDirectory(folder);
+                var name = ClipboardSave.FileName(_now(), bmp is not null ? ".png" : ".txt", n => File.Exists(Path.Combine(folder, n)));
+                var path = Path.Combine(folder, name);
+                if (bmp is not null) await File.WriteAllBytesAsync(path, await PngEncoder.FromBmpAsync(bmp), CancellationToken.None);
+                else await File.WriteAllTextAsync(path, read.Text, new System.Text.UTF8Encoding(false), CancellationToken.None);
+                _savedPath = path;
+                _saveRow = new FlyoutRow($"Saved {name}", Action: ClipboardSave.ShowSavedAction);
+                ctx.Log.Info($"Clipboard saved to {path}.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                ctx.Log.Warn($"Could not save the clipboard: {ex.Message}");
+                _saveRow = new FlyoutRow($"Could not save: {ex.Message}");
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Explorer with the last saved file selected.</summary>
+    void ShowSaved(ITileContext ctx)
+    {
+        if (_savedPath is not { } path || !File.Exists(path)) return;
+        try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""); }
+        catch (Exception ex) { ctx.Log.Warn($"Could not open Explorer: {ex.Message}"); }
+    }
+
+    public Task<FlyoutState?> GetFlyoutAsync(CancellationToken ct) => Task.FromResult<FlyoutState?>(ClipboardView.Flyout(_last, _saveRow));
 
     public async ValueTask DisposeAsync()
     {

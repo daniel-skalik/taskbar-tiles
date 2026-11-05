@@ -243,4 +243,82 @@ public class ScriptOutputTests
         Assert.Null(r.Value!.Tint);
         Assert.Contains(r.Warnings, w => w.Contains("\"tint\""));
     }
+
+    [Fact]
+    public void Popup_input_stay_open_and_check_rows_are_read()
+    {
+        var r = ScriptOutput.ParseFlyout("""
+            {
+              "title": "To do", "stayOpen": true,
+              "input": { "placeholder": "Add a task", "action": "add" },
+              "rows": [ { "text": "Write spec", "action": "toggle:1:ab12cd34", "check": false },
+                        { "text": "Old", "check": true }, "Plain" ]
+            }
+            """);
+
+        Assert.Null(r.Error);
+        Assert.Empty(r.Warnings);
+        var f = r.Value!;
+        Assert.True(f.StayOpen);
+        Assert.Equal(new FlyoutInput("add", "Add a task"), f.Input);
+        Assert.Equal(new bool?[] { false, true, null }, f.Rows.Select(x => x.Check));
+    }
+
+    [Fact]
+    public void A_popup_without_the_new_fields_keeps_the_old_defaults()
+    {
+        var f = ScriptOutput.ParseFlyout("""{ "title": "T" }""").Value!;
+
+        Assert.False(f.StayOpen);
+        Assert.Null(f.Input);
+    }
+
+    [Fact]
+    public void A_secret_input_is_read_and_a_bad_secret_value_is_warned_about()
+    {
+        var f = ScriptOutput.ParseFlyout("""{ "title": "T", "input": { "action": "setkey", "secret": true } }""").Value!;
+        Assert.Equal(new FlyoutInput("setkey", null, Secret: true), f.Input);
+
+        var bad = ScriptOutput.ParseFlyout("""{ "title": "T", "input": { "action": "setkey", "secret": "yes" } }""");
+        Assert.Contains(bad.Warnings, w => w.Contains("\"input.secret\" must be true or false"));
+        Assert.Equal(new FlyoutInput("setkey", null), bad.Value!.Input);
+    }
+
+    [Theory]
+    [InlineData("""{ "title": "T", "input": { "placeholder": "x" } }""", "\"input.action\" is missing")]
+    [InlineData("""{ "title": "T", "input": { "action": "host:restart" } }""", "reserved")]
+    [InlineData("""{ "title": "T", "input": "add" }""", "\"input\" must be an object")]
+    [InlineData("""{ "title": "T", "stayOpen": "yes" }""", "\"stayOpen\" must be true or false")]
+    [InlineData("""{ "title": "T", "rows": [ { "text": "a", "check": 1 } ] }""", "\"rows[0].check\" must be true or false")]
+    public void Bad_new_popup_fields_are_dropped_with_a_warning(string json, string warning)
+    {
+        var r = ScriptOutput.ParseFlyout(json);
+
+        Assert.Null(r.Error);
+        Assert.Contains(r.Warnings, w => w.Contains(warning));
+        Assert.Null(r.Value!.Input);
+        Assert.False(r.Value.StayOpen);
+    }
+
+    [Fact]
+    public void Row_indent_is_read_and_bad_values_are_dropped_with_a_warning()
+    {
+        var r = ScriptOutput.ParseFlyout("""
+            { "title": "T", "rows": [ { "text": "a" }, { "text": "b", "indent": 2 }, { "text": "c", "indent": 9 },
+                                      { "text": "d", "indent": -1 }, { "text": "e", "indent": "1" } ] }
+            """);
+
+        Assert.Equal(new[] { 0, 2, 4, 0, 0 }, r.Value!.Rows.Select(x => x.Indent));
+        Assert.Contains(r.Warnings, w => w.Contains("\"rows[3].indent\" must be a whole number from 0"));
+        Assert.Contains(r.Warnings, w => w.Contains("\"rows[4].indent\" must be a whole number from 0"));
+    }
+
+    [Fact]
+    public void Row_end_icon_is_read()
+    {
+        var r = ScriptOutput.ParseFlyout("""{ "title": "T", "rows": [ { "text": "a", "endIcon": { "glyph": "bars-2", "color": "neutral" } } ] }""");
+
+        Assert.Empty(r.Warnings);
+        Assert.Equal(new TileIcon("bars-2", TileColor.Neutral), r.Value!.Rows[0].EndIcon);
+    }
 }
