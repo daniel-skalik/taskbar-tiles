@@ -156,7 +156,7 @@ function Write-Setup([string]$setup) {
         $popup | ConvertTo-Json -Depth 5 -Compress
     } else {
         $tile = @{ title = 'GitHub'; subtitle = $(if ($setup -eq 'install') { 'Click to install gh' } else { 'Click to sign in' }); icon = @{ glyph = 'sync'; color = 'neutral' } }
-        if ($logo) { $tile.image = $logo }
+        if ($logo) { $tile.image = $logo; $tile.imageColor = 'neutral' }
         $tile | ConvertTo-Json -Depth 5 -Compress
     }
     exit 0
@@ -239,5 +239,5 @@ $tile = @{
     icon     = @{ glyph = 'sync'; color = $color }
     tooltip  = $tip -join "`n"
 }
-if ($logo) { $tile.image = $logo }
+if ($logo) { $tile.image = $logo; $tile.imageColor = $color } # the mark in the state color
 $tile | ConvertTo-Json -Depth 5 -Compress

@@ -87,6 +87,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `tooltip` | string | Shown on hover. |
 | `icon` | string or object | A glyph name (`"check"`), or `{ "glyph": "check", "color": "ok" }`. |
 | `image` | string | Base64 PNG or JPEG, shown instead of the icon. A `data:image/png;base64,` prefix is fine. |
+| `imageColor` | string | A color name (see below): the image draws as one shape in that color, for a one-color logo that shows a state. Without it the image keeps its own colors. |
 | `buttons` | array | Inline icon buttons: `{ "id": "rerun", "glyph": "refresh", "tooltip": "Run again", "enabled": true }`. `id` is required and runs the `action:<id>` hook; `glyph` defaults to `info`, `enabled` to `true`. |
 | `progress` | number | 0 to 1; a thin bar along the bottom. Must be a finite number: values such as `1e999` are dropped with a warning. |
 | `progressMark` | number | 0 to 1; where the bar should be by now, drawn as a dim bar under it. While `progress` is past it, the bar is blue up to the mark and orange beyond. Only shown with `progress`. |

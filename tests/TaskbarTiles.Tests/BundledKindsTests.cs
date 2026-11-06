@@ -556,6 +556,7 @@ public class BundledKindsTests
         Assert.Equal("#1 Conflicting", outcome.Value.Subtitle);
         Assert.Equal(new TileIcon("sync", TileColor.Bad), outcome.Value.Icon);
         Assert.NotNull(outcome.Value.Image); // the GitHub mark, bundled as github.png
+        Assert.Equal(TileColor.Bad, outcome.Value.ImageColor); // drawn in the state color
     }
 
     [Fact]

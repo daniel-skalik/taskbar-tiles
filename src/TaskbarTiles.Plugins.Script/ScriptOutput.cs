@@ -18,7 +18,7 @@ public static class ScriptOutput
     static readonly JsonDocumentOptions Options = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
 
     static readonly HashSet<string> TileFields = new(StringComparer.Ordinal)
-        { "title", "subtitle", "tooltip", "icon", "image", "buttons", "progress", "progressMark", "progressForecast", "sparkline", "urgent" };
+        { "title", "subtitle", "tooltip", "icon", "image", "imageColor", "buttons", "progress", "progressMark", "progressForecast", "sparkline", "urgent" };
 
     static readonly HashSet<string> FlyoutFields = new(StringComparer.Ordinal)
         { "title", "subtitle", "rows", "actions", "image", "tint", "input", "stayOpen" };
@@ -56,6 +56,7 @@ public static class ScriptOutput
             Tooltip = Text(o, "tooltip", w),
             Icon = o.TryGetProperty("icon", out var icon) ? ReadIcon(icon, "icon", w) : null,
             Image = ReadImage(o, w),
+            ImageColor = ReadImageColor(o, w),
             Buttons = ReadButtons(o, w),
             Progress = Number(o, "progress", w),
             ProgressMark = Number(o, "progressMark", w),
@@ -193,11 +194,27 @@ public static class ScriptOutput
     {
         var name = Text(icon, "color", w, where)?.Trim();
         if (string.IsNullOrEmpty(name)) return TileColor.Neutral;
-        // Compare names only: Enum.TryParse would also accept numbers such as "2".
-        foreach (var color in Enum.GetValues<TileColor>())
-            if (string.Equals(color.ToString(), name, StringComparison.OrdinalIgnoreCase)) return color;
+        if (ColorNamed(name) is { } color) return color;
         w.Add($"\"{where}.color\": unknown color \"{name}\"; use neutral, accent, ok, warn or bad.");
         return TileColor.Neutral;
+    }
+
+    /// <summary>"imageColor": a color name; the image then draws as one shape in that color. Null keeps its own colors.</summary>
+    static TileColor? ReadImageColor(JsonElement o, List<string> w)
+    {
+        var name = Text(o, "imageColor", w)?.Trim();
+        if (string.IsNullOrEmpty(name)) return null;
+        if (ColorNamed(name) is { } color) return color;
+        w.Add($"\"imageColor\": unknown color \"{name}\"; use neutral, accent, ok, warn or bad.");
+        return null;
+    }
+
+    // Compare names only: Enum.TryParse would also accept numbers such as "2".
+    static TileColor? ColorNamed(string name)
+    {
+        foreach (var color in Enum.GetValues<TileColor>())
+            if (string.Equals(color.ToString(), name, StringComparison.OrdinalIgnoreCase)) return color;
+        return null;
     }
 
     static byte[]? ReadImage(JsonElement o, List<string> w)

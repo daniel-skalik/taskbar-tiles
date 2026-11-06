@@ -155,7 +155,7 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 
 ### GitHub pull requests
 
-The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The icon is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, and green when nothing is open. Click it for the list, in four groups; click a pull request to open it in your browser. The tile and popup show the GitHub mark, from GitHub's Primer Octicons.
+The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The tile and popup show the GitHub mark, from GitHub's Primer Octicons. On the tile the mark is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, green when nothing is open and gray when yours only wait for others. Click it for the list, in four groups; click a pull request to open it in your browser.
 
 - **Waiting for your review:** someone asked you (or your team) for a review.
 - **Blocked:** yours, with merge conflicts, failing checks, or approved but still blocked by a branch rule.

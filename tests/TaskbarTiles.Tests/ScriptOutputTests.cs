@@ -118,6 +118,16 @@ public class ScriptOutputTests
     }
 
     [Fact]
+    public void ImageColor_names_the_color_the_image_draws_in()
+    {
+        Assert.Equal(TileColor.Warn, ScriptOutput.ParseTile("""{ "imageColor": "WARN" }""").Value!.ImageColor);
+        Assert.Null(ScriptOutput.ParseTile("""{ "title": "x" }""").Value!.ImageColor);
+        var bad = ScriptOutput.ParseTile("""{ "imageColor": "pink" }""");
+        Assert.Null(bad.Value!.ImageColor);
+        Assert.Contains("unknown color", Assert.Single(bad.Warnings));
+    }
+
+    [Fact]
     public void Image_accepts_base64_and_data_urls()
     {
         var b64 = Convert.ToBase64String(new byte[] { 9, 8, 7 });
