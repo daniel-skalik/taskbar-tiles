@@ -35,6 +35,7 @@ var outDir = Path.GetFullPath(args.Length > 0 ? args[0] : Path.Combine(repo, "do
 Directory.CreateDirectory(outDir);
 var claudeLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "claude-usage", "claude.png")));
 var linearLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "linear", "linear.png")));
+var githubLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "github", "github.png")));
 var dockerLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "docker", "docker.png")));
 
 // The scenes animate: run each connector for a moment, at each width drawn, and keep its last frame.
@@ -79,7 +80,7 @@ RunSta(() =>
         ("git", 220, Fixed(Script("""{ "title": "my-app · main", "subtitle": "3 changed, 1 new · ↑2", "icon": { "glyph": "branch", "color": "accent" } }"""))),
         ("todo", 200, Fixed(Script("""{ "title": "3 to do", "subtitle": "Write the release notes", "icon": { "glyph": "check", "color": "accent" } }"""))),
         ("linear", 200, Fixed(Script($$"""{ "title": "2 in progress", "subtitle": "ENG-142 Fix login redirect", "icon": { "glyph": "activity", "color": "accent" }, "image": "{{linearLogo}}" }"""))),
-        ("github", 200, Fixed(Script("""{ "title": "2 need you · 1 review", "subtitle": "#94 Add login with passkeys", "icon": { "glyph": "sync", "color": "warn" } }"""))),
+        ("github", 200, Fixed(Script($$"""{ "title": "2 need you · 1 review", "subtitle": "#94 Add login with passkeys", "icon": { "glyph": "sync", "color": "warn" }, "image": "{{githubLogo}}" }"""))),
         ("uptime", 132, Fixed(Script("""{ "title": "17:30", "subtitle": "up 3d 4h", "icon": { "glyph": "clock", "color": "accent" } }"""))),
         ("aquarium", 200, Scene("aquarium")),
         ("cozy-farm", 200, Scene("cozy-farm")),

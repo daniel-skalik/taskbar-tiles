@@ -101,6 +101,13 @@ function Get-MyStatus($pr) {
     @{ Group = 'waiting'; Label = 'Open'; Color = 'neutral' }
 }
 
+# The GitHub mark (Primer Octicons "mark-github", MIT), bundled as github.png; null if it is missing.
+function Get-Logo {
+    $path = Join-Path $PSScriptRoot 'github.png'
+    if (Test-Path -LiteralPath $path) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) } else { $null }
+}
+$logo = Get-Logo
+
 function Get-Name($pr) { "$(($pr.repository.nameWithOwner -split '/')[-1])#$($pr.number) $($pr.title)" }
 
 $hook = $env:TILE_HOOK
@@ -145,9 +152,12 @@ function Write-Setup([string]$setup) {
                rows = @('Sign in opens a window that runs gh auth login in your browser.')
                actions = @(@{ id = 'signin'; label = 'Sign in'; primary = $true }) }
         }
+        if ($logo) { $popup.image = $logo }
         $popup | ConvertTo-Json -Depth 5 -Compress
     } else {
-        @{ title = 'GitHub'; subtitle = $(if ($setup -eq 'install') { 'Click to install gh' } else { 'Click to sign in' }); icon = @{ glyph = 'sync'; color = 'neutral' } } | ConvertTo-Json -Depth 5 -Compress
+        $tile = @{ title = 'GitHub'; subtitle = $(if ($setup -eq 'install') { 'Click to install gh' } else { 'Click to sign in' }); icon = @{ glyph = 'sync'; color = 'neutral' } }
+        if ($logo) { $tile.image = $logo }
+        $tile | ConvertTo-Json -Depth 5 -Compress
     }
     exit 0
 }
@@ -200,14 +210,16 @@ if ($hook -eq 'flyout') {
     Add-Group 'Waiting for others' @($waiting | ForEach-Object { & $row $_ })
     if (-not $rows.Count) { $rows = @('No open pull requests for you') }
     $subtitle = if ($stale) { "Not updated: $stale" } else { $summary }
-    @{
+    $popup = @{
         title    = 'Pull requests'
         subtitle = $subtitle
         rows     = $rows
         actions  = @(
             @{ id = 'open:https://github.com/pulls/review-requested'; label = 'Reviews' },
             @{ id = 'open:https://github.com/pulls'; label = 'Open GitHub'; primary = $true })
-    } | ConvertTo-Json -Depth 6 -Compress
+    }
+    if ($logo) { $popup.image = $logo }
+    $popup | ConvertTo-Json -Depth 6 -Compress
     exit 0
 }
 
@@ -221,9 +233,11 @@ $title = if ($needYou -and $review.Count) { "$needYou need you $dot $($review.Co
 $color = if ($blocked.Count) { 'bad' } elseif ($action.Count) { 'warn' } elseif ($review.Count) { 'accent' } elseif ($waiting.Count) { 'neutral' } else { 'ok' }
 $tip = @($summary) + @($top | Select-Object -First 6 | ForEach-Object { Get-Name $_ })
 if ($stale) { $tip += "Not updated: $stale" }
-@{
+$tile = @{
     title    = $title
     subtitle = $(if ($top.Count) { "#$($top[0].number) $($top[0].title)" } else { 'Nothing open' })
     icon     = @{ glyph = 'sync'; color = $color }
     tooltip  = $tip -join "`n"
-} | ConvertTo-Json -Depth 5 -Compress
+}
+if ($logo) { $tile.image = $logo }
+$tile | ConvertTo-Json -Depth 5 -Compress

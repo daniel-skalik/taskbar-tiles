@@ -555,6 +555,7 @@ public class BundledKindsTests
         Assert.Equal("4 need you · 1 review", outcome.Value!.Title);
         Assert.Equal("#1 Conflicting", outcome.Value.Subtitle);
         Assert.Equal(new TileIcon("sync", TileColor.Bad), outcome.Value.Icon);
+        Assert.NotNull(outcome.Value.Image); // the GitHub mark, bundled as github.png
     }
 
     [Fact]
@@ -569,6 +570,7 @@ public class BundledKindsTests
         Assert.Empty(outcome.Warnings);
         var f = outcome.Value!;
         Assert.Equal("Pull requests", f.Title);
+        Assert.NotNull(f.Image);
         Assert.Equal("1 to review · 4 need you · 2 waiting", f.Subtitle);
         Assert.Equal(new[]
         {
