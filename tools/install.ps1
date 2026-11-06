@@ -13,7 +13,7 @@
        (Release), which needs the .NET 9 SDK.
     2. Stops TaskbarTiles.exe if it runs from the install folder.
     3. Swaps the staging folder in for the install folder.
-    4. Replaces the bundled tile kinds uptime, media, claude-usage, battery, clipboard, system, docker, git, todo, linear, aquarium,
+    4. Replaces the bundled tile kinds uptime, media, claude-usage, battery, clipboard, system, docker, git, todo, linear, github, aquarium,
        snake, racers and cozy-farm in the tiles folder with the new copies, and removes retired bundled kinds (pixel-scene, claude, ping).
     5. Creates or updates the TaskbarTiles shortcut in the Startup folder.
     6. Starts the installed app.
@@ -22,7 +22,7 @@
 
     Your config.json, logs and every other folder in tiles\ (your own kinds) are never touched. To change a bundled
     kind, copy its folder under a new name first: install replaces tiles\uptime, tiles\media, tiles\claude-usage,
-    tiles\battery, tiles\clipboard, tiles\system, tiles\docker, tiles\git, tiles\todo, tiles\linear, tiles\aquarium, tiles\snake, tiles\racers and tiles\cozy-farm.
+    tiles\battery, tiles\clipboard, tiles\system, tiles\docker, tiles\git, tiles\todo, tiles\linear, tiles\github, tiles\aquarium, tiles\snake, tiles\racers and tiles\cozy-farm.
 
 .PARAMETER AppDir
     Install folder. Default: %LOCALAPPDATA%\TaskbarTiles\app.
@@ -59,7 +59,7 @@ $exe = Join-Path $AppDir 'TaskbarTiles.exe'
 $stage = "$AppDir.new"
 $old = "$AppDir.old"
 $TilesDir = [System.IO.Path]::GetFullPath($TilesDir).TrimEnd('\')
-$bundledKinds = @('uptime', 'media', 'claude-usage', 'battery', 'clipboard', 'system', 'docker', 'git', 'todo', 'linear', 'aquarium', 'snake', 'racers', 'cozy-farm') # replaced on every install; other folders in tiles\ are the user's
+$bundledKinds = @('uptime', 'media', 'claude-usage', 'battery', 'clipboard', 'system', 'docker', 'git', 'todo', 'linear', 'github', 'aquarium', 'snake', 'racers', 'cozy-farm') # replaced on every install; other folders in tiles\ are the user's
 $retiredKinds = @('pixel-scene', 'claude', 'ping') # bundled once, now split up or gone; removed on install
 
 $fromZip = Test-Path -LiteralPath (Join-Path $packaged 'TaskbarTiles.exe')
@@ -98,6 +98,7 @@ foreach ($required in @((Join-Path $stage 'TaskbarTiles.exe'),
         (Join-Path $stage 'tiles\git\tile.json'),
         (Join-Path $stage 'tiles\todo\tile.json'),
         (Join-Path $stage 'tiles\linear\tile.json'),
+        (Join-Path $stage 'tiles\github\tile.json'),
         (Join-Path $stage 'tiles\battery\TaskbarTiles.Plugins.Battery.dll'),
         (Join-Path $stage 'tiles\battery\tile.json'),
         (Join-Path $stage 'tiles\clipboard\TaskbarTiles.Plugins.Clipboard.dll'),

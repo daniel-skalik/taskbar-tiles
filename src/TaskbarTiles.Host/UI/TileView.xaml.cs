@@ -109,7 +109,12 @@ public partial class TileView : UserControl
         ToolTip = _compact ? TileText.CompactTooltip(s) : string.IsNullOrEmpty(s.Tooltip) ? null : s.Tooltip;
 
         var picture = Theme.Decode(s.Image);
-        Picture.Source = picture;
+        // An image with a color draws as one shape in that color: the color fills the image's opaque pixels.
+        var tinted = picture is not null && s.ImageColor is not null;
+        Picture.Source = tinted ? null : picture;
+        PictureTint.Background = tinted ? Theme.ColorFor(s.ImageColor!.Value) : null;
+        PictureTint.OpacityMask = tinted ? new ImageBrush(picture) { Stretch = Stretch.Uniform } : null;
+        PictureTint.Visibility = tinted ? Visibility.Visible : Visibility.Collapsed;
         if (picture is null && s.Icon is { } icon)
         {
             IconGlyph.FontFamily = GlyphFont;

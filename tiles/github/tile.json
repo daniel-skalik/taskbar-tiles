@@ -1,0 +1,22 @@
+{
+  "name": "GitHub pull requests",
+  "description": "Pull requests waiting for your review, and yours that are blocked, need you or wait for others",
+  "group": "Productivity",
+  "connector": "script",
+  "width": 200,
+  "fields": [
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often pull requests are fetched from GitHub." },
+    { "key": "filter", "label": "Filter", "type": "text", "help": "Extra GitHub search qualifiers, such as org:acme or repo:acme/api. Empty: every repository." }
+  ],
+  "settings": {
+    "refresh": "2m",
+    "filter": "",
+    "hooks": {
+      "interval":       { "every": "$refresh", "run": "github.ps1" },
+      "flyout":         { "run": "github.ps1" },
+      "action:open":    { "run": "github.ps1" },
+      "action:install": { "run": "github.ps1" },
+      "action:signin":  { "run": "github.ps1" }
+    }
+  }
+}

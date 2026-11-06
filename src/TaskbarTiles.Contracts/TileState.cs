@@ -23,6 +23,9 @@ public sealed record TileState
     /// <summary>PNG or JPEG bytes, shown instead of the icon (e.g. album art).</summary>
     public byte[]? Image { get; init; }
 
+    /// <summary>When set, <see cref="Image"/> draws as one shape (its opaque pixels) in this color, e.g. a white logo shown in a state color.</summary>
+    public TileColor? ImageColor { get; init; }
+
     /// <summary>A picture across the whole tile, e.g. an animation frame; title and subtitle draw over it.</summary>
     public TileCanvas? Canvas { get; init; }
 
