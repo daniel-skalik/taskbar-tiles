@@ -153,6 +153,19 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 - **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
 - Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
 
+### GitHub pull requests
+
+The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The icon is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, and green when nothing is open. Click it for the list, in four groups; click a pull request to open it in your browser.
+
+- **Waiting for your review:** someone asked you (or your team) for a review.
+- **Blocked:** yours, with merge conflicts, failing checks, or approved but still blocked by a branch rule.
+- **Needs your action:** yours, with changes requested, behind its base branch, or ready to merge.
+- **Waiting for others:** yours, waiting for a review or for checks to finish; drafts come last.
+
+- **Setting it up:** the tile talks to GitHub through the [GitHub CLI](https://cli.github.com/) (`gh`) and its sign-in, so it never sees or stores a token. Without `gh` the popup offers **Install gh**: a window installs it with `winget` (it asks first), then runs `gh auth login` in your browser. When `gh` is installed but not signed in, **Sign in** opens that sign-in window.
+- Setting `"filter"` (also in **Settings…**) adds GitHub search qualifiers, such as `org:acme` or `repo:acme/api`; empty means every repository.
+- Setting `"refresh"` (default `2m`, 1 to 30 minutes) is how often pull requests are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last list and says so in its tooltip.
+
 ### Pixel scenes
 
 Four bundled kinds draw a tiny animated world across the whole tile; click to join in, hover for the score or status. In the + picker they are under **Fun**.

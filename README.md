@@ -31,6 +31,7 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 | <img src="docs/images/tile-git.png" alt="Git repository tile" height="48"> | **Git repository**<br>A repository's branch, changes, and how far it is ahead of or behind its upstream. |
 | <img src="docs/images/tile-todo.png" alt="To do tile" height="48"> | **To do**<br>Tasks from a Markdown file; tick them off and add new ones from the popup. |
 | <img src="docs/images/tile-linear.png" alt="Linear tile" height="48"> | **Linear**<br>Your issues in In Progress and Todo; click one to open it. |
+| <img src="docs/images/tile-github.png" alt="GitHub pull requests tile" height="48"> | **GitHub pull requests**<br>Pull requests waiting for your review, and yours that are blocked, need you or wait for others. |
 | <img src="docs/images/tile-uptime.png" alt="Clock and uptime tile" height="48"> | **Clock and uptime**<br>The time, and how long Windows has been up. |
 | <img src="docs/images/tile-aquarium.png" alt="Aquarium tile" height="48"> | **Aquarium**<br>Fish and bubbles; click to feed them. |
 | <img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile" height="48"> | **Cozy farm**<br>A farm that follows your clock and the real sunrise and sunset. |

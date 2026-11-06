@@ -79,6 +79,7 @@ RunSta(() =>
         ("git", 220, Fixed(Script("""{ "title": "my-app · main", "subtitle": "3 changed, 1 new · ↑2", "icon": { "glyph": "branch", "color": "accent" } }"""))),
         ("todo", 200, Fixed(Script("""{ "title": "3 to do", "subtitle": "Write the release notes", "icon": { "glyph": "check", "color": "accent" } }"""))),
         ("linear", 200, Fixed(Script($$"""{ "title": "2 in progress", "subtitle": "ENG-142 Fix login redirect", "icon": { "glyph": "activity", "color": "accent" }, "image": "{{linearLogo}}" }"""))),
+        ("github", 200, Fixed(Script("""{ "title": "2 need you · 1 review", "subtitle": "#94 Add login with passkeys", "icon": { "glyph": "sync", "color": "warn" } }"""))),
         ("uptime", 132, Fixed(Script("""{ "title": "17:30", "subtitle": "up 3d 4h", "icon": { "glyph": "clock", "color": "accent" } }"""))),
         ("aquarium", 200, Scene("aquarium")),
         ("cozy-farm", 200, Scene("cozy-farm")),

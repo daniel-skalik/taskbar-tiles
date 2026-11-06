@@ -19,7 +19,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "linear", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "github", "linear", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
@@ -490,6 +490,140 @@ public class BundledKindsTests
         var row = Assert.Single(outcome.Value!.Rows);
         Assert.Equal("Nothing open", row.Text);
         Assert.Null(row.Action);
+    }
+
+    /// <summary>One pull request node as GitHub's search returns it.</summary>
+    static string Pr(int number, string title, string updated, string decision = "REVIEW_REQUIRED", string mergeable = "MERGEABLE",
+        string mergeState = "BLOCKED", string? checks = "SUCCESS", bool draft = false) =>
+        $$"""
+        { "number": {{number}}, "title": "{{title}}", "url": "https://github.com/acme/api/pull/{{number}}", "isDraft": {{(draft ? "true" : "false")}},
+          "updatedAt": "{{updated}}", "reviewDecision": "{{decision}}", "mergeable": "{{mergeable}}", "mergeStateStatus": "{{mergeState}}",
+          "repository": { "nameWithOwner": "acme/api" },
+          "commits": { "nodes": [ { "commit": { "statusCheckRollup": {{(checks is null ? "null" : $"{{ \"state\": \"{checks}\" }}")}} } } ] } }
+        """;
+
+    static readonly string GitHubPulls = $$"""
+        { "data": {
+          "review": { "nodes": [ {{Pr(10, "Their change", "2026-11-05T10:00:00Z")}} ] },
+          "mine": { "nodes": [
+            {{Pr(1, "Conflicting", "2026-11-05T09:00:00Z", mergeable: "CONFLICTING", mergeState: "DIRTY")}},
+            {{Pr(2, "Red checks", "2026-11-05T08:00:00Z", checks: "FAILURE")}},
+            {{Pr(3, "Fix asked", "2026-11-05T07:00:00Z", decision: "CHANGES_REQUESTED")}},
+            {{Pr(4, "Approved", "2026-11-05T06:00:00Z", decision: "APPROVED", mergeState: "CLEAN")}},
+            {{Pr(6, "Sketch", "2026-11-05T11:00:00Z", draft: true, mergeState: "DRAFT")}},
+            {{Pr(5, "In review", "2026-11-05T05:00:00Z")}}
+          ] } } }
+        """;
+
+    /// <summary>Runs github.ps1 with <paramref name="response"/> standing in for gh, so no test reaches the network.</summary>
+    static Task<ScriptResult> RunGitHub(TempDir dir, string hook, string response, string action = "", string? gh = null)
+    {
+        File.WriteAllText(dir.File("response.json"), response);
+        var env = new Dictionary<string, string> { ["TILE_GITHUB_RESPONSE"] = dir.File("response.json"), ["TILE_ACTION"] = action };
+        if (gh is not null) env["TILE_GITHUB_GH"] = gh;
+        return RunBundled("github", "github.ps1", hook, extraEnv: env);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_without_gh_offers_to_install_it()
+    {
+        using var dir = new TempDir();
+        var noGh = dir.File("missing-gh.exe");
+
+        var tile = HookResults.ForTile("interval", await RunGitHub(dir, "interval", GitHubPulls, gh: noGh), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("GitHub", "Click to install gh"), (tile.Value!.Title, tile.Value.Subtitle));
+
+        var popup = HookResults.ForFlyout("flyout", await RunGitHub(dir, "flyout", GitHubPulls, gh: noGh), TimeSpan.FromSeconds(30));
+        Assert.Empty(popup.Warnings);
+        Assert.Equal("Needs the GitHub CLI (gh)", popup.Value!.Subtitle);
+        Assert.Equal(new[] { "open:https://cli.github.com/", "install" }, popup.Value.Actions.Select(a => a.Id));
+        Assert.True(popup.Value.Actions[1].Primary);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_tile_counts_what_needs_you_and_shows_the_most_urgent()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForTile("interval", await RunGitHub(dir, "interval", GitHubPulls), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal("4 need you · 1 review", outcome.Value!.Title);
+        Assert.Equal("#1 Conflicting", outcome.Value.Subtitle);
+        Assert.Equal(new TileIcon("sync", TileColor.Bad), outcome.Value.Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_popup_groups_pull_requests_by_what_they_wait_on()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunGitHub(dir, "flyout", GitHubPulls), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        Assert.Equal("Pull requests", f.Title);
+        Assert.Equal("1 to review · 4 need you · 2 waiting", f.Subtitle);
+        Assert.Equal(new[]
+        {
+            "Waiting for your review (1)", "api#10 Their change",
+            "Blocked (2)", "api#1 Conflicting", "api#2 Red checks",
+            "Needs your action (2)", "api#3 Fix asked", "api#4 Approved",
+            "Waiting for others (2)", "api#5 In review", "api#6 Sketch",
+        }, f.Rows.Select(r => r.Text));
+        Assert.Equal(new string?[] { null, "Review", null, "Conflicts", "Checks failing", null, "Changes requested", "Ready to merge", null, "Awaiting review", "Draft" },
+            f.Rows.Select(r => r.Value));
+        Assert.Equal("open:https://github.com/acme/api/pull/10", f.Rows[1].Action);
+        Assert.Null(f.Rows[0].Action);
+        Assert.Equal(1, f.Rows[1].Indent);
+        Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[3].Icon);
+        Assert.Equal(new TileIcon("ring", TileColor.Ok), f.Rows[7].Icon);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_with_nothing_open_is_all_clear()
+    {
+        using var dir = new TempDir();
+        const string none = """{ "data": { "review": { "nodes": [] }, "mine": { "nodes": [] } } }""";
+
+        var tile = HookResults.ForTile("interval", await RunGitHub(dir, "interval", none), TimeSpan.FromSeconds(30));
+        Assert.Equal(("All clear", "Nothing open"), (tile.Value!.Title, tile.Value.Subtitle));
+        Assert.Equal(new TileIcon("sync", TileColor.Ok), tile.Value.Icon);
+
+        var popup = HookResults.ForFlyout("flyout", await RunGitHub(dir, "flyout", none), TimeSpan.FromSeconds(30));
+        Assert.Equal("No open pull requests for you", Assert.Single(popup.Value!.Rows).Text);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_errors_show_the_error_look()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForTile("interval",
+            await RunGitHub(dir, "interval", """{ "errors": [ { "message": "Something broke" } ] }"""), TimeSpan.FromSeconds(30));
+
+        Assert.True(outcome.Failed);
+        Assert.Contains("GitHub: Something broke", outcome.ErrorDetails);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_open_refuses_links_outside_GitHub()
+    {
+        using var dir = new TempDir();
+
+        var result = await RunGitHub(dir, "action", GitHubPulls, action: "open:https://evil.example/x");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Not a GitHub link", result.StdErr);
     }
 
     const string LinearIssues = """
