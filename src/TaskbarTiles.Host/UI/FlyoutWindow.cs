@@ -219,11 +219,18 @@ public static class FlyoutWindow
             if (_busy) return;
             _busy = true;
             var window = Window;
-            var content = window?.Content is Border { Child: Border { Child: UIElement c } } ? c : null;
+            var inner = window?.Content is Border { Child: Border { Child: UIElement } b } ? b : null;
+            var content = inner?.Child;
             var replaced = false;
             var placeholder = _input?.Tag;
-            // Feedback while the action runs (it can take seconds): dim the popup, ignore the mouse, say so in the box.
-            if (content is not null) { content.Opacity = 0.6; content.IsHitTestVisible = false; }
+            // Feedback while the action runs (it can take seconds): dim the popup, ignore the mouse, spin a ring over it
+            // and say so in the box.
+            if (inner is not null && content is not null)
+            {
+                content.Opacity = 0.6; content.IsHitTestVisible = false;
+                inner.Child = null;
+                inner.Child = new Grid { Children = { content, Spinner() } };
+            }
             if (_input is not null) _input.Tag = "Working…";
             try
             {
@@ -245,12 +252,35 @@ public static class FlyoutWindow
             finally
             {
                 _busy = false;
-                if (!replaced && content is not null && _open == window)
+                if (!replaced && inner is not null && content is not null && _open == window)
                 {
+                    if (inner.Child is Grid busy) { busy.Children.Clear(); inner.Child = content; } // drop the spinner
                     content.Opacity = 1; content.IsHitTestVisible = true;
                     if (_input is not null && placeholder is not null) _input.Tag = placeholder;
                 }
             }
+        }
+
+        /// <summary>
+        /// A ring with a gap that turns, centered over the popup while an action runs. It fades in after a moment, so an
+        /// action that answers at once does not flash it.
+        /// </summary>
+        internal static FrameworkElement Spinner()
+        {
+            var turn = new RotateTransform();
+            var ring = new System.Windows.Shapes.Ellipse
+            {
+                Width = 30, Height = 30, StrokeThickness = 3, StrokeDashArray = [20, 100], StrokeDashCap = PenLineCap.Round,
+                RenderTransform = turn, RenderTransformOrigin = new Point(0.5, 0.5),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false, Opacity = 0,
+            };
+            ring.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "TileForeground");
+            turn.BeginAnimation(RotateTransform.AngleProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9)) { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
+            ring.BeginAnimation(UIElement.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { BeginTime = TimeSpan.FromMilliseconds(150) });
+            return ring;
         }
 
         /// <summary>Enter in an input box: sends the trimmed text (never logged). Empty text, or a running action, keeps the box as is.</summary>

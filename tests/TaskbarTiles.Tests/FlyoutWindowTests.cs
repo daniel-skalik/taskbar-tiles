@@ -24,6 +24,16 @@ public class FlyoutWindowTests
     });
 
     [Fact]
+    public void The_busy_spinner_starts_hidden_and_lets_clicks_through() => Sta.Run(() =>
+    {
+        var spinner = FlyoutWindow.TilePopup.Spinner();
+
+        Assert.Equal(0, spinner.Opacity); // fades in only when the action takes a moment
+        Assert.False(spinner.IsHitTestVisible);
+        Assert.IsType<System.Windows.Media.RotateTransform>(spinner.RenderTransform);
+    });
+
+    [Fact]
     public void An_indented_row_moves_right_by_one_checkbox_per_level() => Sta.Run(() =>
     {
         Assert.Equal(0, FlyoutWindow.Row(new FlyoutRow("a"), first: true, _ => { }).Margin.Left);
