@@ -162,7 +162,8 @@ The bundled `github` kind shows your open pull requests on GitHub (at most 30 of
 - **Blocked:** yours, with merge conflicts, failing checks, or approved but still blocked by a branch rule.
 - **Needs your action:** yours, with changes requested, behind its base branch, or ready to merge.
 - **Waiting for others:** yours, waiting for a review or for checks to finish; drafts come last.
-- **Actions:** recent GitHub Actions runs: the latest run of each workflow on each branch from the last day, failed first, then waiting for approval, running, passed and cancelled. It lists runs you started in the repositories of your open pull requests, and anyone's runs in the repositories you watch. A failed run or one waiting for approval counts as needing you and turns the mark red or amber; **Re-run failed** re-runs the failed jobs of every failed run listed.
+- **Actions:** recent GitHub Actions runs: the latest run of each workflow on each branch from the last day, failed first, then waiting for approval, running, passed and cancelled. It lists runs you started in the repositories of your open pull requests, and anyone's runs in the repositories you watch. A failed run or one waiting for approval counts as needing you and turns the mark red or amber.
+- **Refresh** in the popup fetches pull requests and runs again at once (like **Refresh now**); **Open GitHub** opens your pull requests there.
 
 - **Setting it up:** the tile talks to GitHub through the [GitHub CLI](https://cli.github.com/) (`gh`) and its sign-in, so it never sees or stores a token. Without `gh` the popup offers **Install gh**: a window installs it with `winget` (it asks first), then runs `gh auth login` in your browser. When `gh` is installed but not signed in, **Sign in** opens that sign-in window.
 - Setting `"repos"` (**Watch Actions in**) lists up to 10 repositories, as `owner/name` separated by commas, whose runs you see from anyone, such as `acme/api` to watch its main branch.

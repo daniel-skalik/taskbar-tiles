@@ -639,7 +639,7 @@ public class BundledKindsTests
         Assert.Equal(new string?[] { null, "Failed", "Running", "Passed" }, f.Rows.Select(r => r.Value));
         Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[1].Icon);
         Assert.Equal("open:https://github.com/acme/api/actions/runs/2", f.Rows[1].Action);
-        Assert.Equal(new[] { "rerun", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
+        Assert.Equal(new[] { "refresh", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
     }
 
     [Fact]

@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 # Taskbar Tiles bundled kind "github": open pull requests that wait for your review, and yours that need you, are
 # blocked or wait for others; and recent GitHub Actions runs. Hooks (tile.json): interval, flyout, action:open
-# (ids "open:<url>"), action:rerun, action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
+# (ids "open:<url>"), action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
 # folder under a new name before changing it.
 # Talks to GitHub through the GitHub CLI (gh) and its sign-in; this script never sees, stores or prints a token.
 # Settings: "refresh" (how often to fetch), "filter" (extra search qualifiers such as "org:acme"), "repos" (repositories
@@ -184,27 +184,6 @@ if ($hook -eq 'action') {
         Start-Process $url
         exit 0
     }
-    if ($action -eq 'rerun') {
-        # Re-runs the failed jobs of each failed run the popup listed (from the cache), then drops the cache so the
-        # next popup fetches again.
-        $gh = Get-Gh
-        if (-not $gh) { Fail 'The GitHub CLI is not installed.' }
-        $cached = Read-Cache
-        if (-not $cached) { exit 0 }
-        $problems = @()
-        foreach ($f in @(Get-LatestRuns @($cached.data.runs) | Where-Object { $_.Status.Group -eq 'failed' })) {
-            if ($f.Run.repo -notmatch '^[\w.-]+/[\w.-]+$') { continue }
-            try {
-                $ErrorActionPreference = 'Continue'
-                $out = & $gh run rerun ([string][long]$f.Run.id) --failed -R $f.Run.repo 2>&1
-                $code = $LASTEXITCODE
-            } finally { $ErrorActionPreference = 'Stop' }
-            if ($code -ne 0) { $problems += "$($f.Run.workflow): $(@(@($out | ForEach-Object { "$_" }) | Where-Object { $_.Trim() })[0])" }
-        }
-        Remove-Item -LiteralPath $cache -ErrorAction SilentlyContinue
-        if ($problems.Count) { Fail "Could not re-run $($problems -join '; ')" }
-        exit 0
-    }
     if ($action -eq 'install') {
         # winget when Windows has it (it asks before installing), else the download page.
         if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
@@ -306,7 +285,7 @@ if ($hook -eq 'flyout') {
         subtitle = $subtitle
         rows     = $rows
         actions  = @(
-            $(if ($failedRuns.Count) { @{ id = 'rerun'; label = 'Re-run failed' } } else { @{ id = 'open:https://github.com/pulls/review-requested'; label = 'Reviews' } }),
+            @{ id = 'refresh'; label = 'Refresh' }, # the app's own "Refresh now": runs interval, which fetches again
             @{ id = 'open:https://github.com/pulls'; label = 'Open GitHub'; primary = $true })
     }
     if ($logo) { $popup.image = $logo }
