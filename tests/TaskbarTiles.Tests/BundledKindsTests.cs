@@ -83,12 +83,12 @@ public class BundledKindsTests
     }
 
     /// <summary>Runs claude-usage.ps1 on <paramref name="responseJson"/> instead of calling the usage endpoint.</summary>
-    static async Task<ScriptResult> RunUsage(string hook, string responseJson)
+    static async Task<ScriptResult> RunUsage(string hook, string responseJson, string action = "")
     {
         using var dir = new TempDir();
         File.WriteAllText(dir.File("usage.json"), responseJson);
         return await RunBundled("claude-usage", "claude-usage.ps1", hook,
-            extraEnv: new Dictionary<string, string> { ["TILE_CLAUDE_USAGE_RESPONSE"] = dir.File("usage.json") });
+            extraEnv: new Dictionary<string, string> { ["TILE_CLAUDE_USAGE_RESPONSE"] = dir.File("usage.json"), ["TILE_ACTION"] = action });
     }
 
     static string UsageSample(double hour, double week) => $$"""
@@ -137,7 +137,18 @@ public class BundledKindsTests
         Assert.Equal("70% at reset", outcome.Value.Rows[1].Value);
         Assert.Equal("25% at reset", outcome.Value.Rows[3].Value); // 18% in 120.5 of 168 hours
         Assert.Equal("12%", outcome.Value.Rows[4].Value);
-        Assert.Equal(new[] { "refresh", "open" }, outcome.Value.Actions.Select(a => a.Id));
+        Assert.Equal(new[] { "reload", "open" }, outcome.Value.Actions.Select(a => a.Id));
+        Assert.True(outcome.Value.StayOpen); // Refresh redraws in place
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_refresh_reads_fresh_numbers_and_prints_the_tile()
+    {
+        var outcome = HookResults.ForTile("action", await RunUsage("action", UsageSample(42, 18), action: "reload"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.NotNull(outcome.Value?.Title);
     }
 
     [Fact]
@@ -639,7 +650,20 @@ public class BundledKindsTests
         Assert.Equal(new string?[] { null, "Failed", "Running", "Passed" }, f.Rows.Select(r => r.Value));
         Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[1].Icon);
         Assert.Equal("open:https://github.com/acme/api/actions/runs/2", f.Rows[1].Action);
-        Assert.Equal(new[] { "refresh", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
+        Assert.Equal(new[] { "reload", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
+        Assert.True(f.StayOpen); // Refresh redraws in place
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_refresh_fetches_and_prints_the_tile()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForTile("action", await RunGitHub(dir, "action", GitHubRuns, action: "reload"), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal("1 need you", outcome.Value!.Title);
     }
 
     [Fact]

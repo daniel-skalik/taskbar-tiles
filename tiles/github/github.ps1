@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 # Taskbar Tiles bundled kind "github": open pull requests that wait for your review, and yours that need you, are
 # blocked or wait for others; and recent GitHub Actions runs. Hooks (tile.json): interval, flyout, action:open
-# (ids "open:<url>"), action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
+# (ids "open:<url>"), action:reload, action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
 # folder under a new name before changing it.
 # Talks to GitHub through the GitHub CLI (gh) and its sign-in; this script never sees, stores or prints a token.
 # Settings: "refresh" (how often to fetch), "filter" (extra search qualifiers such as "org:acme"), "repos" (repositories
@@ -176,6 +176,8 @@ $logo = Get-Logo
 function Get-Name($pr) { "$(($pr.repository.nameWithOwner -split '/')[-1])#$($pr.number) $($pr.title)" }
 
 $hook = $env:TILE_HOOK
+# The popup's Refresh: fetch now, as interval does, and print the tile; the popup stays open and redraws from the fresh cache.
+if ($hook -eq 'action' -and "$env:TILE_ACTION" -eq 'reload') { $hook = 'interval' }
 if ($hook -eq 'action') {
     $action = "$env:TILE_ACTION"
     if ($action.StartsWith('open:')) {
@@ -283,9 +285,10 @@ if ($hook -eq 'flyout') {
     $popup = @{
         title    = 'Pull requests'
         subtitle = $subtitle
+        stayOpen = $true # Refresh redraws in place; opening a link moves focus to the browser, which closes it anyway
         rows     = $rows
         actions  = @(
-            @{ id = 'refresh'; label = 'Refresh' }, # the app's own "Refresh now": runs interval, which fetches again
+            @{ id = 'reload'; label = 'Refresh' },
             @{ id = 'open:https://github.com/pulls'; label = 'Open GitHub'; primary = $true })
     }
     if ($logo) { $popup.image = $logo }

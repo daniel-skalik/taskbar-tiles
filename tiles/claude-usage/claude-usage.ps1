@@ -1,5 +1,6 @@
 # Taskbar Tiles bundled kind "claude-usage": your Claude plan's 5-hour and weekly usage limits, from the usage endpoint
-# Claude Code's /usage reads, signed in with Claude Code's login. Hooks (tile.json): interval, flyout, action:open.
+# Claude Code's /usage reads, signed in with Claude Code's login. Hooks (tile.json): interval, flyout, action:open,
+# action:reload.
 # See docs/script-connectors.md.
 # Replaced on every install: copy this folder under a new name before changing it.
 # Settings: "credentials" (path to Claude Code's .credentials.json; default: %CLAUDE_CONFIG_DIR% or %USERPROFILE%\.claude).
@@ -14,6 +15,8 @@ if ($env:TILE_HOOK -eq 'action' -and $env:TILE_ACTION -eq 'open') {
     Start-Process 'https://claude.ai/settings/usage'
     exit 0
 }
+# The popup's Refresh: read fresh numbers now, as interval does, and print the tile; the popup stays open and redraws.
+if ($env:TILE_HOOK -eq 'action' -and $env:TILE_ACTION -eq 'reload') { $env:TILE_HOOK = 'interval' }
 
 # The last answer, so the popup does not call the endpoint again and a failed call can still show recent numbers.
 $cache = Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-claude-usage-$env:TILE_ID.json"
@@ -174,8 +177,8 @@ if ($env:TILE_HOOK -eq 'flyout') {
         subtitle = $updated
         tint     = '#D97757' # Claude's clay
         rows     = $rows
-        # "refresh" is the host's own action: it runs interval again, which reads fresh numbers.
-        actions  = @(@{ id = 'refresh'; label = 'Refresh now' }, @{ id = 'open'; label = 'Open usage page'; primary = $true })
+        stayOpen = $true # Refresh redraws in place
+        actions  = @(@{ id = 'reload'; label = 'Refresh now' }, @{ id = 'open'; label = 'Open usage page'; primary = $true })
     }
     $image = Get-LogoImage ''
     if ($image) { $popup.image = $image }
