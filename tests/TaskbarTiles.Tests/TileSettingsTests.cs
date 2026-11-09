@@ -58,6 +58,22 @@ public class TileSettingsTests
         Assert.Empty(TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json").Fields!);
     }
 
+    [Fact]
+    public void Settings_actions_are_read_from_tile_json()
+    {
+        var json = TileJson.Parse("""{ "name": "A", "connector": "script", "settingsActions": [ { "id": "forget", "label": "Forget key" } ] }""", "t.json");
+
+        Assert.Null(json.Error);
+        Assert.Equal(new SettingsAction("forget", "Forget key"), Assert.Single(json.SettingsActions!));
+        Assert.Empty(TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json").SettingsActions!);
+    }
+
+    [Theory]
+    [InlineData("""{ "id": "x" }""", "t.json: settings action 1 needs an \"id\" and a \"label\".")]
+    [InlineData("""{ "id": "x", "label": "X" }, { "id": "x", "label": "Y" }""", "t.json: settings action 2 repeats the id \"x\".")]
+    public void Bad_settings_actions_break_the_kind(string actions, string expected) =>
+        Assert.Equal(expected, TileJson.Parse($$"""{ "name": "A", "connector": "script", "settingsActions": [ {{actions}} ] }""", "t.json").Error);
+
     static readonly TileField Count = new("count", "Pings", FieldType.Number, Min: 1, Max: 10);
     static readonly TileField Every = new("interval", "Every", FieldType.Duration, MinDuration: TimeSpan.FromSeconds(10), MaxDuration: TimeSpan.FromHours(1));
 
@@ -144,6 +160,21 @@ public class TileSettingsTests
         Assert.Equal("1.1.1.1", form.Defaults.GetProperty("host").GetString());
         Assert.Null(host.SettingsFor("u"));
         Assert.Null(host.SettingsFor("ghost"));
+    }
+
+    [Fact]
+    public void A_kind_with_only_settings_actions_has_settings()
+    {
+        var writer = new FakeConfigWriter(Config);
+        var kinds = TestKinds.Of(TestKinds.Script("ping"), TestKinds.Script("uptime") with { SettingsActions = [new SettingsAction("forget", "Forget key")] });
+        var host = new HostController(ConnectorCatalog.Empty, () => writer.Current,
+            new FakeTaskbarSource { Current = [FakeTaskbarSource.Display("MAIN", true)] }, new ImmediateDispatcher(),
+            _ => new CollectingLog(), FakeBar.Into(), writer: writer, kinds: () => kinds);
+        host.Start();
+
+        var form = host.SettingsFor("u")!;
+        Assert.Empty(form.Fields);
+        Assert.Equal("forget", Assert.Single(form.Actions!).Id);
     }
 
     [Fact]

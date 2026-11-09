@@ -490,7 +490,7 @@ public sealed class TileBar : Window, ITileBarView
             try { NotificationWindow.Show(ConfigNotice.SettingsNotSavedTitle, ConfigNotice.SaveFailedBody(error), _light ?? false, _commands.OpenConfig, _log); }
             catch (Exception ex) { _log.Error("Could not show the save notice", ex); }
             return false;
-        }, FlyoutWindow.CloseOpen);
+        }, FlyoutWindow.CloseOpen, id => _ = _commands.InvokeAsync(runtime, id));
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
         FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log, tint: look.Tint);
     }

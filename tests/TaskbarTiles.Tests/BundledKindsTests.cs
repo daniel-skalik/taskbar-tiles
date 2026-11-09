@@ -751,7 +751,7 @@ public class BundledKindsTests
         Assert.Equal(new[] { new TileIcon("bars-2"), new TileIcon("alert", TileColor.Bad), new TileIcon("dashes") }, f.Rows.Select(r => r.EndIcon));
         Assert.NotNull(f.Image);
         Assert.Equal("open:https://linear.app/acme/issue/ENG-3/fix", f.Rows[0].Action);
-        Assert.Equal(new[] { "forget", "open:https://linear.app/acme/my-issues/assigned" }, f.Actions.Select(a => a.Id));
+        Assert.Equal(new[] { "open:https://linear.app/acme/my-issues/assigned" }, f.Actions.Select(a => a.Id)); // Forget key is in Settings
         Assert.Null(f.Input);
     }
 

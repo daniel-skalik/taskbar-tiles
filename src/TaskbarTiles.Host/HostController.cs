@@ -89,7 +89,8 @@ public interface ILayoutEditor
 /// The settings dialog's content for one tile: its kind's name and fields, the kind's settings (the defaults) and the
 /// tile's own settings from config.json.
 /// </summary>
-public sealed record TileSettingsForm(string TileId, string KindName, IReadOnlyList<TileField> Fields, JsonElement Defaults, JsonElement Own);
+public sealed record TileSettingsForm(string TileId, string KindName, IReadOnlyList<TileField> Fields, JsonElement Defaults, JsonElement Own,
+    IReadOnlyList<SettingsAction>? Actions = null);
 
 /// <summary>
 /// Keeps runtimes and bars in sync with config, the tile kinds and connected displays.
@@ -228,8 +229,11 @@ public sealed class HostController(
     public TileSettingsForm? SettingsFor(string tileId)
     {
         if (!config().Tiles.TryGetValue(tileId, out var tile)) return null;
-        if (Kinds().Find(tile.Kind) is not { Error: null, Fields: { Count: > 0 } fields } kind) return null;
-        return new TileSettingsForm(tileId, kind.Name, fields, kind.Settings, tile.Settings);
+        if (Kinds().Find(tile.Kind) is not { Error: null } kind) return null;
+        var fields = kind.Fields ?? [];
+        var actions = kind.SettingsActions ?? [];
+        if (fields.Count == 0 && actions.Count == 0) return null;
+        return new TileSettingsForm(tileId, kind.Name, fields, kind.Settings, tile.Settings, actions);
     }
 
     public ConfigError? SaveSettings(string tileId, IReadOnlyDictionary<string, JsonNode?> values)

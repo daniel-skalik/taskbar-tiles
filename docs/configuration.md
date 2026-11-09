@@ -101,6 +101,7 @@ Right-click a tile → **Settings…** changes that tile's own settings without 
   - A field may not edit `hooks`, and each key appears once. A list with a mistake makes the kind broken, with the message naming the field.
 - The dialog opens above the tile. A text, number or duration box holds the tile's own value; empty means the kind's default, shown dim behind it. A value that does not fit shows why under its field, and **Save** stays off. **Reset to defaults** empties every box. Esc or a click elsewhere closes it without saving.
 - **Save** writes `tiles.<id>.settings` in `config.json`, the same way edit mode saves (see "Saving rewrites config.json"). A value equal to the default, or empty, removes its key, so the tile follows the kind's default again; other keys stay. The tile restarts with the new settings.
+- `"settingsActions"` (next to `"fields"`) adds buttons under the fields for things that are not a value, such as forgetting a saved key: `[{ "id": "forget", "label": "Forget key" }]`. A click runs the kind's `action:<id>` hook and closes the dialog. A kind with only actions still gets **Settings…**, without **Save** and **Reset to defaults**. The bundled `linear` kind's **Forget key** is one.
 
 ### Device batteries
 
@@ -150,7 +151,7 @@ The bundled `todo` kind keeps your tasks in a plain Markdown file: every `- [ ] 
 The bundled `linear` kind shows the Linear issues assigned to you that are in progress or still to do (state types *started* and *unstarted*, every team; at most 50 issues are counted): how many are in progress and the most pressing one. Click it for up to 15 of them, in progress first, then by priority and the most recently updated; each row shows its state (a half-filled circle in progress, an empty one to do) and its priority on the right (a red "!" for urgent, three to one bars for high to low, dashes for none). Click one to open it in your browser. The tile and popup show the Linear icon from Linear's brand kit. **Open Linear** opens your assigned issues there.
 
 - **Setting it up:** the first click asks for a personal API key. Create one in Linear under Settings › Security & access › Personal API keys (**Get a key** opens that page), paste it and press Enter. The tile checks it with Linear before keeping it. You can also store it from a terminal: `cmdkey /generic:TaskbarTiles-Linear /user:api /pass` (it asks for the key, so it stays out of your shell history).
-- **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in the popup removes it.
+- **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in its **Settings…** removes it.
 - Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
 
 ### GitHub pull requests

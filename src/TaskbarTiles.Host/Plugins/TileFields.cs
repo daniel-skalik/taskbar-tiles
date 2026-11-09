@@ -19,8 +19,28 @@ public sealed record TileField(string Key, string Label, FieldType Type, string?
     TimeSpan? MinDuration = null, TimeSpan? MaxDuration = null, IReadOnlyList<string>? Choices = null, bool Multiple = false,
     string? Browse = null);
 
+/// <summary>A button in the settings dialog, from tile.json's "settingsActions": a click runs the action:&lt;Id&gt; hook.</summary>
+public sealed record SettingsAction(string Id, string Label);
+
 public static class TileFields
 {
+    /// <summary>Reads a "settingsActions" array of { "id", "label" }; the error names <paramref name="shownPath"/>.</summary>
+    public static (IReadOnlyList<SettingsAction> Actions, string? Error) ParseActions(JsonElement actions, string shownPath)
+    {
+        if (actions.ValueKind != JsonValueKind.Array) return ([], $"{shownPath}: \"settingsActions\" must be a list.");
+        var list = new List<SettingsAction>();
+        var n = 0;
+        foreach (var el in actions.EnumerateArray())
+        {
+            n++;
+            if (el.ValueKind != JsonValueKind.Object || Text(el, "id") is not { } id || Text(el, "label") is not { } label)
+                return ([], $"{shownPath}: settings action {n} needs an \"id\" and a \"label\".");
+            if (list.Any(a => a.Id == id)) return ([], $"{shownPath}: settings action {n} repeats the id \"{id}\".");
+            list.Add(new SettingsAction(id, label));
+        }
+        return (list, null);
+    }
+
     static readonly Dictionary<string, FieldType> Types = new(StringComparer.Ordinal)
     {
         ["text"] = FieldType.Text, ["number"] = FieldType.Number, ["toggle"] = FieldType.Toggle,
