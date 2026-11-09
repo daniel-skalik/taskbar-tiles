@@ -1,20 +1,23 @@
 {
   "name": "GitHub pull requests",
-  "description": "Pull requests waiting for your review, and yours that are blocked, need you or wait for others",
+  "description": "Pull requests waiting for your review or for you, and recent GitHub Actions runs",
   "group": "Productivity",
   "connector": "script",
   "width": 200,
   "fields": [
-    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often pull requests are fetched from GitHub." },
-    { "key": "filter", "label": "Filter", "type": "text", "help": "Extra GitHub search qualifiers, such as org:acme or repo:acme/api. Empty: every repository." }
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often pull requests and runs are fetched from GitHub." },
+    { "key": "filter", "label": "Filter", "type": "text", "help": "Extra GitHub search qualifiers for pull requests, such as org:acme or repo:acme/api. Empty: every repository." },
+    { "key": "repos", "label": "Watch Actions in", "type": "text", "help": "Repositories (owner/name, comma-separated, up to 10) whose workflow runs you see from anyone. Runs you start show from repositories with your open pull requests anyway." }
   ],
   "settings": {
     "refresh": "2m",
     "filter": "",
+    "repos": "",
     "hooks": {
       "interval":       { "every": "$refresh", "run": "github.ps1" },
       "flyout":         { "run": "github.ps1" },
       "action:open":    { "run": "github.ps1" },
+      "action:rerun":   { "run": "github.ps1" },
       "action:install": { "run": "github.ps1" },
       "action:signin":  { "run": "github.ps1" }
     }

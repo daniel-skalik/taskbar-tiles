@@ -255,9 +255,7 @@ if ($hook -eq 'flyout') {
         title    = 'Linear'
         subtitle = $summary
         rows     = $rows
-        actions  = @(
-            @{ id = 'forget'; label = 'Forget key' },
-            @{ id = "open:https://linear.app/$($data.organization.urlKey)/my-issues/assigned"; label = 'Open Linear'; primary = $true })
+        actions  = @(@{ id = "open:https://linear.app/$($data.organization.urlKey)/my-issues/assigned"; label = 'Open Linear'; primary = $true })
     }
     if ($logo) { $popup.image = $logo }
     $popup | ConvertTo-Json -Depth 6 -Compress

@@ -41,7 +41,8 @@ public sealed record TileKind(
     string Group = "",
     bool Resizable = true,
     double WidthMin = TileJson.MinWidth,
-    double WidthMax = TileJson.MaxWidth)
+    double WidthMax = TileJson.MaxWidth,
+    IReadOnlyList<SettingsAction>? SettingsActions = null)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -84,7 +85,7 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
     double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "", bool Resizable = true,
-    double WidthMin = TileJson.MinWidth, double WidthMax = TileJson.MaxWidth)
+    double WidthMin = TileJson.MinWidth, double WidthMax = TileJson.MaxWidth, IReadOnlyList<SettingsAction>? SettingsActions = null)
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -169,6 +170,14 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 fields = parsed;
             }
 
+            IReadOnlyList<SettingsAction> settingsActions = [];
+            if (root.TryGetProperty("settingsActions", out var sa))
+            {
+                var (parsed, error) = TileFields.ParseActions(sa, shownPath);
+                if (error is not null) return Broken(error);
+                settingsActions = parsed;
+            }
+
             var group = "";
             if (root.TryGetProperty("group", out var g))
             {
@@ -178,7 +187,7 @@ public sealed record TileJson(string Name, string Description, string Connector,
             }
 
             return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group, resizable,
-                widthMin ?? MinWidth, widthMax ?? MaxWidth);
+                widthMin ?? MinWidth, widthMax ?? MaxWidth, settingsActions);
         }
     }
 

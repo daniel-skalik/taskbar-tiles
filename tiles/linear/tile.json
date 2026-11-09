@@ -7,6 +7,9 @@
   "fields": [
     { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often your issues are fetched from Linear." }
   ],
+  "settingsActions": [
+    { "id": "forget", "label": "Forget key" }
+  ],
   "settings": {
     "refresh": "2m",
     "hooks": {

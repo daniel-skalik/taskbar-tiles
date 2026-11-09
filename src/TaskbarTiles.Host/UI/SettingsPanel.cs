@@ -19,9 +19,11 @@ public static class SettingsPanel
 {
     /// <summary>
     /// <paramref name="save"/> gets the values (null: use the default) and returns true when they were saved;
-    /// <paramref name="close"/> closes the popup (after a save, and on Esc).
+    /// <paramref name="close"/> closes the popup (after a save, and on Esc); <paramref name="runAction"/> runs one of the
+    /// kind's settings actions (a button under the fields, such as "Forget key"), after which the popup closes.
     /// </summary>
-    public static FrameworkElement Build(TileSettingsForm form, byte[]? image, Func<IReadOnlyDictionary<string, JsonNode?>, bool> save, Action close)
+    public static FrameworkElement Build(TileSettingsForm form, byte[]? image, Func<IReadOnlyDictionary<string, JsonNode?>, bool> save, Action close,
+        Action<string>? runAction = null)
     {
         var panel = new StackPanel();
         panel.Children.Add(Header(form, image));
@@ -47,7 +49,25 @@ public static class SettingsPanel
             Child = fields,
         };
         card.SetResourceReference(Border.BackgroundProperty, "FlyoutCard");
-        panel.Children.Add(card);
+        if (rows.Count > 0) panel.Children.Add(card);
+
+        // The kind's own actions, such as forgetting a saved key: one button each, in a row under the fields.
+        if (form.Actions is { Count: > 0 } actions && runAction is not null)
+        {
+            var actionRow = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
+            foreach (var action in actions)
+            {
+                var button = new Button
+                {
+                    Content = action.Label, Style = (Style)Application.Current.FindResource("FlyoutButton"),
+                    Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 6, 12, 6),
+                };
+                var id = action.Id;
+                button.Click += (_, _) => { runAction(id); close(); };
+                actionRow.Children.Add(button);
+            }
+            panel.Children.Add(actionRow);
+        }
 
         var reset = new Button
         {
@@ -69,7 +89,7 @@ public static class SettingsPanel
         var buttons = new UniformGrid { Rows = 1, Margin = new Thickness(0, 14, 0, 0) };
         buttons.Children.Add(reset);
         buttons.Children.Add(saveButton);
-        panel.Children.Add(buttons);
+        if (rows.Count > 0) panel.Children.Add(buttons); // nothing to save or reset without fields
 
         panel.PreviewKeyDown += (_, e) =>
         {
