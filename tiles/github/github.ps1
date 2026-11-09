@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 # Taskbar Tiles bundled kind "github": open pull requests that wait for your review, and yours that need you, are
 # blocked or wait for others; and recent GitHub Actions runs. Hooks (tile.json): interval, flyout, action:open
-# (ids "open:<url>"), action:rerun, action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
+# (ids "open:<url>"), action:reload, action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
 # folder under a new name before changing it.
 # Talks to GitHub through the GitHub CLI (gh) and its sign-in; this script never sees, stores or prints a token.
 # Settings: "refresh" (how often to fetch), "filter" (extra search qualifiers such as "org:acme"), "repos" (repositories
@@ -176,33 +176,14 @@ $logo = Get-Logo
 function Get-Name($pr) { "$(($pr.repository.nameWithOwner -split '/')[-1])#$($pr.number) $($pr.title)" }
 
 $hook = $env:TILE_HOOK
+# The popup's Refresh: fetch now, as interval does, and print the tile; the popup stays open and redraws from the fresh cache.
+if ($hook -eq 'action' -and "$env:TILE_ACTION" -eq 'reload') { $hook = 'interval' }
 if ($hook -eq 'action') {
     $action = "$env:TILE_ACTION"
     if ($action.StartsWith('open:')) {
         $url = $action.Substring(5)
         if ($url -notmatch '^https://github\.com/') { Fail 'Not a GitHub link.' }
         Start-Process $url
-        exit 0
-    }
-    if ($action -eq 'rerun') {
-        # Re-runs the failed jobs of each failed run the popup listed (from the cache), then drops the cache so the
-        # next popup fetches again.
-        $gh = Get-Gh
-        if (-not $gh) { Fail 'The GitHub CLI is not installed.' }
-        $cached = Read-Cache
-        if (-not $cached) { exit 0 }
-        $problems = @()
-        foreach ($f in @(Get-LatestRuns @($cached.data.runs) | Where-Object { $_.Status.Group -eq 'failed' })) {
-            if ($f.Run.repo -notmatch '^[\w.-]+/[\w.-]+$') { continue }
-            try {
-                $ErrorActionPreference = 'Continue'
-                $out = & $gh run rerun ([string][long]$f.Run.id) --failed -R $f.Run.repo 2>&1
-                $code = $LASTEXITCODE
-            } finally { $ErrorActionPreference = 'Stop' }
-            if ($code -ne 0) { $problems += "$($f.Run.workflow): $(@(@($out | ForEach-Object { "$_" }) | Where-Object { $_.Trim() })[0])" }
-        }
-        Remove-Item -LiteralPath $cache -ErrorAction SilentlyContinue
-        if ($problems.Count) { Fail "Could not re-run $($problems -join '; ')" }
         exit 0
     }
     if ($action -eq 'install') {
@@ -304,9 +285,10 @@ if ($hook -eq 'flyout') {
     $popup = @{
         title    = 'Pull requests'
         subtitle = $subtitle
+        stayOpen = $true # Refresh redraws in place; opening a link moves focus to the browser, which closes it anyway
         rows     = $rows
         actions  = @(
-            $(if ($failedRuns.Count) { @{ id = 'rerun'; label = 'Re-run failed' } } else { @{ id = 'open:https://github.com/pulls/review-requested'; label = 'Reviews' } }),
+            @{ id = 'reload'; label = 'Refresh' },
             @{ id = 'open:https://github.com/pulls'; label = 'Open GitHub'; primary = $true })
     }
     if ($logo) { $popup.image = $logo }

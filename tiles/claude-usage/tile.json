@@ -10,9 +10,10 @@
   "settings": {
     "refresh": "5m",
     "hooks": {
-      "interval":    { "every": "$refresh", "run": "claude-usage.ps1" },
-      "flyout":      { "run": "claude-usage.ps1" },
-      "action:open": { "run": "claude-usage.ps1" }
+      "interval":      { "every": "$refresh", "run": "claude-usage.ps1" },
+      "flyout":        { "run": "claude-usage.ps1" },
+      "action:open":   { "run": "claude-usage.ps1" },
+      "action:reload": { "run": "claude-usage.ps1" }
     }
   }
 }

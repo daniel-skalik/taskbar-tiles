@@ -17,7 +17,7 @@
       "interval":       { "every": "$refresh", "run": "github.ps1" },
       "flyout":         { "run": "github.ps1" },
       "action:open":    { "run": "github.ps1" },
-      "action:rerun":   { "run": "github.ps1" },
+      "action:reload":  { "run": "github.ps1" },
       "action:install": { "run": "github.ps1" },
       "action:signin":  { "run": "github.ps1" }
     }
