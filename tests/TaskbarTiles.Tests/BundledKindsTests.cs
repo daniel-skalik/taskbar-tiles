@@ -589,6 +589,59 @@ public class BundledKindsTests
         Assert.Equal(new TileIcon("ring", TileColor.Ok), f.Rows[7].Icon);
     }
 
+    /// <summary>One workflow run as GitHub's REST API lists it, started <paramref name="hoursAgo"/> hours ago.</summary>
+    static string Run(long id, string workflow, string branch, double hoursAgo, string status = "completed", string? conclusion = "success") =>
+        $$"""
+        { "id": {{id}}, "name": "{{workflow}}", "workflow_id": {{workflow.Length}}, "head_branch": "{{branch}}", "status": "{{status}}",
+          "conclusion": {{(conclusion is null ? "null" : $"\"{conclusion}\"")}}, "html_url": "https://github.com/acme/api/actions/runs/{{id}}",
+          "created_at": "{{DateTimeOffset.UtcNow.AddHours(-hoursAgo):yyyy-MM-ddTHH:mm:ssZ}}", "repository": { "full_name": "acme/api" } }
+        """;
+
+    static readonly string GitHubRuns = $$"""
+        { "data": { "viewer": { "login": "me" }, "review": { "nodes": [] }, "mine": { "nodes": [] }, "runs": [
+          {{Run(1, "CI", "main", 3)}},
+          {{Run(2, "CI", "main", 1, conclusion: "failure")}},
+          {{Run(3, "CI", "feat", 2, conclusion: "failure")}},
+          {{Run(4, "CI", "feat", 0.5)}},
+          {{Run(5, "Deploy", "main", 0.2, status: "in_progress", conclusion: null)}},
+          {{Run(6, "Nightly", "main", 30, conclusion: "failure")}},
+          {{Run(7, "Lint", "main", 1, conclusion: "skipped")}}
+        ] } }
+        """;
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_tile_counts_a_failed_run_as_needing_you()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForTile("interval", await RunGitHub(dir, "interval", GitHubRuns), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        Assert.Equal(("1 need you", "CI: failed on main"), (outcome.Value!.Title, outcome.Value.Subtitle));
+        Assert.Equal(TileColor.Bad, outcome.Value.ImageColor);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_popup_lists_the_latest_run_of_each_workflow_and_branch()
+    {
+        using var dir = new TempDir();
+
+        var outcome = HookResults.ForFlyout("flyout", await RunGitHub(dir, "flyout", GitHubRuns), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Empty(outcome.Warnings);
+        var f = outcome.Value!;
+        // A later pass hides feat's failure; the day-old failure and the skipped run are left out.
+        Assert.Equal(new[] { "Actions (3)", "api · CI · main", "api · Deploy · main", "api · CI · feat" }, f.Rows.Select(r => r.Text));
+        Assert.Equal(new string?[] { null, "Failed", "Running", "Passed" }, f.Rows.Select(r => r.Value));
+        Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[1].Icon);
+        Assert.Equal("open:https://github.com/acme/api/actions/runs/2", f.Rows[1].Action);
+        Assert.Equal(new[] { "rerun", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
+    }
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task GitHub_with_nothing_open_is_all_clear()

@@ -155,14 +155,16 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 
 ### GitHub pull requests
 
-The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The tile and popup show the GitHub mark, from GitHub's Primer Octicons. On the tile the mark is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, green when nothing is open and gray when yours only wait for others. Click it for the list, in four groups; click a pull request to open it in your browser.
+The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on; and recent GitHub Actions runs. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The tile and popup show the GitHub mark, from GitHub's Primer Octicons. On the tile the mark is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, green when nothing is open and gray when yours only wait for others. Click it for the list, in up to five groups; click a pull request or run to open it in your browser.
 
 - **Waiting for your review:** someone asked you (or your team) for a review.
 - **Blocked:** yours, with merge conflicts, failing checks, or approved but still blocked by a branch rule.
 - **Needs your action:** yours, with changes requested, behind its base branch, or ready to merge.
 - **Waiting for others:** yours, waiting for a review or for checks to finish; drafts come last.
+- **Actions:** recent GitHub Actions runs: the latest run of each workflow on each branch from the last day, failed first, then waiting for approval, running, passed and cancelled. It lists runs you started in the repositories of your open pull requests, and anyone's runs in the repositories you watch. A failed run or one waiting for approval counts as needing you and turns the mark red or amber; **Re-run failed** re-runs the failed jobs of every failed run listed.
 
 - **Setting it up:** the tile talks to GitHub through the [GitHub CLI](https://cli.github.com/) (`gh`) and its sign-in, so it never sees or stores a token. Without `gh` the popup offers **Install gh**: a window installs it with `winget` (it asks first), then runs `gh auth login` in your browser. When `gh` is installed but not signed in, **Sign in** opens that sign-in window.
+- Setting `"repos"` (**Watch Actions in**) lists up to 10 repositories, as `owner/name` separated by commas, whose runs you see from anyone, such as `acme/api` to watch its main branch.
 - Setting `"filter"` (also in **Settings…**) adds GitHub search qualifiers, such as `org:acme` or `repo:acme/api`; empty means every repository.
 - Setting `"refresh"` (default `2m`, 1 to 30 minutes) is how often pull requests are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last list and says so in its tooltip.
 
