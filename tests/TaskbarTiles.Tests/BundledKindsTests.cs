@@ -581,6 +581,32 @@ public class BundledKindsTests
         Assert.Equal("1 issue", tile.Value!.Title);
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_reads_notifications_as_gh_prints_them()
+    {
+        // gh prints the notifications as a bare JSON array, which Windows PowerShell's ConvertFrom-Json does not unroll.
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("graphql.json"), """{ "data": { "viewer": { "login": "me" }, "review": { "nodes": [] }, "mine": { "nodes": [] }, "issues": { "nodes": [] } } }""");
+        File.WriteAllText(dir.File("notes.json"), """
+            [ { "id": "1", "reason": "mention", "updated_at": "2026-11-11T15:15:40Z", "repository": { "full_name": "acme/web" }, "subject": { "title": "One", "type": "Issue", "url": "https://api.github.com/repos/acme/web/issues/1" } },
+              { "id": "2", "reason": "comment", "updated_at": "2026-11-11T15:14:55Z", "repository": { "full_name": "acme/web" }, "subject": { "title": "Two", "type": "Issue", "url": "https://api.github.com/repos/acme/web/issues/2" } } ]
+            """);
+        var gh = dir.File("gh.cmd");
+        File.WriteAllText(gh, "@echo off\r\nif \"%2\"==\"graphql\" (type \"%~dp0graphql.json\") else (type \"%~dp0notes.json\")\r\n");
+        var tileId = "test-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var result = await RunBundled("github", "github.ps1", "interval", """{ "sections": ["Notifications"] }""",
+                new Dictionary<string, string> { ["TILE_GITHUB_GH"] = gh, ["TILE_ID"] = tileId });
+            var tile = HookResults.ForTile("interval", result, TimeSpan.FromSeconds(30));
+
+            Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+            Assert.Equal(("2 unread", "One"), (tile.Value!.Title, tile.Value.Subtitle));
+        }
+        finally { File.Delete(Path.Combine(Path.GetTempPath(), $"TaskbarTiles-github-{tileId}.json")); }
+    }
+
     /// <summary>A stand-in gh that records its arguments in dir\gh-args.txt and succeeds.</summary>
     static string FakeGh(TempDir dir)
     {

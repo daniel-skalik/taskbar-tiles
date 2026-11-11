@@ -84,7 +84,8 @@ function Invoke-GitHub {
             } finally { $ErrorActionPreference = 'Stop' }
             $text = @($out | ForEach-Object { "$_" }) -join "`n"
             if ($code -ne 0) { $runErrors += "notifications: $(@($text -split "`n" | Where-Object { $_.Trim() })[0])" }
-            else { try { $rawNotes = @($text | ConvertFrom-Json) } catch { $runErrors += 'notifications: not JSON' } }
+            # ForEach-Object unrolls the bare JSON array, which Windows PowerShell 5.1 keeps as one object.
+            else { try { $rawNotes = @($text | ConvertFrom-Json | ForEach-Object { $_ }) } catch { $runErrors += 'notifications: not JSON' } }
         }
         # Anyone's runs in the watched repositories; yours in the repositories of your open pull requests.
         $since = [DateTimeOffset]::UtcNow.AddHours(-$runHours).ToString('yyyy-MM-ddTHH:mm:ssZ')
