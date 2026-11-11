@@ -1,5 +1,5 @@
 {
-  "name": "GitHub pull requests",
+  "name": "GitHub",
   "description": "Pull requests waiting for your review or for you, and recent GitHub Actions runs",
   "group": "Productivity",
   "connector": "script",

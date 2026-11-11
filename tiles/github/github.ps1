@@ -211,11 +211,11 @@ if (Test-Path $gh) { Write-Host 'Now sign in to GitHub:'; & $gh auth login --web
 function Write-Setup([string]$setup) {
     if ($hook -eq 'flyout') {
         $popup = if ($setup -eq 'install') {
-            @{ title = 'Pull requests'; subtitle = 'Needs the GitHub CLI (gh)'
+            @{ title = 'GitHub'; subtitle = 'Needs the GitHub CLI (gh)'
                rows = @('This tile reads your pull requests through gh and its sign-in.', 'Install opens a window that installs it with winget, then signs you in.')
                actions = @(@{ id = 'open:https://cli.github.com/'; label = 'About gh' }, @{ id = 'install'; label = 'Install gh'; primary = $true }) }
         } else {
-            @{ title = 'Pull requests'; subtitle = 'Not signed in to GitHub'
+            @{ title = 'GitHub'; subtitle = 'Not signed in to GitHub'
                rows = @('Sign in opens a window that runs gh auth login in your browser.')
                actions = @(@{ id = 'signin'; label = 'Sign in'; primary = $true }) }
         }
@@ -283,7 +283,7 @@ if ($hook -eq 'flyout') {
     if (-not $rows.Count) { $rows = @('No open pull requests for you') }
     $subtitle = if ($stale) { "Not updated: $stale" } else { $summary }
     $popup = @{
-        title    = 'Pull requests'
+        title    = 'GitHub'
         subtitle = $subtitle
         stayOpen = $true # Refresh redraws in place; opening a link moves focus to the browser, which closes it anyway
         rows     = $rows

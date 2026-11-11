@@ -581,7 +581,7 @@ public class BundledKindsTests
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
         Assert.Empty(outcome.Warnings);
         var f = outcome.Value!;
-        Assert.Equal("Pull requests", f.Title);
+        Assert.Equal("GitHub", f.Title);
         Assert.NotNull(f.Image);
         Assert.Equal("1 to review · 4 need you · 2 waiting", f.Subtitle);
         Assert.Equal(new[]

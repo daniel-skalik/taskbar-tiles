@@ -154,7 +154,7 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 - **Where the key lives:** in Windows Credential Manager (generic credential `TaskbarTiles-Linear`), encrypted for your Windows account. It is sent only to `api.linear.app`, and never written to `config.json`, the log or the cache. **Forget key** in its **Settings…** removes it.
 - Setting `"refresh"` (default `2m`, 1 to 30 minutes, also in **Settings…**) is how often the issues are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last issues it got and says so in its tooltip.
 
-### GitHub pull requests
+### GitHub
 
 The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on; and recent GitHub Actions runs. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The tile and popup show the GitHub mark, from GitHub's Primer Octicons. On the tile the mark is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, green when nothing is open and gray when yours only wait for others. Click it for the list, in up to five groups; click a pull request or run to open it in your browser.
 
