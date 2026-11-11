@@ -1,6 +1,6 @@
 # Taskbar Tiles
 
-Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
+Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, your pull requests and CI runs, your Linear issues and to-dos, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
 
 <img src="docs/images/tile-media.png" alt="Media tile: a song with playback buttons" height="48">
 <img src="docs/images/tile-system.png" alt="System monitor tile: CPU load with its chart behind the text" height="48">
@@ -26,15 +26,15 @@ The app is not code-signed, so Windows may warn before running `install.cmd` or 
 | <img src="docs/images/tile-claude-usage.png" alt="Claude usage tile" height="48"> | **Claude usage**<br>Your Claude plan's 5-hour and weekly limits, and how much an even pace would have used by now. |
 | <img src="docs/images/tile-system.png" alt="System monitor tile" height="48"> | **System monitor**<br>CPU, memory, GPU, network and every drive, one at a time with a chart, or all at once. |
 | <img src="docs/images/tile-battery.png" alt="Device batteries tile" height="48"> | **Device batteries**<br>The lowest battery of your mouse, keyboard and headphones. |
-| <img src="docs/images/tile-clipboard.png" alt="Clipboard peek tile" height="48"> | **Clipboard peek**<br>The last thing you copied; click for recent copies to copy again. |
+| <img src="docs/images/tile-clipboard.png" alt="Clipboard peek tile" height="48"> | **Clipboard peek**<br>The last thing you copied; click for recent copies to copy again, or save the latest one to a file. |
 | <img src="docs/images/tile-docker.png" alt="Docker tile" height="48"> | **Docker**<br>How many containers run; click for each one's status. |
 | <img src="docs/images/tile-git.png" alt="Git repository tile" height="48"> | **Git repository**<br>A repository's branch, changes, and how far it is ahead of or behind its upstream. |
 | <img src="docs/images/tile-todo.png" alt="To do tile" height="48"> | **To do**<br>Tasks from a Markdown file; tick them off and add new ones from the popup. |
-| <img src="docs/images/tile-linear.png" alt="Linear tile" height="48"> | **Linear**<br>Your issues in In Progress and Todo; click one to open it. |
-| <img src="docs/images/tile-github.png" alt="GitHub pull requests tile" height="48"> | **GitHub pull requests**<br>Pull requests waiting for your review, yours that are blocked, need you or wait for others, and recent GitHub Actions runs. |
+| <img src="docs/images/tile-linear.png" alt="Linear tile" height="48"> | **Linear**<br>Your issues in In Progress and Todo, with state and priority; click one to open it. Paste your API key into its popup once; it is kept in Windows Credential Manager. |
+| <img src="docs/images/tile-github.png" alt="GitHub pull requests tile" height="48"> | **GitHub pull requests**<br>Pull requests waiting for your review, yours that are blocked, need you or wait for others, and recent GitHub Actions runs; the GitHub mark takes the color of what needs you. Uses the [GitHub CLI](https://cli.github.com/), which it offers to install and sign in. |
 | <img src="docs/images/tile-uptime.png" alt="Clock and uptime tile" height="48"> | **Clock and uptime**<br>The time, and how long Windows has been up. |
 | <img src="docs/images/tile-aquarium.png" alt="Aquarium tile" height="48"> | **Aquarium**<br>Fish and bubbles; click to feed them. |
-| <img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile" height="48"> | **Cozy farm**<br>A farm that follows your clock and the real sunrise and sunset. |
+| <img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile" height="48"> | **Cozy farm**<br>A farm that follows your clock and the real sunrise and sunset; click for a surprise. |
 | <img src="docs/images/tile-snake.png" alt="Snake tile" height="48"> | **Snake**<br>A snake that plays itself; click to start over. |
 | <img src="docs/images/tile-racers.png" alt="Racers tile" height="48"> | **Racers**<br>Pixel cars race; click for a new race. |
 
@@ -43,7 +43,7 @@ The pictures use made-up sample data; `dotnet run --project tools/screenshots` d
 ## Use
 
 - **Add a tile:** the **+** button at the end of your tiles. Tiles are grouped in folders, for example **Fun** or **Dev**.
-- **Details:** click a tile for its popup, with actions and a ⚙ for its settings (also right-click › **Settings…**).
+- **Details:** click a tile for its popup, with actions and a ⚙ for its settings (also right-click › **Settings…**). Slow tiles show their last popup at once and update it when fresh data arrives; **Refresh** fetches again without closing it.
 
   <img src="docs/images/popup.png" alt="The Claude usage tile's popup: 5-hour and weekly limits with reset times" width="320">
 
@@ -55,7 +55,7 @@ Your layout and settings live in `%LOCALAPPDATA%\TaskbarTiles\config.json`. You 
 
 ## Make your own tile
 
-A tile is a folder with a `tile.json` and a script (or a .NET DLL), described in [docs/script-connectors.md](docs/script-connectors.md). With an AI coding agent such as Claude Code, open this repository and ask for the tile you want ("a tile that shows my GitHub notifications"): the [new-tile skill](.claude/skills/new-tile/SKILL.md) walks it through writing, checking and installing it. To check a tile folder yourself:
+A tile is a folder with a `tile.json` and a script (or a .NET DLL), described in [docs/script-connectors.md](docs/script-connectors.md). With an AI coding agent such as Claude Code, open this repository and ask for the tile you want ("a tile that shows the weather"): the [new-tile skill](.claude/skills/new-tile/SKILL.md) walks it through writing, checking and installing it. To check a tile folder yourself:
 
 ```bat
 dotnet run --project tools/screenshots -- --preview my-tiles\my-tile
