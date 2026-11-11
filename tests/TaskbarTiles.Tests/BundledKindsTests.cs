@@ -527,12 +527,80 @@ public class BundledKindsTests
         """;
 
     /// <summary>Runs github.ps1 with <paramref name="response"/> standing in for gh, so no test reaches the network.</summary>
-    static Task<ScriptResult> RunGitHub(TempDir dir, string hook, string response, string action = "", string? gh = null)
+    static Task<ScriptResult> RunGitHub(TempDir dir, string hook, string response, string action = "", string? gh = null, string settings = "{}")
     {
         File.WriteAllText(dir.File("response.json"), response);
         var env = new Dictionary<string, string> { ["TILE_GITHUB_RESPONSE"] = dir.File("response.json"), ["TILE_ACTION"] = action };
         if (gh is not null) env["TILE_GITHUB_GH"] = gh;
-        return RunBundled("github", "github.ps1", hook, extraEnv: env);
+        return RunBundled("github", "github.ps1", hook, settings, env);
+    }
+
+    static readonly string GitHubInbox = """
+        { "data": { "viewer": { "login": "me" }, "review": { "nodes": [] }, "mine": { "nodes": [] },
+          "issues": { "nodes": [
+            { "number": 7, "title": "Crash on start", "url": "https://github.com/acme/api/issues/7", "updatedAt": "2026-11-05T10:00:00Z", "repository": { "nameWithOwner": "acme/api" } } ] },
+          "notifications": [
+            { "id": "501", "reason": "mention", "updated_at": "2026-11-05T09:00:00Z", "repository": { "full_name": "acme/web" },
+              "subject": { "title": "Who owns this?", "type": "Issue", "url": "https://api.github.com/repos/acme/web/issues/3" } },
+            { "id": "502", "reason": "review_requested", "updated_at": "2026-11-05T11:00:00Z", "repository": { "full_name": "acme/api" },
+              "subject": { "title": "Add retries", "type": "PullRequest", "url": "https://api.github.com/repos/acme/api/pulls/9" } } ] } }
+        """;
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_shows_unread_notifications_and_assigned_issues()
+    {
+        using var dir = new TempDir();
+
+        var tile = HookResults.ForTile("interval", await RunGitHub(dir, "interval", GitHubInbox), TimeSpan.FromSeconds(30));
+        Assert.False(tile.Failed, $"{tile.ErrorMessage}\n{tile.ErrorDetails}");
+        Assert.Equal(("2 unread · 1 issue", "Add retries"), (tile.Value!.Title, tile.Value.Subtitle));
+        Assert.Equal(TileColor.Accent, tile.Value.ImageColor);
+
+        var popup = HookResults.ForFlyout("flyout", await RunGitHub(dir, "flyout", GitHubInbox), TimeSpan.FromSeconds(30));
+        Assert.Empty(popup.Warnings);
+        var f = popup.Value!;
+        Assert.Equal(new[] { "Notifications (2)", "api · Add retries", "web · Who owns this?", "Issues assigned to you (1)", "api#7 Crash on start" },
+            f.Rows.Select(r => r.Text));
+        Assert.Equal(new string?[] { "Mark all read", "Review requested", "Mention", null, null }, f.Rows.Select(r => r.Value));
+        Assert.Equal(new string?[] { "readall", "note:502", "note:501", null, "open:https://github.com/acme/api/issues/7" }, f.Rows.Select(r => r.Action));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GitHub_shows_only_the_ticked_sections()
+    {
+        using var dir = new TempDir();
+
+        var popup = HookResults.ForFlyout("flyout",
+            await RunGitHub(dir, "flyout", GitHubInbox, settings: """{ "sections": ["Issues"] }"""), TimeSpan.FromSeconds(30));
+
+        Assert.Equal(new[] { "Issues assigned to you (1)", "api#7 Crash on start" }, popup.Value!.Rows.Select(r => r.Text));
+        var tile = HookResults.ForTile("interval",
+            await RunGitHub(dir, "interval", GitHubInbox, settings: """{ "sections": ["Issues"] }"""), TimeSpan.FromSeconds(30));
+        Assert.Equal("1 issue", tile.Value!.Title);
+    }
+
+    /// <summary>A stand-in gh that records its arguments in dir\gh-args.txt and succeeds.</summary>
+    static string FakeGh(TempDir dir)
+    {
+        var path = dir.File("gh.cmd");
+        File.WriteAllText(path, "@echo %*>> \"%~dp0gh-args.txt\"\r\n");
+        return path;
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData("note:501", "api -X PATCH notifications/threads/501")]
+    [InlineData("readall", "api -X PUT notifications -f last_read_at=")]
+    public async Task GitHub_marks_notifications_read_through_gh(string action, string expected)
+    {
+        using var dir = new TempDir();
+
+        var result = await RunGitHub(dir, "action", GitHubInbox, action: action, gh: FakeGh(dir));
+
+        Assert.True(result.ExitCode == 0, result.StdErr);
+        Assert.StartsWith(expected, File.ReadAllText(dir.File("gh-args.txt")).Trim());
     }
 
     [Fact]
@@ -581,9 +649,9 @@ public class BundledKindsTests
         Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
         Assert.Empty(outcome.Warnings);
         var f = outcome.Value!;
-        Assert.Equal("Pull requests", f.Title);
+        Assert.Equal("GitHub", f.Title);
         Assert.NotNull(f.Image);
-        Assert.Equal("1 to review · 4 need you · 2 waiting", f.Subtitle);
+        Assert.Equal("4 need you · 1 to review · 2 waiting", f.Subtitle);
         Assert.Equal(new[]
         {
             "Waiting for your review (1)", "api#10 Their change",
@@ -678,7 +746,7 @@ public class BundledKindsTests
         Assert.Equal(new TileIcon("sync", TileColor.Ok), tile.Value.Icon);
 
         var popup = HookResults.ForFlyout("flyout", await RunGitHub(dir, "flyout", none), TimeSpan.FromSeconds(30));
-        Assert.Equal("No open pull requests for you", Assert.Single(popup.Value!.Rows).Text);
+        Assert.Equal("Nothing for you right now", Assert.Single(popup.Value!.Rows).Text);
     }
 
     [Fact]

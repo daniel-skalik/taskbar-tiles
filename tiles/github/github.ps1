@@ -1,14 +1,16 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 # Taskbar Tiles bundled kind "github": open pull requests that wait for your review, and yours that need you, are
-# blocked or wait for others; and recent GitHub Actions runs. Hooks (tile.json): interval, flyout, action:open
-# (ids "open:<url>"), action:reload, action:install, action:signin. See docs/script-connectors.md. Replaced on every install: copy this
-# folder under a new name before changing it.
+# blocked or wait for others; recent GitHub Actions runs; issues assigned to you; unread notifications. Hooks
+# (tile.json): interval, flyout, action:open (ids "open:<url>"), action:note (ids "note:<thread id>": open and mark
+# read), action:readall, action:reload, action:install, action:signin. See docs/script-connectors.md.
+# Replaced on every install: copy this folder under a new name before changing it.
 # Talks to GitHub through the GitHub CLI (gh) and its sign-in; this script never sees, stores or prints a token.
 # Settings: "refresh" (how often to fetch), "filter" (extra search qualifiers such as "org:acme"), "repos" (repositories
-# whose Actions runs to show from anyone; runs you started show from the repositories of your open pull requests too).
-# Testing only: TILE_GITHUB_RESPONSE names a file read instead of calling gh (no cache then); its data.runs holds the
-# workflow runs as GitHub's REST API lists them.
+# whose Actions runs to show from anyone; runs you started show from the repositories of your open pull requests too),
+# "sections" (which of Reviews, My pull requests, Actions, Issues, Notifications to show; missing: all).
+# Testing only: TILE_GITHUB_RESPONSE names a file read instead of calling gh (no cache then); its data.runs and
+# data.notifications hold workflow runs and notifications as GitHub's REST API lists them.
 
 $dot = [char]0x00B7
 $cache = Join-Path ([IO.Path]::GetTempPath()) "TaskbarTiles-github-$env:TILE_ID.json"
@@ -18,7 +20,11 @@ $filter = if ($settings -and $settings.filter) { ([string]$settings.filter -repl
 $watched = @(@($(if ($settings -and $settings.repos) { $settings.repos } else { @() })) | ForEach-Object { "$_" -split '[,;\s]+' } |
     ForEach-Object { $_.Trim().Trim('/') } | Where-Object { $_ -match '^[\w.-]+/[\w.-]+$' } | Select-Object -Unique -First 10)
 $runHours = 24 # runs older than this are left out
-$query = 'query($review: String!, $mine: String!) { viewer { login } review: search(query: $review, type: ISSUE, first: 30) { nodes { ...pr } } mine: search(query: $mine, type: ISSUE, first: 30) { nodes { ...pr } } } fragment pr on PullRequest { number title url isDraft updatedAt reviewDecision mergeable mergeStateStatus repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }'
+# The sections to show: the ticked ones of the "sections" setting, or all of them when it is not set.
+$allSections = @('Reviews', 'My pull requests', 'Actions', 'Issues', 'Notifications')
+$sections = if ($settings -and $null -ne $settings.sections) { @(@($settings.sections) | ForEach-Object { "$_" } | Where-Object { $_ -in $allSections }) } else { $allSections }
+function Test-Section([string]$name) { $sections -contains $name }
+$query = 'query($review: String!, $mine: String!, $issues: String!) { viewer { login } issues: search(query: $issues, type: ISSUE, first: 30) { nodes { ... on Issue { number title url updatedAt repository { nameWithOwner } } } } review: search(query: $review, type: ISSUE, first: 30) { nodes { ...pr } } mine: search(query: $mine, type: ISSUE, first: 30) { nodes { ...pr } } } fragment pr on PullRequest { number title url isDraft updatedAt reviewDecision mergeable mergeStateStatus repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }'
 
 function Fail([string]$message) { [Console]::Error.WriteLine($message); exit 1 }
 
@@ -53,7 +59,7 @@ function Invoke-GitHub {
         $out = $null
         try {
             $ErrorActionPreference = 'Continue' # gh writes errors to stderr; the exit code tells
-            $out = & $gh api graphql -f "query=$query" -f "review=$base review-requested:@me" -f "mine=$base author:@me" 2>&1
+            $out = & $gh api graphql -f "query=$query" -f "review=$base review-requested:@me" -f "mine=$base author:@me" -f "issues=$("is:issue is:open archived:false assignee:@me $filter".Trim())" 2>&1
             $code = $LASTEXITCODE
         } finally { $ErrorActionPreference = 'Stop' }
         $text = @($out | ForEach-Object { "$_" }) -join "`n"
@@ -66,13 +72,25 @@ function Invoke-GitHub {
     try { $r = $text | ConvertFrom-Json } catch { return @{ Error = 'GitHub sent an answer that is not JSON' } }
     if ($r.errors) { return @{ Error = "GitHub: $(@($r.errors)[0].message)" } }
     $data = $r.data
-    $raw = @(); $runErrors = @()
-    if ($env:TILE_GITHUB_RESPONSE) { $raw = @($data.runs) }
+    $raw = @(); $runErrors = @(); $rawNotes = @()
+    if ($env:TILE_GITHUB_RESPONSE) { $raw = @($data.runs); $rawNotes = @($data.notifications) }
     else {
+        if (Test-Section 'Notifications') {
+            # Unread notifications only (the API's default).
+            try {
+                $ErrorActionPreference = 'Continue'
+                $out = & $gh api 'notifications?per_page=30' 2>&1
+                $code = $LASTEXITCODE
+            } finally { $ErrorActionPreference = 'Stop' }
+            $text = @($out | ForEach-Object { "$_" }) -join "`n"
+            if ($code -ne 0) { $runErrors += "notifications: $(@($text -split "`n" | Where-Object { $_.Trim() })[0])" }
+            else { try { $rawNotes = @($text | ConvertFrom-Json) } catch { $runErrors += 'notifications: not JSON' } }
+        }
         # Anyone's runs in the watched repositories; yours in the repositories of your open pull requests.
         $since = [DateTimeOffset]::UtcNow.AddHours(-$runHours).ToString('yyyy-MM-ddTHH:mm:ssZ')
         $yours = @($data.mine.nodes | Where-Object { $_ } | ForEach-Object { [string]$_.repository.nameWithOwner } | Select-Object -Unique |
             Where-Object { $_ -notin $watched } | Select-Object -First 10)
+        if (-not (Test-Section 'Actions')) { $watched = @(); $yours = @() }
         $asks = @($watched | ForEach-Object { @{ Repo = $_; Url = "repos/$_/actions/runs?per_page=30&created=%3E%3D$since" } }) +
             @($yours | ForEach-Object { @{ Repo = $_; Url = "repos/$_/actions/runs?per_page=30&created=%3E%3D$since&actor=$($data.viewer.login)" } })
         foreach ($ask in $asks) {
@@ -94,7 +112,59 @@ function Invoke-GitHub {
             created = [string]$w.created_at
         }
     })
-    @{ Data = [pscustomobject]@{ viewer = $data.viewer; review = $data.review; mine = $data.mine; runs = $runs; runErrors = $runErrors } }
+    $notes = @(foreach ($n in $rawNotes) {
+        if (-not $n -or -not $n.id) { continue }
+        $repo = [string]$n.repository.full_name
+        [pscustomobject]@{
+            id = [string]$n.id; reason = [string]$n.reason; title = [string]$n.subject.title; type = [string]$n.subject.type
+            repo = $repo; url = (Get-NotificationUrl ([string]$n.subject.url) ([string]$n.subject.type) $repo); updated = [string]$n.updated_at
+        }
+    })
+    @{ Data = [pscustomobject]@{ viewer = $data.viewer; review = $data.review; mine = $data.mine; issues = $data.issues; runs = $runs; notifications = $notes; runErrors = $runErrors } }
+}
+
+# The page a notification is about: its pull request, issue or commit, the Actions page for CI, else the repository.
+function Get-NotificationUrl([string]$api, [string]$type, [string]$repo) {
+    if ($api -match '^https://api\.github\.com/repos/([\w.-]+/[\w.-]+)/pulls/(\d+)$') { return "https://github.com/$($Matches[1])/pull/$($Matches[2])" }
+    if ($api -match '^https://api\.github\.com/repos/([\w.-]+/[\w.-]+)/issues/(\d+)$') { return "https://github.com/$($Matches[1])/issues/$($Matches[2])" }
+    if ($api -match '^https://api\.github\.com/repos/([\w.-]+/[\w.-]+)/commits/([0-9a-f]+)$') { return "https://github.com/$($Matches[1])/commit/$($Matches[2])" }
+    if ($repo -notmatch '^[\w.-]+/[\w.-]+$') { return 'https://github.com/notifications' }
+    if ($type -eq 'CheckSuite') { return "https://github.com/$repo/actions" }
+    "https://github.com/$repo"
+}
+
+# Why a notification came, in a few words.
+function Get-ReasonLabel([string]$reason) {
+    switch ($reason) {
+        'review_requested' { 'Review requested' } 'mention' { 'Mention' } 'team_mention' { 'Team mention' }
+        'assign' { 'Assigned' } 'author' { 'Your thread' } 'comment' { 'Comment' } 'ci_activity' { 'CI' }
+        'state_change' { 'State change' } 'subscribed' { 'Watching' } 'manual' { 'Subscribed' }
+        'security_alert' { 'Security' } 'approval_requested' { 'Approval' } 'invitation' { 'Invitation' }
+        default { ($reason -replace '_', ' ') }
+    }
+}
+
+# Runs gh with the given arguments; returns $null when it worked, else its first line of output.
+function Invoke-Gh([string[]]$arguments) {
+    $gh = Get-Gh
+    if (-not $gh) { return 'The GitHub CLI is not installed.' }
+    try {
+        $ErrorActionPreference = 'Continue'
+        $out = & $gh @arguments 2>&1
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = 'Stop' }
+    if ($code -eq 0) { return $null }
+    @(@($out | ForEach-Object { "$_" }) | Where-Object { $_.Trim() })[0]
+}
+
+# Drops notifications from the cache (all when $id is empty), so the popup redraws without them at once.
+function Remove-CachedNotes([string]$id) {
+    $cached = Read-Cache
+    if (-not $cached) { return }
+    $data = $cached.data
+    try {
+        $data.notifications = @(@($data.notifications) | Where-Object { $_ -and $id -and $_.id -ne $id })
+        @{ fetched_at = $cached.fetched_at; filter = $cached.filter; repos = $cached.repos; sections = $cached.sections; data = $data } | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $cache -Encoding UTF8 } catch { }
 }
 
 # A workflow run's state; failed and needs-approval runs need you. Skipped runs are left out (null).
@@ -134,7 +204,7 @@ function Read-Cache {
 
 function Write-Cache($data) {
     if ($env:TILE_GITHUB_RESPONSE) { return }
-    try { @{ fetched_at = [DateTimeOffset]::UtcNow.ToString('o'); filter = $filter; repos = ($watched -join ','); data = $data } | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $cache -Encoding UTF8 } catch { }
+    try { @{ fetched_at = [DateTimeOffset]::UtcNow.ToString('o'); filter = $filter; repos = ($watched -join ','); sections = ($sections -join ','); data = $data } | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $cache -Encoding UTF8 } catch { }
 }
 
 # The popup's cache age limit: the refresh setting ("2m", "30s", "1h"), at least 2 minutes.
@@ -186,6 +256,23 @@ if ($hook -eq 'action') {
         Start-Process $url
         exit 0
     }
+    if ($action -match '^note:(\d+)$') {
+        # Opens a notification's page and marks it read.
+        $id = $Matches[1]
+        $cached = Read-Cache
+        $note = if ($cached) { @($cached.data.notifications | Where-Object { $_ -and $_.id -eq $id })[0] } else { $null }
+        $problem = Invoke-Gh @('api', '-X', 'PATCH', "notifications/threads/$id")
+        if ($note -and $note.url -match '^https://github\.com/') { Start-Process $note.url }
+        if ($problem) { Fail "Could not mark it read: $problem" }
+        Remove-CachedNotes $id
+        exit 0
+    }
+    if ($action -eq 'readall') {
+        $problem = Invoke-Gh @('api', '-X', 'PUT', 'notifications', '-f', "last_read_at=$([DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
+        if ($problem) { Fail "Could not mark notifications read: $problem" }
+        Remove-CachedNotes ''
+        exit 0
+    }
     if ($action -eq 'install') {
         # winget when Windows has it (it asks before installing), else the download page.
         if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
@@ -211,11 +298,11 @@ if (Test-Path $gh) { Write-Host 'Now sign in to GitHub:'; & $gh auth login --web
 function Write-Setup([string]$setup) {
     if ($hook -eq 'flyout') {
         $popup = if ($setup -eq 'install') {
-            @{ title = 'Pull requests'; subtitle = 'Needs the GitHub CLI (gh)'
+            @{ title = 'GitHub'; subtitle = 'Needs the GitHub CLI (gh)'
                rows = @('This tile reads your pull requests through gh and its sign-in.', 'Install opens a window that installs it with winget, then signs you in.')
                actions = @(@{ id = 'open:https://cli.github.com/'; label = 'About gh' }, @{ id = 'install'; label = 'Install gh'; primary = $true }) }
         } else {
-            @{ title = 'Pull requests'; subtitle = 'Not signed in to GitHub'
+            @{ title = 'GitHub'; subtitle = 'Not signed in to GitHub'
                rows = @('Sign in opens a window that runs gh auth login in your browser.')
                actions = @(@{ id = 'signin'; label = 'Sign in'; primary = $true }) }
         }
@@ -233,7 +320,7 @@ function Write-Setup([string]$setup) {
 # and while gh is still there.
 if ((-not $env:TILE_GITHUB_RESPONSE -or $env:TILE_GITHUB_GH) -and -not (Get-Gh)) { Write-Setup 'install' }
 $cached = Read-Cache
-if ($cached -and ([string]$cached.filter -ne $filter -or [string]$cached.repos -ne ($watched -join ','))) { $cached = $null }
+if ($cached -and ([string]$cached.filter -ne $filter -or [string]$cached.repos -ne ($watched -join ',') -or [string]$cached.sections -ne ($sections -join ','))) { $cached = $null }
 $data = $null; $stale = $null
 if ($hook -eq 'flyout' -and $cached -and ([DateTimeOffset]::UtcNow - [DateTimeOffset]$cached.fetched_at).TotalMinutes -lt (Get-CacheMinutes)) {
     $data = $cached.data
@@ -250,40 +337,50 @@ if ($hook -eq 'flyout' -and $cached -and ([DateTimeOffset]::UtcNow - [DateTimeOf
 }
 
 $byDate = @{ Expression = { [DateTimeOffset]$_.updatedAt }; Descending = $true }
-$review = @(@($data.review.nodes | Where-Object { $_ -and $_.url }) | Sort-Object -Property $byDate)
-$mine = @(foreach ($pr in @(@($data.mine.nodes | Where-Object { $_ -and $_.url }) | Sort-Object -Property $byDate)) { @{ Pr = $pr; Status = (Get-MyStatus $pr) } })
+$review = @(if (Test-Section 'Reviews') { @(@($data.review.nodes | Where-Object { $_ -and $_.url }) | Sort-Object -Property $byDate) } else { @() })
+$mine = @(if (Test-Section 'My pull requests') { @(foreach ($pr in @(@($data.mine.nodes | Where-Object { $_ -and $_.url }) | Sort-Object -Property $byDate)) { @{ Pr = $pr; Status = (Get-MyStatus $pr) } }) } else { @() })
+$issues = @(if (Test-Section 'Issues') { @(@($data.issues.nodes | Where-Object { $_ -and $_.url }) | Sort-Object -Property $byDate) } else { @() })
+$notes = @(if (Test-Section 'Notifications') { @(@($data.notifications | Where-Object { $_ -and $_.id }) | Sort-Object -Property @{ Expression = { [DateTimeOffset]$_.updated }; Descending = $true }) } else { @() })
 $blocked = @($mine | Where-Object { $_.Status.Group -eq 'blocked' })
 $action = @($mine | Where-Object { $_.Status.Group -eq 'action' })
 $waiting = @($mine | Where-Object { $_.Status.Group -in 'waiting', 'draft' } | Sort-Object -Property @{ Expression = { $_.Status.Group -eq 'draft' } })
-$runs = @(Get-LatestRuns @($data.runs))
+$runs = @(if (Test-Section 'Actions') { @(Get-LatestRuns @($data.runs)) } else { @() })
 $failedRuns = @($runs | Where-Object { $_.Status.Group -eq 'failed' })
 $approvalRuns = @($runs | Where-Object { $_.Status.Group -eq 'action' })
 $runErrors = @($data.runErrors | Where-Object { $_ })
 $needYou = $blocked.Count + $action.Count + $failedRuns.Count + $approvalRuns.Count
 
-$parts = @()
-if ($review.Count) { $parts += "$($review.Count) to review" }
-if ($needYou) { $parts += "$needYou need you" }
-if ($waiting.Count) { $parts += "$($waiting.Count) waiting" }
-$summary = if ($parts.Count) { $parts -join " $dot " } else { 'No open pull requests' }
+# What there is, most pressing first: each with its long and short wording for the title.
+$counts = @(
+    @{ N = $needYou; Long = 'need you'; Short = 'need you' },
+    @{ N = $review.Count; Long = 'to review'; Short = 'review' },
+    @{ N = $notes.Count; Long = 'unread'; Short = 'unread' },
+    @{ N = $issues.Count; Long = $(if ($issues.Count -eq 1) { 'issue' } else { 'issues' }); Short = $(if ($issues.Count -eq 1) { 'issue' } else { 'issues' }) },
+    @{ N = $waiting.Count; Long = 'waiting'; Short = 'waiting' }) | Where-Object { $_.N }
+$counts = @($counts)
+$summary = if ($counts.Count) { @($counts | ForEach-Object { "$($_.N) $($_.Long)" }) -join " $dot " } else { 'All clear' }
 
 if ($hook -eq 'flyout') {
     $rows = @()
-    function Add-Group([string]$heading, $items) {
+    function Add-Group([string]$heading, $items, $headerAction = $null, $headerValue = $null) {
         if (-not $items.Count) { return }
-        $script:rows += @{ text = "$heading ($($items.Count))" }
+        $head = @{ text = "$heading ($($items.Count))" }
+        if ($headerAction) { $head.action = $headerAction; $head.value = $headerValue }
+        $script:rows += $head
         foreach ($i in $items) { $script:rows += $i }
     }
     Add-Group 'Waiting for your review' @($review | ForEach-Object { @{ text = (Get-Name $_); value = 'Review'; icon = @{ glyph = 'ring'; color = 'accent' }; indent = 1; action = "open:$($_.url)" } })
     $row = { param($m) @{ text = (Get-Name $m.Pr); value = $m.Status.Label; icon = @{ glyph = $(if ($m.Status.Group -eq 'blocked') { 'alert' } else { 'ring' }); color = $m.Status.Color }; indent = 1; action = "open:$($m.Pr.url)" } }
     Add-Group 'Blocked' @($blocked | ForEach-Object { & $row $_ })
     Add-Group 'Needs your action' @($action | ForEach-Object { & $row $_ })
+    Add-Group 'Notifications' @($notes | ForEach-Object { @{ text = "$(($_.repo -split '/')[-1]) $dot $($_.title)"; value = (Get-ReasonLabel $_.reason); icon = @{ glyph = 'ring'; color = 'accent' }; indent = 1; action = "note:$($_.id)" } }) 'readall' 'Mark all read'
+    Add-Group 'Issues assigned to you' @($issues | ForEach-Object { @{ text = (Get-Name $_); icon = @{ glyph = 'ring'; color = 'neutral' }; indent = 1; action = "open:$($_.url)" } })
     Add-Group 'Waiting for others' @($waiting | ForEach-Object { & $row $_ })
     Add-Group 'Actions' @($runs | Select-Object -First 10 | ForEach-Object { @{ text = (Get-RunName $_.Run); value = $_.Status.Label; icon = @{ glyph = $_.Status.Glyph; color = $_.Status.Color }; indent = 1; action = "open:$($_.Run.url)" } })
-    if (-not $rows.Count) { $rows = @('No open pull requests for you') }
+    if (-not $rows.Count) { $rows = @('Nothing for you right now') }
     $subtitle = if ($stale) { "Not updated: $stale" } else { $summary }
     $popup = @{
-        title    = 'Pull requests'
+        title    = 'GitHub'
         subtitle = $subtitle
         stayOpen = $true # Refresh redraws in place; opening a link moves focus to the browser, which closes it anyway
         rows     = $rows
@@ -301,17 +398,18 @@ $prLine = { param($pr) "#$($pr.number) $($pr.title)" }
 $runLine = { param($r) "$($r.Run.workflow): $($r.Status.Label.ToLower()) on $($r.Run.branch)" }
 $top = @($blocked | ForEach-Object { & $prLine $_.Pr }) + @($failedRuns | ForEach-Object { & $runLine $_ }) +
     @($action | ForEach-Object { & $prLine $_.Pr }) + @($approvalRuns | ForEach-Object { & $runLine $_ }) +
-    @($review | ForEach-Object { & $prLine $_ }) + @($waiting | ForEach-Object { & $prLine $_.Pr })
-$title = if ($needYou -and $review.Count) { "$needYou need you $dot $($review.Count) review" }
-    elseif ($needYou) { "$needYou need you" }
-    elseif ($review.Count) { "$($review.Count) to review" }
-    elseif ($waiting.Count) { "$($waiting.Count) waiting" }
+    @($review | ForEach-Object { & $prLine $_ }) + @($notes | ForEach-Object { "$($_.title)" }) +
+    @($issues | ForEach-Object { & $prLine $_ }) + @($waiting | ForEach-Object { & $prLine $_.Pr })
+# The two most pressing counts, or the one there is in full.
+$title = if ($counts.Count -ge 2) { "$($counts[0].N) $($counts[0].Short) $dot $($counts[1].N) $($counts[1].Short)" }
+    elseif ($counts.Count) { "$($counts[0].N) $($counts[0].Long)" }
     else { 'All clear' }
-$color = if ($blocked.Count -or $failedRuns.Count) { 'bad' } elseif ($action.Count -or $approvalRuns.Count) { 'warn' } elseif ($review.Count) { 'accent' } elseif ($waiting.Count) { 'neutral' } else { 'ok' }
+$color = if ($blocked.Count -or $failedRuns.Count) { 'bad' } elseif ($action.Count -or $approvalRuns.Count) { 'warn' }
+    elseif ($review.Count -or $notes.Count) { 'accent' } elseif ($issues.Count -or $waiting.Count) { 'neutral' } else { 'ok' }
 $tip = @($summary) + @($top | Select-Object -First 6)
 $running = @($runs | Where-Object { $_.Status.Group -eq 'running' }).Count
 if ($running) { $tip += "$running workflow runs in progress" }
-if ($runErrors.Count) { $tip += "Actions not read: $($runErrors -join '; ')" }
+if ($runErrors.Count) { $tip += "Not read: $($runErrors -join '; ')" }
 if ($stale) { $tip += "Not updated: $stale" }
 $tile = @{
     title    = $title
