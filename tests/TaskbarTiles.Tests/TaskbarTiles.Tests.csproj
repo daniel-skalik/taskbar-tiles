@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" />
+    <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.GitHub\TaskbarTiles.Plugins.GitHub.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" />
   </ItemGroup>
@@ -33,6 +34,7 @@
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Media\TaskbarTiles.Plugins.Media.csproj" Kind="media" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" Kind="battery" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" Kind="clipboard" />
+    <PluginProject Include="..\..\src\TaskbarTiles.Plugins.GitHub\TaskbarTiles.Plugins.GitHub.csproj" Kind="github" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" Kind="system" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="aquarium" />
     <PluginProject Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" Kind="snake" />

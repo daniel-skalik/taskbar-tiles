@@ -21,6 +21,8 @@
     <PluginProject Include="..\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" Kind="battery" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" Kind="clipboard" />
+    <ProjectReference Include="..\TaskbarTiles.Plugins.GitHub\TaskbarTiles.Plugins.GitHub.csproj" ReferenceOutputAssembly="false" />
+    <PluginProject Include="..\TaskbarTiles.Plugins.GitHub\TaskbarTiles.Plugins.GitHub.csproj" Kind="github" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" ReferenceOutputAssembly="false" />
     <PluginProject Include="..\TaskbarTiles.Plugins.SystemMonitor\TaskbarTiles.Plugins.SystemMonitor.csproj" Kind="system" />
     <ProjectReference Include="..\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" ReferenceOutputAssembly="false" />
