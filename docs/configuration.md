@@ -156,19 +156,22 @@ The bundled `linear` kind shows the Linear issues assigned to you that are in pr
 
 ### GitHub
 
-The bundled `github` kind shows your open pull requests on GitHub (at most 30 of each kind): those waiting for your review, and your own sorted by what they wait on; and recent GitHub Actions runs. The title counts what needs you and what you have to review; the subtitle is the most urgent one. The tile and popup show the GitHub mark, from GitHub's Primer Octicons. On the tile the mark is red when one of yours is blocked, amber when one needs your action, blue when only reviews wait, green when nothing is open and gray when yours only wait for others. Click it for the list, in up to five groups; click a pull request or run to open it in your browser.
+The bundled `github` kind shows what on GitHub waits for you: pull requests waiting for your review, your own sorted by what they wait on (at most 30 of each), recent GitHub Actions runs, your unread notifications and the open issues assigned to you. The title gives the two most pressing counts, such as "2 need you · 1 review" or "3 unread · 2 issues"; the subtitle is the most urgent item. The tile and popup show the GitHub mark, from GitHub's Primer Octicons. On the tile the mark is red when one of yours is blocked, amber when one needs your action, blue when reviews or notifications wait, gray when only issues or your own pull requests waiting for others are left, and green when nothing is. Click it for the list, in groups; click a pull request, run or issue to open it in your browser.
 
 - **Waiting for your review:** someone asked you (or your team) for a review.
 - **Blocked:** yours, with merge conflicts, failing checks, or approved but still blocked by a branch rule.
 - **Needs your action:** yours, with changes requested, behind its base branch, or ready to merge.
+- **Notifications:** your unread GitHub notifications, newest first, each with why it came (Review requested, Mention, Assigned, CI…). Click one to open it and mark it read; **Mark all read** on the group's heading marks them all.
+- **Issues assigned to you:** open issues, most recently updated first.
 - **Waiting for others:** yours, waiting for a review or for checks to finish; drafts come last.
 - **Actions:** recent GitHub Actions runs: the latest run of each workflow on each branch from the last day, failed first, then waiting for approval, running, passed and cancelled. It lists runs you started in the repositories of your open pull requests, and anyone's runs in the repositories you watch. A failed run or one waiting for approval counts as needing you and turns the mark red or amber.
 - **Refresh** in the popup fetches pull requests and runs again at once and redraws the popup in place; **Open GitHub** opens your pull requests there.
 
 - **Setting it up:** the tile talks to GitHub through the [GitHub CLI](https://cli.github.com/) (`gh`) and its sign-in, so it never sees or stores a token. Without `gh` the popup offers **Install gh**: a window installs it with `winget` (it asks first), then runs `gh auth login` in your browser. When `gh` is installed but not signed in, **Sign in** opens that sign-in window.
+- Setting `"sections"` (**Show**, also in **Settings…**) ticks what the tile shows: `Reviews`, `My pull requests`, `Actions`, `Issues` and `Notifications`. Unticked ones are neither fetched nor counted, so one tile can follow only CI, another only reviews. Without the setting all show.
 - Setting `"repos"` (**Watch Actions in**) lists up to 10 repositories, as `owner/name` separated by commas, whose runs you see from anyone, such as `acme/api` to watch its main branch.
-- Setting `"filter"` (also in **Settings…**) adds GitHub search qualifiers, such as `org:acme` or `repo:acme/api`; empty means every repository.
-- Setting `"refresh"` (default `2m`, 1 to 30 minutes) is how often pull requests are fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last list and says so in its tooltip.
+- Setting `"filter"` (also in **Settings…**) adds GitHub search qualifiers to the pull request and issue searches, such as `org:acme` or `repo:acme/api`; empty means every repository.
+- Setting `"refresh"` (default `2m`, 1 to 30 minutes) is how often everything is fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last list and says so in its tooltip.
 
 ### Pixel scenes
 

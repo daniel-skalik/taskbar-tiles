@@ -1,12 +1,13 @@
 {
   "name": "GitHub",
-  "description": "Pull requests waiting for your review or for you, and recent GitHub Actions runs",
+  "description": "Pull requests waiting for your review or for you, Actions runs, assigned issues and notifications",
   "group": "Productivity",
   "connector": "script",
   "width": 200,
   "fields": [
     { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "30m", "help": "How often pull requests and runs are fetched from GitHub." },
     { "key": "filter", "label": "Filter", "type": "text", "help": "Extra GitHub search qualifiers for pull requests, such as org:acme or repo:acme/api. Empty: every repository." },
+    { "key": "sections", "label": "Show", "type": "pick", "choices": ["Reviews", "My pull requests", "Actions", "Issues", "Notifications"], "help": "What the tile and its popup show." },
     { "key": "repos", "label": "Watch Actions in", "type": "text", "help": "Repositories (owner/name, comma-separated, up to 10) whose workflow runs you see from anyone. Runs you start show from repositories with your open pull requests anyway." }
   ],
   "settings": {
@@ -18,6 +19,8 @@
       "flyout":         { "run": "github.ps1" },
       "action:open":    { "run": "github.ps1" },
       "action:reload":  { "run": "github.ps1" },
+      "action:note":    { "run": "github.ps1" },
+      "action:readall": { "run": "github.ps1" },
       "action:install": { "run": "github.ps1" },
       "action:signin":  { "run": "github.ps1" }
     }
