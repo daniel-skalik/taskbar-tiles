@@ -101,9 +101,10 @@ public static class GitHubView
     }
 
     public static string Short(string repo) => repo[(repo.LastIndexOf('/') + 1)..];
-    public static string Name(PullRequest pr) => $"{Short(pr.Repo)}#{pr.Number} {pr.Title}";
-    public static string Name(Issue i) => $"{Short(i.Repo)}#{i.Number} {i.Title}";
-    public static string RunName(WorkflowRun r) => $"{Short(r.Repo)} {Dot} {r.Workflow} {Dot} {r.Branch}";
+    // Popup rows sit under their repository's row, so they leave the repository out and keep the room for the title.
+    public static string Name(PullRequest pr) => $"#{pr.Number} {pr.Title}";
+    public static string Name(Issue i) => $"#{i.Number} {i.Title}";
+    public static string RunName(WorkflowRun r) => $"{r.Workflow} {Dot} {r.Branch}";
 
     /// <summary>Why a notification came, in a few words.</summary>
     public static string ReasonLabel(string reason) => reason switch
@@ -177,24 +178,30 @@ public static class GitHubView
     public static FlyoutState Flyout(Board b, byte[]? logo, string? stale = null)
     {
         var rows = new List<FlyoutRow>();
-        void Group(string heading, IReadOnlyList<FlyoutRow> items, string? headerAction = null, string? headerValue = null)
+        // A heading with its count, then each repository (in the order it first comes) with its items below it.
+        void Group<T>(string heading, IReadOnlyList<T> items, Func<T, string> repo, Func<T, FlyoutRow> row,
+            string? headerAction = null, string? headerValue = null)
         {
             if (items.Count == 0) return;
             rows.Add(new FlyoutRow($"{heading} ({items.Count})", headerValue, Action: headerAction));
-            rows.AddRange(items);
+            foreach (var group in items.GroupBy(repo, StringComparer.OrdinalIgnoreCase))
+            {
+                rows.Add(new FlyoutRow(Short(group.Key), Action: GitHubSettings.RepoName().IsMatch(group.Key) ? $"open:https://github.com/{group.Key}" : null, Indent: 1));
+                rows.AddRange(group.Select(i => row(i) with { Indent = 1 })); // same step as the repository: the icon sets them apart, and the title keeps the room
+            }
         }
         FlyoutRow Mine((PullRequest Pr, Status Status) m) =>
-            new(Name(m.Pr), m.Status.Label, new TileIcon(m.Status.Glyph, m.Status.Color), $"open:{m.Pr.Url}", Indent: 1);
+            new(Name(m.Pr), m.Status.Label, new TileIcon(m.Status.Glyph, m.Status.Color), $"open:{m.Pr.Url}");
 
-        Group("Waiting for your review", b.Reviews.Select(p => new FlyoutRow(Name(p), "Review", new TileIcon("ring", TileColor.Accent), $"open:{p.Url}", Indent: 1)).ToList());
-        Group("Blocked", b.Blocked.Select(Mine).ToList());
-        Group("Needs your action", b.Action.Select(Mine).ToList());
-        Group("Notifications", b.Notifications.Select(n => new FlyoutRow($"{Short(n.Repo)} {Dot} {n.Title}", ReasonLabel(n.Reason),
-            new TileIcon("ring", TileColor.Accent), $"note:{n.Id}", Indent: 1)).ToList(), "readall", "Mark all read");
-        Group("Issues assigned to you", b.Issues.Select(i => new FlyoutRow(Name(i), null, new TileIcon("ring", TileColor.Neutral), $"open:{i.Url}", Indent: 1)).ToList());
-        Group("Waiting for others", b.Waiting.Select(Mine).ToList());
-        Group("Actions", b.Runs.Take(10).Select(r => new FlyoutRow(RunName(r.Run), r.Status.Label, new TileIcon(r.Status.Glyph, r.Status.Color),
-            $"open:{r.Run.Url}", Indent: 1)).ToList());
+        Group("Waiting for your review", b.Reviews, p => p.Repo, p => new FlyoutRow(Name(p), "Review", new TileIcon("ring", TileColor.Accent), $"open:{p.Url}"));
+        Group("Blocked", b.Blocked, m => m.Pr.Repo, Mine);
+        Group("Needs your action", b.Action, m => m.Pr.Repo, Mine);
+        Group("Notifications", b.Notifications, n => n.Repo, n => new FlyoutRow(n.Title, ReasonLabel(n.Reason),
+            new TileIcon("ring", TileColor.Accent), $"note:{n.Id}"), "readall", "Mark all read");
+        Group("Issues assigned to you", b.Issues, i => i.Repo, i => new FlyoutRow(Name(i), null, new TileIcon("ring", TileColor.Neutral), $"open:{i.Url}"));
+        Group("Waiting for others", b.Waiting, m => m.Pr.Repo, Mine);
+        Group("Actions", b.Runs.Take(10).ToList(), r => r.Run.Repo, r => new FlyoutRow(RunName(r.Run), r.Status.Label, new TileIcon(r.Status.Glyph, r.Status.Color),
+            $"open:{r.Run.Url}"));
         if (rows.Count == 0) rows.Add(new FlyoutRow("Nothing for you right now"));
 
         return new FlyoutState(Title, stale is null ? Summary(b) : "Not updated: " + stale, rows,

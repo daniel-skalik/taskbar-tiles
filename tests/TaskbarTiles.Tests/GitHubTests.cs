@@ -149,15 +149,16 @@ public class GitHubTests
         Assert.Equal("4 need you · 1 to review · 2 waiting", f.Subtitle);
         Assert.Equal(new[]
         {
-            "Waiting for your review (1)", "api#10 Their change",
-            "Blocked (2)", "api#1 Conflicting", "api#2 Red checks",
-            "Needs your action (2)", "api#3 Fix asked", "api#4 Approved",
-            "Waiting for others (2)", "api#5 In review", "api#6 Sketch",
+            "Waiting for your review (1)", "api", "#10 Their change",
+            "Blocked (2)", "api", "#1 Conflicting", "#2 Red checks",
+            "Needs your action (2)", "api", "#3 Fix asked", "#4 Approved",
+            "Waiting for others (2)", "api", "#5 In review", "#6 Sketch",
         }, f.Rows.Select(r => r.Text));
-        Assert.Equal(new string?[] { null, "Review", null, "Conflicts", "Checks failing", null, "Changes requested", "Ready to merge", null, "Awaiting review", "Draft" },
+        Assert.Equal(new string?[] { null, null, "Review", null, null, "Conflicts", "Checks failing", null, null, "Changes requested", "Ready to merge", null, null, "Awaiting review", "Draft" },
             f.Rows.Select(r => r.Value));
-        Assert.Equal("open:https://github.com/acme/api/pull/10", f.Rows[1].Action);
-        Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[3].Icon);
+        Assert.Equal(("open:https://github.com/acme/api", 1), (f.Rows[1].Action, f.Rows[1].Indent)); // the repository, once per section
+        Assert.Equal(("open:https://github.com/acme/api/pull/10", 1), (f.Rows[2].Action, f.Rows[2].Indent));
+        Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[5].Icon);
         Assert.Equal(new[] { "reload", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
         Assert.True(f.StayOpen);
     }
@@ -170,8 +171,8 @@ public class GitHubTests
 
         var f = GitHubView.Flyout(b, null);
         // A later pass hides feat's failure; the day-old failure and the skipped run are left out.
-        Assert.Equal(new[] { "Actions (3)", "api · CI · main", "api · Deploy · main", "api · CI · feat" }, f.Rows.Select(r => r.Text));
-        Assert.Equal(new string?[] { null, "Failed", "Running", "Passed" }, f.Rows.Select(r => r.Value));
+        Assert.Equal(new[] { "Actions (3)", "api", "CI · main", "Deploy · main", "CI · feat" }, f.Rows.Select(r => r.Text));
+        Assert.Equal(new string?[] { null, null, "Failed", "Running", "Passed" }, f.Rows.Select(r => r.Value));
     }
 
     [Fact]
@@ -183,10 +184,11 @@ public class GitHubTests
         Assert.Equal(TileColor.Accent, tile.ImageColor);
 
         var f = GitHubView.Flyout(b, null);
-        Assert.Equal(new[] { "Notifications (2)", "api · Add retries", "web · Who owns this?", "Issues assigned to you (1)", "api#7 Crash on start" },
+        Assert.Equal(new[] { "Notifications (2)", "api", "Add retries", "web", "Who owns this?", "Issues assigned to you (1)", "api", "#7 Crash on start" },
             f.Rows.Select(r => r.Text));
-        Assert.Equal(new string?[] { "Mark all read", "Review requested", "Mention", null, null }, f.Rows.Select(r => r.Value));
-        Assert.Equal(new string?[] { "readall", "note:502", "note:501", null, "open:https://github.com/acme/api/issues/7" }, f.Rows.Select(r => r.Action));
+        Assert.Equal(new string?[] { "Mark all read", null, "Review requested", null, "Mention", null, null, null }, f.Rows.Select(r => r.Value));
+        Assert.Equal(new string?[] { "readall", "open:https://github.com/acme/api", "note:502", "open:https://github.com/acme/web", "note:501", null,
+            "open:https://github.com/acme/api", "open:https://github.com/acme/api/issues/7" }, f.Rows.Select(r => r.Action));
     }
 
     [Fact]
@@ -196,7 +198,7 @@ public class GitHubTests
         var b = Board(Inbox with { Reviews = Pulls.Reviews, Mine = Pulls.Mine }, onlyIssues);
 
         Assert.Equal("1 issue", GitHubView.Tile(b, null).Title);
-        Assert.Equal(new[] { "Issues assigned to you (1)", "api#7 Crash on start" }, GitHubView.Flyout(b, null).Rows.Select(r => r.Text));
+        Assert.Equal(new[] { "Issues assigned to you (1)", "api", "#7 Crash on start" }, GitHubView.Flyout(b, null).Rows.Select(r => r.Text));
     }
 
     [Fact]
