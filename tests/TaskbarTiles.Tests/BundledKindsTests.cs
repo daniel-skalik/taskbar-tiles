@@ -115,6 +115,21 @@ public class BundledKindsTests
         Assert.NotNull(outcome.Value.Image); // claude.png from the tile folder
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Claude_usage_draws_the_week_on_the_bar_when_there_is_no_five_hour_limit()
+    {
+        var sample = $$"""{ "five_hour": null, "seven_day": { "utilization": 30, "resets_at": "{{DateTimeOffset.UtcNow.AddDays(3.5):o}}" } }""";
+        var outcome = HookResults.ForTile("interval", await RunUsage("interval", sample), TimeSpan.FromSeconds(30));
+
+        Assert.False(outcome.Failed, $"{outcome.ErrorMessage}\n{outcome.ErrorDetails}");
+        Assert.Equal("5h: no limit", outcome.Value!.Title);
+        Assert.StartsWith("Week 30%/57% · resets ", outcome.Value.Subtitle); // day 4 of 7 begun
+        Assert.Equal(0.30, outcome.Value.Progress!.Value, 3);
+        Assert.Equal(0.57, outcome.Value.ProgressMark!.Value, 2);
+        Assert.Equal(0.60, outcome.Value.ProgressForecast!.Value, 2); // 30% in half the week: 60% at the reset
+    }
+
     [Theory]
     [Trait("Category", "Integration")]
     [InlineData(85, 10, TileColor.Warn)]
