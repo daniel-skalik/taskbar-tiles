@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The host provides Contracts at runtime; don't ship a copy with the plugin. -->
+    <ProjectReference Include="..\TaskbarTiles.Contracts\TaskbarTiles.Contracts.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The GitHub mark (Primer Octicons "mark-github", MIT), shown on the tile and in the popup. -->
+    <EmbeddedResource Include="..\..\tiles\github\github.png" LogicalName="github.png" />
+  </ItemGroup>
+</Project>
