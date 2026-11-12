@@ -197,6 +197,13 @@ if ($null -ne $hour) {
 } else {
     $state.title = '5h: no limit'
     $state.icon = @{ glyph = 'clock'; color = 'neutral' }
+    # No 5-hour limit on this plan: the bar shows the week instead.
+    if ($null -ne $week) {
+        $state.progress = [Math]::Min(1.0, [Math]::Max(0.0, $week / 100.0))
+        if ($null -ne $weekPace) { $state.progressMark = $weekPace / 100.0 }
+        if ($weekForecast) { $state.progressForecast = [Math]::Min(1.0, $weekForecast.Percent / 100.0) }
+        $state.icon.color = Get-Color $week
+    }
 }
 if ($null -ne $week) {
     $state.subtitle = "Week $(Format-Pace $week $weekPace) $dot resets $(Format-Reset $weekReset -dayOnly)"
