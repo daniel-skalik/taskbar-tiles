@@ -157,7 +157,7 @@ public class GitHubTests
         Assert.Equal(new string?[] { null, null, "Review", null, null, "Conflicts", "Checks failing", null, null, "Changes requested", "Ready to merge", null, null, "Awaiting review", "Draft" },
             f.Rows.Select(r => r.Value));
         Assert.Equal(("open:https://github.com/acme/api", 1), (f.Rows[1].Action, f.Rows[1].Indent)); // the repository, once per section
-        Assert.Equal(("open:https://github.com/acme/api/pull/10", 2), (f.Rows[2].Action, f.Rows[2].Indent));
+        Assert.Equal(("open:https://github.com/acme/api/pull/10", 1), (f.Rows[2].Action, f.Rows[2].Indent));
         Assert.Equal(new TileIcon("alert", TileColor.Bad), f.Rows[5].Icon);
         Assert.Equal(new[] { "reload", "open:https://github.com/pulls" }, f.Actions.Select(a => a.Id));
         Assert.True(f.StayOpen);

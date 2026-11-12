@@ -187,7 +187,7 @@ public static class GitHubView
             foreach (var group in items.GroupBy(repo, StringComparer.OrdinalIgnoreCase))
             {
                 rows.Add(new FlyoutRow(Short(group.Key), Action: GitHubSettings.RepoName().IsMatch(group.Key) ? $"open:https://github.com/{group.Key}" : null, Indent: 1));
-                rows.AddRange(group.Select(i => row(i) with { Indent = 2 }));
+                rows.AddRange(group.Select(i => row(i) with { Indent = 1 })); // same step as the repository: the icon sets them apart, and the title keeps the room
             }
         }
         FlyoutRow Mine((PullRequest Pr, Status Status) m) =>
