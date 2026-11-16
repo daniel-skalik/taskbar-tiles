@@ -9,7 +9,8 @@ namespace TaskbarTiles.Host.Taskbar;
 /// <summary>
 /// Tracks every taskbar window and publishes its free zone. Event-driven only:
 ///  - WinEvent hooks on Explorer (taskbar, Start, icon area, tray moved/resized/re-ordered) and on foreground changes
-///  - ABN_FULLSCREENAPP from an appbar registration (fullscreen without a foreground change, e.g. F11)
+///  - ABN_FULLSCREENAPP from an appbar registration on each monitor (fullscreen without a foreground change, e.g. F11;
+///    Explorer tells only the appbars on the monitor that went full screen)
 ///  - TaskbarCreated (Explorer restarted), WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE
 /// While <see cref="TrackIconEdges"/> is on, each of those batches also reads where the app icons end with
 /// <paramref name="edges"/> on a thread-pool thread, for the right zone; a changed edge refreshes again.
@@ -25,6 +26,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
     readonly HashSet<IntPtr> _watched = [];
     readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
     HwndSource? _messageWindow;
+    readonly List<HwndSource> _appBars = []; // one hidden appbar window per monitor, for ABN_FULLSCREENAPP
     bool _refreshQueued;
     bool _disposed;
     uint _explorerPid;
@@ -58,7 +60,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
             ExtendedWindowStyle = (int)WS_EX_TOOLWINDOW,
         });
         _messageWindow.AddHook(WndProc);
-        RegisterAppBar();
+        RegisterAppBars();
         Rehook();
         QueueRefresh();
     }
@@ -93,7 +95,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
     {
         if (msg == (int)_taskbarCreated)
         {
-            RegisterAppBar();
+            RegisterAppBars();
             Rehook();
             QueueRefresh();
             // Secondary taskbars can be created after the broadcast; refresh again shortly after.
@@ -102,16 +104,23 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
         }
         else if (msg == WM_DISPLAYCHANGE)
         {
+            RegisterAppBars(); // monitors may have come or gone
             // Secondary taskbars appear a moment after the display change; refresh again shortly after.
             QueueRefresh();
             RefreshAfter(TimeSpan.FromSeconds(1));
             RefreshAfter(TimeSpan.FromSeconds(3));
         }
-        else if ((msg == AppBarCallbackMessage && wParam.ToInt32() == ABN_FULLSCREENAPP)
-                 || msg is WM_DPICHANGED or WM_SETTINGCHANGE)
+        else if (msg is WM_DPICHANGED or WM_SETTINGCHANGE)
         {
             QueueRefresh();
         }
+        return IntPtr.Zero;
+    }
+
+    // The appbar windows only listen for their callback; broadcasts are handled once, by the message window.
+    IntPtr AppBarProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == AppBarCallbackMessage && wParam.ToInt32() == ABN_FULLSCREENAPP) QueueRefresh();
         return IntPtr.Zero;
     }
 
@@ -262,18 +271,41 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
         return key?.GetValue("SystemUsesLightTheme") is int v && v == 1;
     }
 
-    // Registering as an appbar (without reserving space) is the documented way to receive ABN_FULLSCREENAPP.
-    void RegisterAppBar()
+    // Registering as an appbar (without reserving space) is the documented way to receive ABN_FULLSCREENAPP. Explorer
+    // sends it only to the appbars on the monitor that went full screen, so each monitor gets its own hidden window.
+    void RegisterAppBars()
     {
-        if (_messageWindow is null) return;
-        var data = new APPBARDATA
+        RemoveAppBars();
+        if (_disposed) return;
+        var monitors = new List<RECT>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr _, IntPtr _, ref RECT r, IntPtr _) => { monitors.Add(r); return true; }, IntPtr.Zero);
+        foreach (var r in monitors)
         {
-            cbSize = Marshal.SizeOf<APPBARDATA>(),
-            hWnd = _messageWindow.Handle,
-            uCallbackMessage = AppBarCallbackMessage,
-        };
-        SHAppBarMessage(ABM_REMOVE, ref data);
-        SHAppBarMessage(ABM_NEW, ref data);
+            var window = new HwndSource(new HwndSourceParameters("TaskbarTilesFullscreen")
+            {
+                PositionX = r.Left,
+                PositionY = r.Top,
+                Width = 1,
+                Height = 1,
+                WindowStyle = unchecked((int)0x80000000), // WS_POPUP, never shown
+                ExtendedWindowStyle = (int)WS_EX_TOOLWINDOW,
+            });
+            window.AddHook(AppBarProc);
+            var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = window.Handle, uCallbackMessage = AppBarCallbackMessage };
+            SHAppBarMessage(ABM_NEW, ref data);
+            _appBars.Add(window);
+        }
+    }
+
+    void RemoveAppBars()
+    {
+        foreach (var window in _appBars)
+        {
+            var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = window.Handle };
+            SHAppBarMessage(ABM_REMOVE, ref data);
+            window.Dispose();
+        }
+        _appBars.Clear();
     }
 
     public void Dispose()
@@ -282,10 +314,9 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
         _disposed = true;
         foreach (var h in _hooks) UnhookWinEvent(h);
         _hooks.Clear();
+        RemoveAppBars();
         if (_messageWindow is not null)
         {
-            var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = _messageWindow.Handle };
-            SHAppBarMessage(ABM_REMOVE, ref data);
             _messageWindow.Dispose();
             _messageWindow = null;
         }
