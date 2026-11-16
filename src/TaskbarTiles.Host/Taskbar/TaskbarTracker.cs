@@ -236,7 +236,7 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
                 IsPrimary: (info.dwFlags & MONITORINFOF_PRIMARY) != 0,
                 Taskbar: barRect,
                 FreeZone: zone,
-                Hidden: IsFullscreenOn(monitor, info.rcMonitor),
+                Hidden: IsFullscreenOn(monitor, info.rcMonitor) || IsCoveredAbove(bar, info.rcMonitor),
                 IsLightTheme: light,
                 DpiScale: scale,
                 RightZone: FreeZoneCalculator.ComputeRight(geometry, margin, clockReserve, iconsRight),
@@ -262,8 +262,26 @@ public sealed class TaskbarTracker(Dispatcher dispatcher, IIconEdgeReader? edges
         if (ClassName(fg) is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
         if (MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST) != monitor) return false;
         if (!GetWindowRect(fg, out var r)) return false;
-        return r.Left <= monitorRect.Left && r.Top <= monitorRect.Top && r.Right >= monitorRect.Right && r.Bottom >= monitorRect.Bottom;
+        return Covers(r, monitorRect);
     }
+
+    // A full-screen window stays above its monitor's taskbar after the focus moves to another monitor (a presentation
+    // on the second screen while you work on the first): Explorer keeps that taskbar covered, so the tiles hide too.
+    static bool IsCoveredAbove(IntPtr bar, RECT monitorRect)
+    {
+        for (var w = GetWindow(bar, GW_HWNDPREV); w != IntPtr.Zero; w = GetWindow(w, GW_HWNDPREV))
+        {
+            if (!IsWindowVisible(w) || IsIconic(w)) continue;
+            if (DwmGetWindowAttribute(w, DWMWA_CLOAKED, out var cloaked, sizeof(int)) == 0 && cloaked != 0) continue;
+            GetWindowThreadProcessId(w, out var pid);
+            if (pid == Environment.ProcessId) continue;
+            if (GetWindowRect(w, out var r) && Covers(r, monitorRect)) return true;
+        }
+        return false;
+    }
+
+    static bool Covers(RECT r, RECT monitorRect) =>
+        r.Left <= monitorRect.Left && r.Top <= monitorRect.Top && r.Right >= monitorRect.Right && r.Bottom >= monitorRect.Bottom;
 
     static bool IsLightTaskbar()
     {
