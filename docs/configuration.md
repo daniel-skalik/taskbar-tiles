@@ -173,6 +173,16 @@ The bundled `github` kind shows what on GitHub waits for you: pull requests wait
 - Setting `"filter"` (also in **Settings…**) adds GitHub search qualifiers to the pull request and issue searches, such as `org:acme` or `repo:acme/api`; empty means every repository.
 - Setting `"refresh"` (default `2m`, 1 to 30 minutes) is how often everything is fetched; the popup reuses the last fetch while it is younger than that (at least 2 minutes). When a fetch fails, the tile keeps showing the last list and says so in its tooltip.
 
+### Google Calendar
+
+The bundled `google-calendar` kind shows your next meeting today with a countdown ("Standup in 12 min"; "at 15:00" when it is more than three hours away), its time and how many more are left today. During a meeting it shows the time left, with a bar along the bottom for how far through it you are, and what comes next. The calendar icon turns orange five minutes before a meeting starts, and gray when the day has nothing left; then the subtitle names tomorrow's first event. The countdown moves every minute between fetches.
+
+Click it for today's events, then tomorrow's, with all-day events first. A green dot marks the meeting you are in, an orange one the next, a gray one those already over. Click an event to join its video call (Google Meet, Zoom or Teams, from the event's conference link, location or description), or else to open it in Google Calendar. **Join** joins the current or next call; **Open calendar** opens today in Google Calendar. Events you declined and cancelled ones are left out.
+
+- **Setting it up:** the first click asks for a calendar's secret address. In Google Calendar open Settings, pick the calendar under *Settings for my calendars* › *Integrate calendar*, copy **Secret address in iCal format**, paste it and press Enter. The tile reads the calendar once before keeping the address. **Add a calendar** at the end of the popup adds another (up to 8, such as work and personal); their events show together. Google Workspace admins can turn secret addresses off; then the option is missing.
+- **Where the addresses live:** in Windows Credential Manager (generic credential `TaskbarTiles-GoogleCalendar`), encrypted for your Windows account. Anyone with an address can read that calendar, so the tile sends it only to `calendar.google.com`, and never writes it to `config.json`, the log or an error message; errors name a calendar by its number ("Calendar 2: not found (404)"). No events are written to disk. **Forget calendars** in its **Settings…** removes them all. If an address leaks, use **Reset** next to it in Google Calendar and add the new one.
+- Setting `"refresh"` (default `5m`, 1 to 60 minutes, also in **Settings…**) is how often the calendars are fetched. When one calendar cannot be read, the others still show and the tooltip says which failed; when none can, the tile keeps the last events and says so.
+
 ### Pixel scenes
 
 Four bundled kinds draw a tiny animated world across the whole tile; click to join in, hover for the score or status. In the + picker they are under **Fun**.

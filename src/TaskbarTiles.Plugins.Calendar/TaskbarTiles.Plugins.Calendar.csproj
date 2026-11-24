@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <!-- Copies Ical.Net and its dependencies next to the DLL, with a deps.json the plugin loader resolves them from. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The host provides Contracts at runtime; don't ship a copy with the plugin. -->
+    <ProjectReference Include="..\TaskbarTiles.Contracts\TaskbarTiles.Contracts.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A plain calendar shape (drawn for this app), shown on the tile and in the popup. -->
+    <EmbeddedResource Include="..\..\tiles\google-calendar\calendar.png" LogicalName="calendar.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Ical.Net" Version="5.2.4" />
+  </ItemGroup>
+</Project>

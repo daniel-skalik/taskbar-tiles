@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TaskbarTiles.Host\TaskbarTiles.Host.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Battery\TaskbarTiles.Plugins.Battery.csproj" />
+    <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Calendar\TaskbarTiles.Plugins.Calendar.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Clipboard\TaskbarTiles.Plugins.Clipboard.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Scenes\TaskbarTiles.Plugins.Scenes.csproj" />
     <ProjectReference Include="..\..\src\TaskbarTiles.Plugins.Script\TaskbarTiles.Plugins.Script.csproj" />
