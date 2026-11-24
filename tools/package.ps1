@@ -6,7 +6,7 @@
     Publishes src\TaskbarTiles.Host for win-x64 with the .NET runtime included, lays it out as
 
         TaskbarTiles-<version>-win-x64\
-            install.cmd, uninstall.cmd, README.md
+            install.cmd, uninstall.cmd, README.md, LICENSE
             tools\install.ps1, tools\uninstall.ps1
             app\            the published app (TaskbarTiles.exe, plugins\, tiles\)
 
@@ -45,7 +45,7 @@ Write-Host "Publishing $Version (win-x64, self-contained) ..."
 & dotnet publish $project -c Release -r win-x64 --self-contained true -p:Version=$Version -o (Join-Path $root 'app') --nologo --disable-build-servers
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
-Copy-Item -LiteralPath (Join-Path $repo 'install.cmd'), (Join-Path $repo 'uninstall.cmd'), (Join-Path $repo 'README.md') -Destination $root
+Copy-Item -LiteralPath (Join-Path $repo 'install.cmd'), (Join-Path $repo 'uninstall.cmd'), (Join-Path $repo 'README.md'), (Join-Path $repo 'LICENSE') -Destination $root
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1'), (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $root 'tools')
 
 Compress-Archive -Path $root -DestinationPath $zip
