@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
 
 namespace TaskbarTiles.Host.Plugins;
@@ -23,6 +24,8 @@ public sealed record KindDlls(IReadOnlyDictionary<string, ConnectorDescriptor> C
 /// Group is where the + picker files it, a path such as "Fun/Games" (tile.json's "group"); "" for the top level.
 /// Resizable is false when tile.json says "resizable": false: its tiles keep the kind's width, and edit mode offers no
 /// resize grip. WidthMin and WidthMax (tile.json's "minWidth" and "maxWidth") bound how far the grip goes.
+/// Icon is what the + picker shows next to the kind (tile.json's "icon"): a picture file in the kind's folder, or a
+/// glyph name; IconColor draws it in one state color.
 /// </summary>
 public sealed record TileKind(
     string Id,
@@ -42,7 +45,9 @@ public sealed record TileKind(
     bool Resizable = true,
     double WidthMin = TileJson.MinWidth,
     double WidthMax = TileJson.MaxWidth,
-    IReadOnlyList<SettingsAction>? SettingsActions = null)
+    IReadOnlyList<SettingsAction>? SettingsActions = null,
+    string? Icon = null,
+    TileColor? IconColor = null)
 {
     /// <summary>The connector built into the app; script kinds only need it to run their scripts.</summary>
     public const string ScriptConnectorId = "script";
@@ -85,7 +90,8 @@ public sealed record KindTable(string TilesDir, IReadOnlyDictionary<string, Tile
 /// <summary>What a kind's tile.json says. Error names the file (and the line for JSON errors) when it cannot be used.</summary>
 public sealed record TileJson(string Name, string Description, string Connector, JsonElement Settings, string? Error,
     double? Width = null, bool Compact = true, IReadOnlyList<TileField>? Fields = null, string Group = "", bool Resizable = true,
-    double WidthMin = TileJson.MinWidth, double WidthMax = TileJson.MaxWidth, IReadOnlyList<SettingsAction>? SettingsActions = null)
+    double WidthMin = TileJson.MinWidth, double WidthMax = TileJson.MaxWidth, IReadOnlyList<SettingsAction>? SettingsActions = null,
+    string? Icon = null, TileColor? IconColor = null)
 {
     /// <summary>The range "width" accepts, in device-independent pixels.</summary>
     public const double MinWidth = 48, MaxWidth = 640;
@@ -186,8 +192,23 @@ public sealed record TileJson(string Name, string Description, string Connector,
                 group = NormalizeGroup(g.GetString());
             }
 
+            // A picture in the kind's own folder ("github.png") or a glyph name ("clock"); never a path out of the folder.
+            var icon = Text(root, "icon");
+            if (root.TryGetProperty("icon", out var i) && (i.ValueKind != JsonValueKind.String || icon is null
+                    || icon.IndexOfAny(['/', '\\', ':']) >= 0 || icon.Contains("..", StringComparison.Ordinal)))
+                return Broken($"{shownPath}: \"icon\" must be a picture file in the kind's folder, such as \"logo.png\", or a glyph name such as \"clock\".");
+
+            TileColor? iconColor = null;
+            if (root.TryGetProperty("iconColor", out var ic))
+            {
+                if (ic.ValueKind != JsonValueKind.String || !Enum.TryParse<TileColor>(ic.GetString(), ignoreCase: true, out var parsedColor)
+                    || !Enum.IsDefined(parsedColor) || int.TryParse(ic.GetString(), out _))
+                    return Broken($"{shownPath}: \"iconColor\" must be neutral, accent, ok, warn or bad.");
+                iconColor = parsedColor;
+            }
+
             return new TileJson(name, Text(root, "description") ?? "", connector, settings, null, width, compact, fields, group, resizable,
-                widthMin ?? MinWidth, widthMax ?? MaxWidth, settingsActions);
+                widthMin ?? MinWidth, widthMax ?? MaxWidth, settingsActions, icon, iconColor);
         }
     }
 

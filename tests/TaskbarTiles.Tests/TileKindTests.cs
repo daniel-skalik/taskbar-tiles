@@ -69,4 +69,30 @@ public class TileKindTests
     [Fact]
     public void No_instance_settings_means_the_kinds_settings() =>
         Assert.Equal("""{"host":"1.1.1.1"}""", TestKinds.Script("ping", """{ "host": "1.1.1.1" }""").SettingsFor(Json("{}")).GetRawText());
+
+    [Fact]
+    public void Icon_is_a_file_in_the_kind_folder_or_a_glyph_with_an_optional_color()
+    {
+        var json = TileJson.Parse("""{ "name": "A", "connector": "script", "icon": "logo.png", "iconColor": "Accent" }""", "t.json");
+        Assert.Null(json.Error);
+        Assert.Equal("logo.png", json.Icon);
+        Assert.Equal(TaskbarTiles.Contracts.TileColor.Accent, json.IconColor);
+        Assert.Equal("clock", TileJson.Parse("""{ "name": "A", "connector": "script", "icon": "clock" }""", "t.json").Icon);
+        Assert.Null(TileJson.Parse("""{ "name": "A", "connector": "script" }""", "t.json").Icon);
+    }
+
+    [Theory]
+    [InlineData("\"..\\\\secret.png\"")]
+    [InlineData("\"C:/x.png\"")]
+    [InlineData("\"sub/x.png\"")]
+    [InlineData("3")]
+    public void Icon_may_not_leave_the_kind_folder(string icon) =>
+        Assert.Contains("\"icon\"", TileJson.Parse($$"""{ "name": "A", "connector": "script", "icon": {{icon}} }""", "t.json").Error);
+
+    [Theory]
+    [InlineData("\"purple\"")]
+    [InlineData("\"2\"")]
+    [InlineData("true")]
+    public void IconColor_is_a_state_color(string color) =>
+        Assert.Contains("\"iconColor\"", TileJson.Parse($$"""{ "name": "A", "connector": "script", "iconColor": {{color}} }""", "t.json").Error);
 }

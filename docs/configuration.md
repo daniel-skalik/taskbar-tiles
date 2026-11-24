@@ -62,7 +62,9 @@ The folder name is the kind's id (`"kind": "ping"` for a `tiles\ping` folder). I
 ```jsonc
 {
   "name": "Ping a host",                    // shown in the + / stack picker (required)
-  "description": "Pings a host every 15 s", // subtitle in the picker
+  "description": "Pings a host every 15 s", // shown under the name in the picker, on up to two lines
+  "icon": "ping.png",                       // picker icon: a picture in this folder, or a glyph name such as "network" (optional)
+  "iconColor": "accent",                    // draws the icon as one shape in this color: neutral, accent, ok, warn or bad (optional)
   "group": "Network",                       // folder of the + / stack picker, slash separated: "Fun/Games" (default: top level)
   "connector": "script",                    // "script", or a connector id declared by a DLL in this folder (required)
   "width": 132,                             // tile width, 48 to 640 (default: the connector's; 132 for scripts, 268 for media)
@@ -89,6 +91,7 @@ The folder name is the kind's id (`"kind": "ping"` for a `tiles\ping` folder). I
 - **Edits apply by themselves:** saving `tile.json` or a script (`.ps1`, `.psm1`, `.py`, `.cmd` or `.bat` directly in the kind folder) restarts only the tiles of that kind. Files a script writes into its own folder (logs, caches) do not restart it.
 - **Mistakes:** a `tile.json` that is not valid JSON or lacks `name` or `connector`, a DLL that does not load, two DLLs declaring the same connector id, or a `connector` no DLL in the folder declares makes the kind broken: its tiles show the error (naming the file, and the line for JSON errors), it is written to `logs\host.log`, and every other kind keeps working. `config.json` is rejected only for its own mistakes: a tile naming a kind with no folder in `tiles\` (or a folder without `tile.json`), `hooks` in a tile's settings, a tile without `kind`, or the old form `{ "connector": … }` (tiles from before tile folders: rewrite them as `{ "kind": "<folder>" }`).
 - **Picker folders:** `group` files new tiles of the kind in a folder of the + / stack picker; slashes nest folders (`"Fun/Games"` is Games inside Fun). A folder that would hold a single tile is not shown: that tile is listed one level up. Parts are trimmed and empty ones dropped; folders with the same name in a different case are one folder. Your existing tiles are always listed at the top.
+- **Picker icons:** `icon` names a picture (PNG or JPEG) in the kind's folder, shown at its own colors, or one of the glyph names in [script-connectors.md](script-connectors.md); a glyph is drawn in the accent color. With `iconColor`, a picture is drawn as one shape in that color (for a white logo, say), and a glyph in that color. Without `icon` the picker shows the name's first letter. A kind this taskbar already shows a tile of has a check mark; picking it adds another tile.
 - A folder in `tiles\` without `tile.json` is not a kind.
 
 ### Tile settings

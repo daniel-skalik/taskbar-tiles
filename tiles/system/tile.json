@@ -3,6 +3,7 @@
   "description": "CPU, memory, GPU, network and disk space",
   "group": "System",
   "connector": "system",
+  "icon": "cpu",
   "width": 200,
   "fields": [
     { "key": "show", "label": "Show", "type": "pick", "choices": ["CPU", "RAM", "GPU", "Network", "Disk"], "help": "What the tile shows." },

@@ -3,6 +3,7 @@
   "description": "Your Claude plan's 5-hour and weekly usage limits",
   "group": "Productivity",
   "connector": "script",
+  "icon": "claude.png",
   "width": 220,
   "fields": [
     { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "1h", "help": "How often the usage is read." }

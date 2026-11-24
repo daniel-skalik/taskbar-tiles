@@ -3,6 +3,7 @@
   "description": "Now playing in any app's media controls, or the apps you pick",
   "group": "Media",
   "connector": "media",
+  "icon": "music",
   "compact": false,
   "fields": [
     { "key": "app", "label": "Apps", "type": "text", "multiple": true, "choices": ["Any", "Spotify", "Firefox", "Chrome", "Edge"], "help": "Whose media the tile follows: an app's name in the Start menu (or part of it), several separated by commas (the one playing wins, then the first), or Any. Apps playing now are listed after Any." }

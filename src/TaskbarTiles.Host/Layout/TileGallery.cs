@@ -1,4 +1,6 @@
+using System.IO;
 using System.Text.Json;
+using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Config;
 using TaskbarTiles.Host.Plugins;
 
@@ -8,8 +10,27 @@ namespace TaskbarTiles.Host.Layout;
 /// One choice in the "+" / stack picker. <see cref="NewTile"/> null: place the existing tile <see cref="TileId"/>.
 /// Otherwise: add an instance of the kind <c>NewTile.Kind</c> under a free id based on <see cref="TileId"/>.
 /// <see cref="Group"/> is the folder of the picker it is shown in ("" for the top level), a path such as "Fun/Games".
+/// <see cref="Icon"/> is the kind's icon, <see cref="OnThisDisplay"/> true for a kind this display shows a tile of.
 /// </summary>
-public sealed record GalleryItem(string Title, string Subtitle, string TileId, TileConfig? NewTile, string Group = "");
+public sealed record GalleryItem(string Title, string Subtitle, string TileId, TileConfig? NewTile, string Group = "",
+    GalleryIcon? Icon = null, bool OnThisDisplay = false);
+
+/// <summary>
+/// A kind's icon in the picker: a picture file (full path) or a glyph name, drawn as is or, with <see cref="Color"/>, as
+/// one shape in that state color.
+/// </summary>
+public sealed record GalleryIcon(string? Picture, string? Glyph, TileColor? Color)
+{
+    /// <summary>tile.json's "icon": a picture when the kind's folder has that file, else a glyph name; null without one.</summary>
+    public static GalleryIcon? For(TileKind? kind)
+    {
+        if (kind?.Icon is not { } icon) return null;
+        var path = Path.Combine(kind.Directory, icon);
+        return File.Exists(path) ? new GalleryIcon(path, null, kind.IconColor)
+            : Path.HasExtension(icon) ? null // a picture that is missing: no icon rather than a glyph named "x.png"
+            : new GalleryIcon(null, icon, kind.IconColor);
+    }
+}
 
 /// <summary>A folder in the picker: its own name, its full path, and how many choices it holds (subfolders included).</summary>
 public sealed record GalleryFolder(string Name, string Path, int Count);
@@ -30,19 +51,23 @@ public static class TileGallery
         var placed = DisplayResolver.PlacedTileIds(display).ToHashSet(StringComparer.Ordinal);
         var elsewhere = config.Displays.Values.Where(d => !ReferenceEquals(d, display))
             .SelectMany(DisplayResolver.PlacedTileIds).ToHashSet(StringComparer.Ordinal);
+        var shownKinds = placed.Select(id => config.Tiles.GetValueOrDefault(id)?.Kind).OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var items = new List<GalleryItem>();
 
         foreach (var (id, tile) in config.Tiles)
             if (!placed.Contains(id))
             {
                 var where = elsewhere.Contains(id) ? "On another display" : "Not shown";
-                items.Add(new GalleryItem(TitleFor(id), $"{where} · {kinds.Find(tile.Kind)?.Name ?? tile.Kind}", id, null, YourTiles));
+                items.Add(new GalleryItem(TitleFor(id), $"{where} · {kinds.Find(tile.Kind)?.Name ?? tile.Kind}", id, null, YourTiles,
+                    GalleryIcon.For(kinds.Find(tile.Kind))));
             }
 
         foreach (var kind in kinds.Kinds.Values
                      .OrderBy(k => k.Name, StringComparer.CurrentCultureIgnoreCase)
                      .ThenBy(k => k.Id, StringComparer.OrdinalIgnoreCase))
-            items.Add(new GalleryItem(kind.Name, kind.Description, kind.Id, new TileConfig(kind.Id, EmptySettings()), kind.Group));
+            items.Add(new GalleryItem(kind.Name, kind.Description, kind.Id, new TileConfig(kind.Id, EmptySettings()), kind.Group,
+                GalleryIcon.For(kind), shownKinds.Contains(kind.Id)));
 
         return items;
     }
