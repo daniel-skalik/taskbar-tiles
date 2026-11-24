@@ -103,7 +103,9 @@ public class TileRuntimeTests
         await rt.InvokeActionAsync("click");
         Assert.Equal("Not responding", rt.State.Title);
 
-        await Task.Delay(400);
+        // The restore runs on a timer; a slow CI runner can take longer than the 100 ms it is set to.
+        var until = DateTime.UtcNow.AddSeconds(5);
+        while (rt.State.Title != "normal" && DateTime.UtcNow < until) await Task.Delay(20);
         Assert.Equal("normal", rt.State.Title);
     }
 
