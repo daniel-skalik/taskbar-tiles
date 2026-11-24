@@ -32,5 +32,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = '${{ github.ref_name }}'.TrimStart('v')
-          $zip = "artifacts/package/TaskbarTiles-$version-win-x64.zip"
-          gh release create '${{ github.ref_name }}' $zip --title "Taskbar Tiles $version" --generate-notes
+          $name = "TaskbarTiles-$version-win-x64.zip"
+          $zip = "artifacts/package/$name"
+          # The app is not code-signed: publish the zip's SHA-256, as a file next to it and in the notes, so people can
+          # check the download before running it.
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          $sums = "artifacts/package/$name.sha256"
+          [System.IO.File]::WriteAllText($sums, "$hash  $name`n")
+          $notes = @"
+          **SHA-256** of ``$name``: ``$hash``
+
+          Check your download in PowerShell: ``(Get-FileHash .\$name).Hash`` should print the same value (in capitals).
+          "@
+          gh release create '${{ github.ref_name }}' $zip $sums --title "Taskbar Tiles $version" --notes $notes --generate-notes

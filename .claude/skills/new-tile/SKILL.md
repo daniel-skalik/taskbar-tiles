@@ -46,6 +46,7 @@ A script tile with a popup, one script serving both hooks, as a starting point:
   "name": "Wi-Fi",
   "description": "The network you are on and its signal",
   "group": "Network",
+  "icon": "network",                       // + picker icon: a glyph name, or a picture file in this folder
   "connector": "script",
   "width": 200,
   "settings": {

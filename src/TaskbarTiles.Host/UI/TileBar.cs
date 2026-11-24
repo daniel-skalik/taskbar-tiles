@@ -375,7 +375,7 @@ public sealed class TileBar : Window, ITileBarView
         var panel = PanelHeader(FolderTitle("Add a tile", path), items.Count == 0
             ? "Nothing to add: every tile is on this display already."
             : "It is added at the end of this display's tiles.", BackFrom(path, ShowGallery));
-        panel.Children.Add(Buttons(FolderButtons(items, path, ShowGallery, item => Save(() => _editor.AddFromGallery(DisplayId, item, side: Side)))));
+        panel.Children.Add(GalleryView.List(items, path, ShowGallery, item => Save(() => _editor.AddFromGallery(DisplayId, item, side: Side)), _log));
         FlyoutWindow.ShowPanel(_addButton, panel, _light ?? false, _log);
     }
 
@@ -389,19 +389,6 @@ public sealed class TileBar : Window, ITileBarView
         return ("Back to " + (parent.Length == 0 ? "all tiles" : parent.Replace("/", " › ")), () => open(parent));
     }
 
-    /// <summary>
-    /// The buttons of one picker folder: its subfolders (opened with <paramref name="open"/>), then its choices (run
-    /// with <paramref name="pick"/>).
-    /// </summary>
-    static IEnumerable<(string Title, string Subtitle, Action Click)> FolderButtons(IReadOnlyList<GalleryItem> items, string path,
-        Action<string> open, Action<GalleryItem> pick)
-    {
-        var (folders, here) = TileGallery.Open(items, path);
-        foreach (var folder in folders)
-            yield return ($"{folder.Name} ›", folder.Count == 1 ? "1 tile" : $"{folder.Count} tiles", () => open(folder.Path));
-        foreach (var item in here)
-            yield return (item.Title, item.Subtitle, () => pick(item));
-    }
 
     /// <summary>
     /// "Create stack…" on a plain tile and "Add to stack…" on a stack: the panel of the + button, offering this display's
@@ -428,8 +415,8 @@ public sealed class TileBar : Window, ITileBarView
         if (items.Count > 0)
         {
             if (choices.Count > 0) panel.Children.Add(Section("Add a tile"));
-            panel.Children.Add(Buttons(FolderButtons(items, path, p => ShowStackPicker(view, p),
-                item => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target, side: Side)))));
+            panel.Children.Add(GalleryView.List(items, path, p => ShowStackPicker(view, p),
+                item => Save(() => _editor.AddFromGallery(DisplayId, item, stackWith: target, side: Side)), _log));
         }
         // Opening the panel closes the » popup, which takes an overflowed tile off screen: anchor to » then.
         FlyoutWindow.ShowPanel(_overflowed.Contains(view) ? _overflowButton : view, panel, _light ?? false, _log);

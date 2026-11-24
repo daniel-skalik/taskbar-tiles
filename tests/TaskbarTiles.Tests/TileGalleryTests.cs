@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json.Nodes;
 using TaskbarTiles.Host;
 using TaskbarTiles.Host.Config;
@@ -207,5 +208,28 @@ public class TileGalleryTests
         Assert.Equal(2, slots.Count);
         Assert.Equal(new[] { "spotify", "ci" }, Assert.IsType<StackSlot>(slots[0]).TileIds);
         Assert.Equal(new TileSlot("uptime", false), slots[1]);
+    }
+
+    [Fact]
+    public void Kinds_shown_on_this_display_are_marked()
+    {
+        var cfg = Parse(Config);
+        var items = TileGallery.Build(cfg, cfg.Displays["primary"], Kinds).Where(i => i.NewTile is not null).ToList();
+        Assert.True(items.Single(i => i.TileId == "media").OnThisDisplay);
+        Assert.False(items.Single(i => i.TileId == "uptime").OnThisDisplay); // a tile exists, but not on this display
+    }
+
+    [Fact]
+    public void A_kind_icon_is_its_picture_when_the_file_is_there_else_a_glyph()
+    {
+        using var dir = new TempDir();
+        File.WriteAllBytes(dir.File("logo.png"), [0x89, 0x50, 0x4E, 0x47]);
+        var kind = TestKinds.Script("x") with { Directory = dir.Path };
+
+        Assert.Equal(new GalleryIcon(dir.File("logo.png"), null, TaskbarTiles.Contracts.TileColor.Accent),
+            GalleryIcon.For(kind with { Icon = "logo.png", IconColor = TaskbarTiles.Contracts.TileColor.Accent }));
+        Assert.Equal(new GalleryIcon(null, "clock", null), GalleryIcon.For(kind with { Icon = "clock" }));
+        Assert.Null(GalleryIcon.For(kind with { Icon = "missing.png" }));
+        Assert.Null(GalleryIcon.For(kind));
     }
 }

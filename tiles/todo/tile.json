@@ -3,6 +3,7 @@
   "description": "Tasks from a Markdown file: tick them off and add new ones from the popup",
   "group": "Productivity",
   "connector": "script",
+  "icon": "check",
   "width": 200,
   "fields": [
     { "key": "file", "label": "File", "type": "text", "browse": "file", "help": "A Markdown file with '- [ ] task' lines, for example in OneDrive or an Obsidian vault. Created on the first task you add." },

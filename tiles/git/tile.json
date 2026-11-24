@@ -3,6 +3,7 @@
   "description": "A repository's branch, changes, and how far it is ahead of or behind its upstream",
   "group": "Dev",
   "connector": "script",
+  "icon": "branch",
   "width": 220,
   "fields": [
     { "key": "repo", "label": "Repository", "type": "text", "browse": "folder", "help": "The repository's folder, for example D:\\Projects\\my-app." },

@@ -3,6 +3,7 @@
   "description": "Your Docker containers: how many run, and each one's status",
   "group": "Dev",
   "connector": "script",
+  "icon": "docker.png",
   "width": 200,
   "fields": [
     { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "5s", "max": "10m", "help": "How often the containers are read." }
