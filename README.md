@@ -1,12 +1,12 @@
 # Taskbar Tiles
 
-Small live tiles on the Windows taskbar, next to your app icons: what's playing, your Claude usage, CPU and memory, device batteries, your pull requests and CI runs, your Linear issues and to-dos, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
+Free, open-source widgets for the Windows 11 taskbar: small live tiles next to your app icons, showing what's playing, your Claude usage, CPU and memory, device batteries, your next meeting, your pull requests and CI runs, your Linear issues and to-dos, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
 
-<img src="docs/images/tile-media.png" alt="Media tile: a song with playback buttons" height="48">
-<img src="docs/images/tile-system.png" alt="System monitor tile: CPU load with its chart behind the text" height="48">
-<img src="docs/images/tile-cozy-farm.png" alt="Cozy farm tile: a pixel farm under the real sky" height="48">
+<img src="docs/images/tile-media.png" alt="Windows 11 taskbar widget: the song playing, with playback buttons" height="48">
+<img src="docs/images/tile-system.png" alt="Windows 11 taskbar widget: CPU usage with a chart" height="48">
+<img src="docs/images/tile-cozy-farm.png" alt="Windows 11 taskbar widget: a pixel farm under the real sky" height="48">
 
-Made for Windows 11 (64-bit).
+Made for Windows 11 (64-bit). A lightweight taskbar widget app, unlike the Windows Widgets board: everything stays on the taskbar itself.
 
 ## Install
 
@@ -89,3 +89,7 @@ install.cmd
 In the repository `install.cmd` builds the app first, then installs it the same way. Run it again after `git pull` to update. Tests: `dotnet test`.
 
 To make a release zip yourself: `powershell -ExecutionPolicy Bypass -File tools\package.ps1 -Version 1.0.0` (written to `artifacts\package`). Pushing a tag such as `v1.0.0` makes GitHub build it and publish the release.
+
+## License
+
+[MIT](LICENSE)
