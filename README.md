@@ -1,12 +1,35 @@
-# Taskbar Tiles
+<h1 align="center">Taskbar Tiles</h1>
 
-Free, open-source widgets for the Windows 11 taskbar: small live tiles next to your app icons, showing what's playing, your Claude usage, CPU and memory, device batteries, your next meeting, your pull requests and CI runs, your Linear issues and to-dos, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
+<p align="center">
+  Free, open-source widgets for the Windows 11 taskbar.
+</p>
 
-<img src="docs/images/tile-media.png" alt="Windows 11 taskbar widget: the song playing, with playback buttons" height="48">
-<img src="docs/images/tile-system.png" alt="Windows 11 taskbar widget: CPU usage with a chart" height="48">
-<img src="docs/images/tile-cozy-farm.png" alt="Windows 11 taskbar widget: a pixel farm under the real sky" height="48">
+<p align="center">
+  <a href="https://github.com/daniel-skalik/taskbar-tiles/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/daniel-skalik/taskbar-tiles?sort=semver&display_name=tag&style=flat-square"></a>
+  <a href="https://github.com/daniel-skalik/taskbar-tiles/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/daniel-skalik/taskbar-tiles/total?style=flat-square&label=downloads"></a>
+  <img alt="Windows 11 x64" src="https://img.shields.io/badge/Windows%2011-x64-0078D4?style=flat-square">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
+</p>
 
-Made for Windows 11 (64-bit). A lightweight taskbar widget app, unlike the Windows Widgets board: everything stays on the taskbar itself.
+<p align="center">
+  <a href="https://github.com/daniel-skalik/taskbar-tiles/releases/latest"><img alt="Download the latest release" src="https://img.shields.io/badge/DOWNLOAD-LATEST%20RELEASE-2563EB?style=for-the-badge"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/promo.png" alt="Taskbar Tiles on the Windows 11 taskbar: media, Google Calendar, GitHub, CPU, Claude usage, a pixel farm, batteries, Linear and the clock, with a tile's popup">
+</p>
+
+Small live tiles next to your app icons, showing what's playing, your Claude usage, CPU and memory, device batteries, your next meeting, your pull requests and CI runs, your Linear issues and to-dos, the clock, or a tiny pixel farm that follows the real sunrise. Hover a tile for details, click it to act, and add your own tiles with a script or a .NET plugin.
+
+Made for Windows 11 (64-bit). A lightweight taskbar widget app, unlike the Windows Widgets board: everything stays on the taskbar itself, in its own small windows, so Windows updates don't break it.
+
+## What's new in 1.1.0
+
+- **Google Calendar:** your next meeting with a countdown, the time left in the current one, and today's and tomorrow's events; click one to join its Meet, Zoom or Teams call.
+- **GitHub:** pull requests waiting for your review, yours sorted by what they wait on, Actions runs, notifications and assigned issues.
+- **Linear**, **To do** (a Markdown file) and **Clipboard Save**.
+- **Claude usage** draws the week on its bar when your plan has no 5-hour limit.
+- Tiles hide for full-screen windows on every monitor, also after you click into another monitor.
 
 ## Install
 
@@ -17,6 +40,8 @@ Made for Windows 11 (64-bit). A lightweight taskbar widget app, unlike the Windo
 That's it: no .NET to install first. The app is copied to `%LOCALAPPDATA%\TaskbarTiles\app`, starts, and starts again when you sign in (a `TaskbarTiles` shortcut in your Startup folder). Nothing needs admin rights.
 
 The app is not code-signed, so Windows may warn before running `install.cmd` or the app the first time ("Windows protected your PC"). Choose **More info**, then **Run anyway**. If you'd rather not, build it yourself from source (below).
+
+To check the download first, compare `(Get-FileHash .\TaskbarTiles-<version>-win-x64.zip).Hash` in PowerShell with the SHA-256 in the release notes.
 
 ## Tiles
 
