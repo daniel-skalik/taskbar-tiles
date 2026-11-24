@@ -161,9 +161,9 @@ public sealed class CalendarConnector : ITileConnector
     {
         var ctx = _ctx;
         if (ctx is null) return;
-        Agenda? agenda; string? stale, error; bool any;
-        lock (_sync) { agenda = _agenda; stale = _stale; error = _error; any = _addresses.Count > 0; }
-        if (!any) ctx.Update(CalendarView.SetupTile(_logo));
+        Agenda? agenda; string? stale, error; bool any, adding;
+        lock (_sync) { agenda = _agenda; stale = _stale; error = _error; any = _addresses.Count > 0; adding = _adding; }
+        if (!any || adding) ctx.Update(CalendarView.SetupTile(_logo, another: any));
         else if (agenda is not null) ctx.Update(View().Tile(agenda, _logo, stale));
         else if (error is not null) ctx.ReportError(error);
     }
@@ -182,7 +182,7 @@ public sealed class CalendarConnector : ITileConnector
                 return CalendarView.SetupFlyout(_logo, note, _addresses.Count > 0);
             }
             if (_agenda is not null) return View().Flyout(_agenda, _logo, _stale);
-            return new FlyoutState(CalendarView.Title, _error ?? "Could not read the calendars", [new FlyoutRow("Add a calendar", Action: "add")],
+            return new FlyoutState(CalendarView.Title, _error ?? "Could not read the calendars", [],
                 [new FlyoutAction("reload", "Try again", Primary: true)], Image: _logo, StayOpen: true);
         }
     }
@@ -193,8 +193,8 @@ public sealed class CalendarConnector : ITileConnector
         switch (actionId)
         {
             case TileActions.Refresh or "reload": await FetchNowAsync(ct); return;
-            case "add": lock (_sync) _adding = true; return;
-            case "cancel": lock (_sync) _adding = false; return;
+            case "add": lock (_sync) _adding = true; Show(); return; // Settings › Add calendar: the next click asks for the address
+            case "cancel": lock (_sync) _adding = false; Show(); return;
             case "forget": Forget(); return;
             default: _ctx?.Log.Warn($"Unknown action '{actionId}'."); return;
         }
@@ -246,6 +246,7 @@ public sealed class CalendarConnector : ITileConnector
             return;
         }
         lock (_sync) { _addresses = updated; _adding = false; }
+        Show();
         _ctx?.Log.Info($"Calendar {updated.Count} added.");
         await FetchNowAsync(ct);
     }

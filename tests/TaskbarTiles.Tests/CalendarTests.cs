@@ -220,7 +220,6 @@ public class CalendarTests
             "1:1 Petr|11:30–12:00",
             "Tomorrow|Wed 25 Nov",
             "Planning|09:00–10:00",
-            "Add a calendar|",
         }, flyout.Rows.Select(r => $"{r.Text}|{r.Value}"));
         Assert.Equal(TileColor.Warn, flyout.Rows[1].Icon!.Color);
         Assert.Equal("open:https://meet.google.com/abc-defg-hij", flyout.Rows[1].Action);
@@ -334,6 +333,39 @@ public class CalendarTests
         var tile = ctx.Updates[^1];
         Assert.Equal("Standup in 12 min", tile.Title);
         Assert.Contains("Calendar 2: Google Calendar answered 500", tile.Tooltip);
+    }
+
+    [Fact]
+    public async Task Add_calendar_in_settings_makes_the_next_click_ask_for_another_address()
+    {
+        const string second = "https://calendar.google.com/calendar/ical/team%40example.com/private-fedcba9876543210/basic.ics";
+        var store = new MemoryStore(Address);
+        var (connector, ctx, _) = Start(store, new FakeSource(_ => Ics), At(24, 9, 48));
+        await using var _c = connector;
+        await connector.FetchNowAsync(CancellationToken.None);
+
+        await connector.OnActionAsync("add", CancellationToken.None);
+        Assert.Equal("Click to add another calendar", ctx.Updates[^1].Subtitle);
+        var setup = (await connector.GetFlyoutAsync(CancellationToken.None))!;
+        Assert.Equal("Add another calendar", setup.Subtitle);
+        Assert.Equal("cancel", Assert.Single(setup.Actions).Id);
+
+        await connector.OnInputAsync("add", second, CancellationToken.None);
+        Assert.Equal([Address, second], store.Saved);
+        Assert.Equal("Standup in 12 min", ctx.Updates[^1].Title);
+        Assert.Equal("Today · Tue 24 Nov", (await connector.GetFlyoutAsync(CancellationToken.None))!.Title);
+    }
+
+    [Fact]
+    public async Task Cancel_goes_back_to_the_agenda()
+    {
+        var (connector, ctx, _) = Start(new MemoryStore(Address), new FakeSource(_ => Ics), At(24, 9, 48));
+        await using var _c = connector;
+        await connector.FetchNowAsync(CancellationToken.None);
+        await connector.OnActionAsync("add", CancellationToken.None);
+        await connector.OnActionAsync("cancel", CancellationToken.None);
+        Assert.Equal("Standup in 12 min", ctx.Updates[^1].Title);
+        Assert.Equal("Today · Tue 24 Nov", (await connector.GetFlyoutAsync(CancellationToken.None))!.Title);
     }
 
     [Fact]

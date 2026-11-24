@@ -102,7 +102,6 @@ public sealed class CalendarView(DateTimeOffset now, TimeZoneInfo zone, CultureI
         rows.Add(new FlyoutRow("Tomorrow", Today.AddDays(1).ToString("ddd d MMM", culture)));
         rows.AddRange(tomorrow.Select(Row));
         if (tomorrow.Count == 0) rows.Add(new FlyoutRow("Nothing tomorrow"));
-        rows.Add(new FlyoutRow("Add a calendar", Action: "add"));
 
         var subtitle = stale ?? a.Problems.FirstOrDefault()
             ?? $"{Count(today.Count)} · updated {Time(a.Updated)}";
@@ -112,15 +111,14 @@ public sealed class CalendarView(DateTimeOffset now, TimeZoneInfo zone, CultureI
         if (call is not null) actions.Add(new FlyoutAction("open:" + call.Meet, Fit("Join " + call.Title, "", 24), Primary: true));
         actions.Add(new FlyoutAction("open:" + DayPage(now), "Open calendar"));
 
-        // Stays open so "Add a calendar" turns it into the setup popup in place.
-        return new FlyoutState($"Today · {Today.ToString("ddd d MMM", culture)}", subtitle, rows, actions, Image: logo, StayOpen: true);
+        return new FlyoutState($"Today · {Today.ToString("ddd d MMM", culture)}", subtitle, rows, actions, Image: logo);
     }
 
-    /// <summary>The tile before a calendar is added.</summary>
-    public static TileState SetupTile(byte[]? logo) => new()
+    /// <summary>The tile before a calendar is added, or after Settings › Add calendar until the address is pasted.</summary>
+    public static TileState SetupTile(byte[]? logo, bool another = false) => new()
     {
         Title = Title,
-        Subtitle = "Click to add a calendar",
+        Subtitle = another ? "Click to add another calendar" : "Click to add a calendar",
         Icon = new TileIcon("clock"),
         Image = logo,
         ImageColor = logo is null ? null : TileColor.Neutral,

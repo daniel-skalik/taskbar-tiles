@@ -8,6 +8,7 @@
     { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "60m", "help": "How often your calendars are fetched from Google. The countdown moves every minute either way." }
   ],
   "settingsActions": [
+    { "id": "add", "label": "Add calendar" },
     { "id": "forget", "label": "Forget calendars" }
   ],
   "settings": {
