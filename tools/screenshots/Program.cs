@@ -18,6 +18,7 @@ using TaskbarTiles.Contracts;
 using TaskbarTiles.Host.Runtime;
 using TaskbarTiles.Host.UI;
 using TaskbarTiles.Plugins.Battery;
+using TaskbarTiles.Plugins.Calendar;
 using TaskbarTiles.Plugins.Clipboard;
 using TaskbarTiles.Plugins.Scenes;
 using TaskbarTiles.Plugins.Script;
@@ -36,6 +37,7 @@ Directory.CreateDirectory(outDir);
 var claudeLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "claude-usage", "claude.png")));
 var linearLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "linear", "linear.png")));
 var githubLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "github", "github.png")));
+var calendarLogo = File.ReadAllBytes(Path.Combine(repo, "tiles", "google-calendar", "calendar.png"));
 var dockerLogo = Convert.ToBase64String(File.ReadAllBytes(Path.Combine(repo, "tiles", "docker", "docker.png")));
 
 // The scenes animate: run each connector for a moment, at each width drawn, and keep its last frame.
@@ -64,6 +66,16 @@ Func<double, TileState> Scene(string kind) => width => frames[(kind, sizes ? wid
 RunSta(() =>
 {
     static Func<double, TileState> Fixed(TileState state) => _ => state;
+
+    // Ten minutes into a 45-minute review, with a 1:1 after it.
+    static TileState CalendarSample(byte[] logo)
+    {
+        var start = new DateTimeOffset(2026, 6, 22, 10, 30, 0, TimeSpan.Zero);
+        var agenda = new Agenda([
+            new CalendarEvent("Design review", start, start.AddMinutes(45), false, "https://meet.google.com/abc-defg-hij"),
+            new CalendarEvent("1:1 Petr", start.AddHours(1), start.AddMinutes(90), false)], start, []);
+        return new CalendarView(start.AddMinutes(10), TimeZoneInfo.Utc, System.Globalization.CultureInfo.GetCultureInfo("en-GB")).Tile(agenda, logo, null);
+    }
     var tiles = new List<(string Kind, double Width, Func<double, TileState> State)>
     {
         ("media", 268, Fixed(Media())),
@@ -81,6 +93,7 @@ RunSta(() =>
         ("todo", 200, Fixed(Script("""{ "title": "3 to do", "subtitle": "Write the release notes", "icon": { "glyph": "check", "color": "accent" } }"""))),
         ("linear", 200, Fixed(Script($$"""{ "title": "2 in progress", "subtitle": "ENG-142 Fix login redirect", "icon": { "glyph": "activity", "color": "accent" }, "image": "{{linearLogo}}" }"""))),
         ("github", 200, Fixed(Script($$"""{ "title": "2 need you · 1 review", "subtitle": "#94 Add login with passkeys", "icon": { "glyph": "sync", "color": "warn" }, "image": "{{githubLogo}}", "imageColor": "warn" }"""))),
+        ("google-calendar", 240, Fixed(CalendarSample(calendarLogo))),
         ("uptime", 132, Fixed(Script("""{ "title": "17:30", "subtitle": "up 3d 4h", "icon": { "glyph": "clock", "color": "accent" } }"""))),
         ("aquarium", 200, Scene("aquarium")),
         ("cozy-farm", 200, Scene("cozy-farm")),

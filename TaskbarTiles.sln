@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskbarTiles.Plugins.Scenes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskbarTiles.Plugins.GitHub", "src\TaskbarTiles.Plugins.GitHub\TaskbarTiles.Plugins.GitHub.csproj", "{4EAA4F65-EA72-4AD7-823F-DB4174B3075B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskbarTiles.Plugins.Calendar", "src\TaskbarTiles.Plugins.Calendar\TaskbarTiles.Plugins.Calendar.csproj", "{1E206BAB-0243-43BA-9316-DE3615A63488}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -171,6 +173,18 @@ Global
 		{4EAA4F65-EA72-4AD7-823F-DB4174B3075B}.Release|x64.Build.0 = Release|Any CPU
 		{4EAA4F65-EA72-4AD7-823F-DB4174B3075B}.Release|x86.ActiveCfg = Release|Any CPU
 		{4EAA4F65-EA72-4AD7-823F-DB4174B3075B}.Release|x86.Build.0 = Release|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Debug|x64.Build.0 = Debug|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Debug|x86.Build.0 = Debug|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Release|x64.ActiveCfg = Release|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Release|x64.Build.0 = Release|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Release|x86.ActiveCfg = Release|Any CPU
+		{1E206BAB-0243-43BA-9316-DE3615A63488}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -187,5 +201,6 @@ Global
 		{A543D031-6FF5-4FFE-89DC-1A89BB97D13F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{98585608-B29D-4718-8718-5946AA2338CE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{4EAA4F65-EA72-4AD7-823F-DB4174B3075B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{1E206BAB-0243-43BA-9316-DE3615A63488} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

@@ -1,0 +1,17 @@
+{
+  "name": "Google Calendar",
+  "description": "Your next meeting with a countdown, and today's and tomorrow's events; click one to join its call",
+  "group": "Productivity",
+  "connector": "google-calendar",
+  "width": 240,
+  "fields": [
+    { "key": "refresh", "label": "Refresh every", "type": "duration", "min": "1m", "max": "60m", "help": "How often your calendars are fetched from Google. The countdown moves every minute either way." }
+  ],
+  "settingsActions": [
+    { "id": "add", "label": "Add calendar" },
+    { "id": "forget", "label": "Forget calendars" }
+  ],
+  "settings": {
+    "refresh": "5m"
+  }
+}

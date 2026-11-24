@@ -19,7 +19,7 @@ public class BundledKindsTests
         var kinds = new KindLoader(new CollectingLog()).Load(BundledTiles);
         var builtIn = new PluginLoader(new CollectingLog()).LoadFrom([Path.Combine(AppContext.BaseDirectory, "plugins")]);
 
-        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "github", "linear", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "aquarium", "battery", "claude-usage", "clipboard", "cozy-farm", "docker", "git", "github", "google-calendar", "linear", "media", "racers", "snake", "system", "todo", "uptime" }, kinds.Kinds.Keys.Order(StringComparer.Ordinal));
         Assert.Empty(kinds.FoldersWithoutTileJson);
         foreach (var kind in kinds.Kinds.Values)
         {
