@@ -126,6 +126,9 @@ public static class Theme
         r["TileHover"] = light ? Frozen(0x14, 0, 0, 0) : Frozen(0x1A, 0xFF, 0xFF, 0xFF);
         r["TileOutline"] = light ? Frozen(0x1F, 0, 0, 0) : Frozen(0x24, 0xFF, 0xFF, 0xFF);
         r["FlyoutBackground"] = light ? Frozen(0xF3, 0xF3, 0xF3) : Frozen(0x2B, 0x2A, 0x31);
+        // Over DWM's acrylic, which alone is far lighter than Windows' own flyouts (Quick Settings, the calendar): the
+        // shell's flyout material is nearly opaque, so this wash brings a popup to the same #2A2A2A over a dark desktop.
+        r["FlyoutAcrylic"] = light ? Frozen(0xB3, 0xF9, 0xF9, 0xF9) : Frozen(0xCF, 0x20, 0x20, 0x20);
         r["FlyoutBorder"] = light ? Frozen(0x1F, 0, 0, 0) : Frozen(0x17, 0xFF, 0xFF, 0xFF);
         r["ButtonHover"] = light ? Frozen(0x1A, 0, 0, 0) : Frozen(0x22, 0xFF, 0xFF, 0xFF);
         r["FlyoutCard"] = light ? Frozen(0x80, 0xFF, 0xFF, 0xFF) : Frozen(0x12, 0xFF, 0xFF, 0xFF);

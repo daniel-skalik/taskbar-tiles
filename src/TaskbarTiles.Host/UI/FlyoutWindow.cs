@@ -568,8 +568,8 @@ public static class FlyoutWindow
     }
 
     /// <summary>
-    /// With acrylic, DWM draws the corners, border and shadow and the frame only adds the tint; without it the frame is
-    /// the solid rounded panel. The tint washes over either, strongest at the top.
+    /// With acrylic, DWM draws the corners, border and shadow and the frame adds the shell's darker flyout wash; without
+    /// it the frame is the solid rounded panel. The tint washes over either, strongest at the top.
     /// </summary>
     static Border Frame(UIElement content, bool acrylic, string? tint)
     {
@@ -581,7 +581,8 @@ public static class FlyoutWindow
             Child = content,
         };
         var border = new Border { CornerRadius = new CornerRadius(8), Child = inner };
-        if (!acrylic)
+        if (acrylic) border.SetResourceReference(Border.BackgroundProperty, "FlyoutAcrylic");
+        else
         {
             border.BorderThickness = new Thickness(1);
             border.SetResourceReference(Border.BackgroundProperty, "FlyoutBackground");
