@@ -31,4 +31,11 @@ public class TileTextTests
         Assert.Equal($"Error{Environment.NewLine}exit 3", TileText.CompactTooltip(state));
         Assert.Null(TileText.CompactTooltip(new TileState { Title = " " }));
     }
+
+    [Fact]
+    public void A_tooltip_repeating_the_title_and_subtitle_on_its_own_lines_adds_nothing()
+    {
+        var state = new TileState { Title = "No more events", Subtitle = "Tomorrow 09:00", Tooltip = "No more events\r\nTomorrow 09:00\nCalendar 2 failed" };
+        Assert.Equal($"No more events{Environment.NewLine}Tomorrow 09:00{Environment.NewLine}Calendar 2 failed", TileText.CompactTooltip(state));
+    }
 }

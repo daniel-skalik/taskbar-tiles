@@ -406,4 +406,12 @@ public class CalendarTests
         Assert.False(View(during).Tile(Agenda(during), null, null).IconOnly);
         Assert.False(CalendarView.SetupTile(null).IconOnly);
     }
+
+    [Fact]
+    public void The_shrunk_tile_says_once_what_comes_next_on_hover()
+    {
+        var done = At(24, 12, 30);
+        Assert.Equal($"No more events{Environment.NewLine}Tomorrow 09:00 · Planning",
+            TaskbarTiles.Host.UI.TileText.CompactTooltip(View(done).Tile(Agenda(done), null, null)));
+    }
 }
