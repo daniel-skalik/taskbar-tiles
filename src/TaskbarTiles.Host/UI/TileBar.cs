@@ -235,6 +235,7 @@ public sealed class TileBar : Window, ITileBarView
         view.MouseLeftButtonDown += (_, e) => BeginDrag(view, e);
         view.GripOnLeft = Side == BarSide.Right;
         view.ResizePreview += (_, _) => Reflow();
+        view.IconOnlyChanged += (_, _) => Reflow(); // a tile asked to shrink to its icon, or to grow back
         view.ResizeCommitted += (_, width) =>
         {
             var ids = view.Slot.Members.Select(m => m.TileId).ToList();
@@ -767,7 +768,7 @@ public sealed class TileBar : Window, ITileBarView
 
         var layout = hidden
             ? null
-            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned, v.Slot.CanCompact)).ToList(),
+            : LayoutEngine.Compute(_views.Select(v => new LayoutItem(v.FullWidth, v.Slot.Pinned, v.Slot.CanCompact, !_editing && v.WantsIconOnly)).ToList(),
                 zone.Width / scale - (_editing ? chrome + GapDip : 0), GapDip);
         Arrange(layout, showChrome: _editing && !hidden, showAdd: lonely);
 

@@ -331,4 +331,13 @@ public class ScriptOutputTests
         Assert.Empty(r.Warnings);
         Assert.Equal(new TileIcon("bars-2", TileColor.Neutral), r.Value!.Rows[0].EndIcon);
     }
+
+    [Fact]
+    public void IconOnly_is_read_without_a_warning()
+    {
+        var r = ScriptOutput.ParseTile("""{ "title": "x", "iconOnly": true }""");
+        Assert.True(r.Value!.IconOnly);
+        Assert.Empty(r.Warnings);
+        Assert.False(ScriptOutput.ParseTile("""{ "title": "x" }""").Value!.IconOnly);
+    }
 }

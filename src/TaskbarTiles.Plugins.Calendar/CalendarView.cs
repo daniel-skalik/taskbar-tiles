@@ -36,6 +36,7 @@ public sealed class CalendarView(DateTimeOffset now, TimeZoneInfo zone, CultureI
         var next = Next(a);
         string title, subtitle;
         var color = TileColor.Accent;
+        var iconOnly = false;
         double? progress = null;
 
         if (current is not null)
@@ -59,6 +60,8 @@ public sealed class CalendarView(DateTimeOffset now, TimeZoneInfo zone, CultureI
             var tomorrow = Timed(a).FirstOrDefault(e => Local(e.Start).Date == Today.AddDays(1));
             subtitle = tomorrow is not null ? $"Tomorrow {Time(tomorrow.Start)} · {tomorrow.Title}" : "Nothing tomorrow";
             color = TileColor.Neutral;
+            // Nothing left today: just the icon, unless a calendar failed and "nothing" may be wrong.
+            iconOnly = stale is null && a.Problems.Count == 0;
         }
 
         var notes = a.Problems.ToList();
@@ -71,6 +74,7 @@ public sealed class CalendarView(DateTimeOffset now, TimeZoneInfo zone, CultureI
             Image = logo,
             ImageColor = logo is null ? null : color,
             Progress = progress,
+            IconOnly = iconOnly,
             Tooltip = notes.Count > 0 ? string.Join("\n", notes) : $"{title}\n{subtitle}",
         };
     }

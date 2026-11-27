@@ -21,6 +21,9 @@ public sealed record BarSlot(int Index, IReadOnlyList<TileRuntime> Members, bool
     /// <summary>A stack shrinks to an icon only when every member may.</summary>
     public bool CanCompact => Members.All(m => m.CanCompact);
 
+    /// <summary>The slot's tiles ask to be shown as just an icon: a stack only when every member does, so it keeps its width while it rotates.</summary>
+    public bool WantsIconOnly => Members.Count > 0 && Members.All(m => m.State.IconOnly);
+
     /// <summary>Same tiles, pin and rotation, wherever the slot sits and however wide it is.</summary>
     public bool SameContent(BarSlot other) =>
         Pinned == other.Pinned && Rotate == other.Rotate && Members.SequenceEqual(other.Members);

@@ -174,6 +174,45 @@ public class SlotViewTests
     static bool HasSubscribers(TileRuntime runtime) =>
         typeof(TileRuntime).GetField(nameof(TileRuntime.StateChanged), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(runtime) is Delegate;
+
+    [Fact]
+    public void A_single_tile_asking_for_icon_only_tells_the_bar_and_asking_again_does_not() => Sta.Run(() =>
+    {
+        var connector = new FakeConnector();
+        var runtime = new TileRuntime("a", "fake", 200, () => connector, NoSettings, new ImmediateDispatcher(), new CollectingLog());
+        runtime.StartAsync().GetAwaiter().GetResult();
+        var view = new SlotView(new BarSlot(0, [runtime], false, null), () => false, Commands(), new CollectingLog());
+        var raised = 0;
+        view.IconOnlyChanged += (_, _) => raised++;
+
+        connector.Context!.Update(new TileState { Title = "Nothing left", IconOnly = true });
+        Assert.True(view.WantsIconOnly);
+        connector.Context.Update(new TileState { Title = "Still nothing", IconOnly = true });
+        Assert.Equal(1, raised);
+
+        connector.Context.Update(new TileState { Title = "Meeting soon" });
+        Assert.False(view.WantsIconOnly);
+        Assert.Equal(2, raised);
+        view.Detach();
+    });
+
+    [Fact]
+    public void A_stack_asks_for_icon_only_only_when_every_member_does() => Sta.Run(() =>
+    {
+        var a = new FakeConnector();
+        var b = new FakeConnector();
+        var ra = new TileRuntime("a", "fake", 200, () => a, NoSettings, new ImmediateDispatcher(), new CollectingLog());
+        var rb = new TileRuntime("b", "fake", 200, () => b, NoSettings, new ImmediateDispatcher(), new CollectingLog());
+        ra.StartAsync().GetAwaiter().GetResult();
+        rb.StartAsync().GetAwaiter().GetResult();
+        var view = new SlotView(new BarSlot(0, [ra, rb], false, TimeSpan.FromSeconds(5)), () => false, Commands(), new CollectingLog());
+
+        a.Context!.Update(new TileState { IconOnly = true });
+        Assert.False(view.WantsIconOnly);
+        b.Context!.Update(new TileState { IconOnly = true });
+        Assert.True(view.WantsIconOnly);
+        view.Detach();
+    });
 }
 
 /// <summary>Runs WPF code on a fresh STA thread and rethrows what it threw.</summary>

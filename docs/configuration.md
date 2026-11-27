@@ -178,7 +178,7 @@ The bundled `github` kind shows what on GitHub waits for you: pull requests wait
 
 ### Google Calendar
 
-The bundled `google-calendar` kind shows your next meeting today with a countdown ("Standup in 12 min"; "at 15:00" when it is more than three hours away), its time and how many more are left today. During a meeting it shows the time left, with a bar along the bottom for how far through it you are, and what comes next. The calendar icon turns orange five minutes before a meeting starts, and gray when the day has nothing left; then the subtitle names tomorrow's first event. The countdown moves every minute between fetches.
+The bundled `google-calendar` kind shows your next meeting today with a countdown ("Standup in 12 min"; "at 15:00" when it is more than three hours away), its time and how many more are left today. During a meeting it shows the time left, with a bar along the bottom for how far through it you are, and what comes next. The calendar icon turns orange five minutes before a meeting starts. When the day has nothing left the tile shrinks to just its gray icon; hover it for "No more events" and tomorrow's first event. It stays full size while a calendar cannot be read, since "nothing left" may then be wrong. The countdown moves every minute between fetches.
 
 Click it for today's events, then tomorrow's, with all-day events first. A green dot marks the meeting you are in, an orange one the next, a gray one those already over. Click an event to join its video call (Google Meet, Zoom or Teams, from the event's conference link, location or description), or else to open it in Google Calendar. **Join** joins the current or next call; **Open calendar** opens today in Google Calendar. Events you declined and cancelled ones are left out.
 
@@ -217,7 +217,9 @@ Each side fills its own free part of the taskbar: next to the Start button (`"le
 1. Tiles become compact, from the right end: only the icon (or the first letter of the title), 40 DIP wide, with the title, subtitle and tooltip in the tooltip. Pinned tiles stay full size, and so do tiles of a kind whose `tile.json` says `"compact": false` (the bundled `media` kind does; a stack stays full size if any member does).
 2. If that is not enough, tiles move into a `»` tile at the end, from the right end; pinned tiles go last. Click `»` to see them at full size. They still work there: buttons, popups (shown above the `»` tile) and the right-click menu.
 
-This is recomputed whenever the free space changes (apps opened or closed, alignment, display or DPI changes).
+A tile can also ask to be just its icon while it has nothing to say (`iconOnly` in a script's output, `TileState.IconOnly` in a plugin): the Google Calendar tile does when no events are left today. It shrinks even when there is room, pinned or not, and grows back when it has something to show; a stack does so only while every member asks. In edit mode every tile shows at full size, so you can still resize it.
+
+This is recomputed whenever the free space changes (apps opened or closed, alignment, display or DPI changes) and whenever a tile asks to shrink or grow back.
 
 ## Edit layout
 

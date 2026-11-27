@@ -136,4 +136,28 @@ public class LayoutEngineTests
         var tighter = Run(541, Tile(268, pinned: true), Tile(268));
         Assert.Equal(new[] { Full, Compact }, tighter.Modes);
     }
+
+    [Fact]
+    public void A_tile_that_asks_for_icon_only_is_compact_even_when_everything_fits()
+    {
+        var result = Run(1000, Tile(), new LayoutItem(200, Pinned: true, IconOnly: true), Tile());
+
+        Assert.Equal(new[] { Full, Compact, Full }, result.Modes);
+        Assert.Equal(100 + LayoutEngine.CompactWidth + 100 + 2 * Gap, result.Width);
+    }
+
+    [Fact]
+    public void Icon_only_wins_over_a_kind_that_never_shrinks_for_space_and_skips_tiles_already_that_narrow()
+    {
+        var result = Run(1000, new LayoutItem(200, false, CanCompact: false, IconOnly: true), new LayoutItem(30, false, IconOnly: true));
+        Assert.Equal(new[] { Compact, Full }, result.Modes);
+    }
+
+    [Fact]
+    public void Space_still_runs_out_after_icon_only_tiles_shrank()
+    {
+        var result = Run(100 + LayoutEngine.CompactWidth + Gap, new LayoutItem(200, false, IconOnly: true), Tile(), Tile());
+        Assert.Equal(new[] { Compact, Compact, Compact }, result.Modes); // the others shrink for space as before
+        Assert.False(result.ShowOverflow);
+    }
 }

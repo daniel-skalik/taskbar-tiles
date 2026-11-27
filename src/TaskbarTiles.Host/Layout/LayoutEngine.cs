@@ -3,8 +3,11 @@ namespace TaskbarTiles.Host.Layout;
 /// <summary>How a slot is shown: at full width, icon only, or inside the » overflow popup.</summary>
 public enum SlotMode { Full, Compact, Overflow }
 
-/// <summary>One slot as the layout sees it. A stack is one item. Without CanCompact it is never shown compact.</summary>
-public readonly record struct LayoutItem(double FullWidth, bool Pinned, bool CanCompact = true);
+/// <summary>
+/// One slot as the layout sees it. A stack is one item. Without CanCompact it is never shown compact for lack of space;
+/// with IconOnly (its tile asked for it) it is always compact, pinned or not.
+/// </summary>
+public readonly record struct LayoutItem(double FullWidth, bool Pinned, bool CanCompact = true, bool IconOnly = false);
 
 /// <summary>A mode per item, whether the » tile is shown, and the total width in DIP of everything shown.</summary>
 public sealed record LayoutResult(IReadOnlyList<SlotMode> Modes, bool ShowOverflow, double Width)
@@ -26,7 +29,7 @@ public static class LayoutEngine
     public static LayoutResult Compute(IReadOnlyList<LayoutItem> items, double available, double gap)
     {
         if (!double.IsFinite(available) || available < 0) available = 0;
-        var modes = Enumerable.Repeat(SlotMode.Full, items.Count).ToArray();
+        var modes = items.Select(i => i.IconOnly && i.FullWidth > CompactWidth ? SlotMode.Compact : SlotMode.Full).ToArray();
         if (items.Count == 0) return new LayoutResult(modes, false, 0);
 
         bool Fits() => WidthOf(items, modes, gap) <= available;
@@ -35,7 +38,7 @@ public static class LayoutEngine
 
         for (var i = items.Count - 1; i >= 0; i--)
         {
-            if (items[i].Pinned || !items[i].CanCompact || items[i].FullWidth <= CompactWidth) continue;
+            if (modes[i] == SlotMode.Compact || items[i].Pinned || !items[i].CanCompact || items[i].FullWidth <= CompactWidth) continue;
             modes[i] = SlotMode.Compact;
             if (Fits()) return Result(items, modes, gap);
         }
