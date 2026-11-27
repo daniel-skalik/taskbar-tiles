@@ -94,6 +94,7 @@ Print one JSON object. Every field is optional; field names are camelCase.
 | `progressForecast` | number | 0 to 1; where the bar will be at the end at the current rate, drawn dashed from the bar's end to this point. Only shown with `progress`, and only past it. |
 | `sparkline` | array of numbers | A line chart behind the title and subtitle, from its lowest value to its highest (needs at least two values). Non-finite values are dropped with a warning. |
 | `urgent` | boolean | Pulsing red outline. |
+| `iconOnly` | boolean | Show just the icon (40 DIP), as when space runs out, until output without it arrives; hovering shows the title and subtitle. For a state with nothing to say, such as no meetings left today. A stack shrinks only while every member asks; edit mode shows full size. |
 
 ```json
 { "title": "CI", "subtitle": "main: passing", "icon": { "glyph": "check", "color": "ok" },

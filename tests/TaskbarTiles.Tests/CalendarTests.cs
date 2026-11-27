@@ -392,4 +392,18 @@ public class CalendarTests
         await connector.OnActionAsync("open:file:///C:/Windows/notepad.exe", CancellationToken.None);
         Assert.Equal(["https://meet.google.com/abc-defg-hij", "https://acme.zoom.us/j/1"], opened);
     }
+
+    [Fact]
+    public void The_tile_shrinks_to_its_icon_only_when_the_day_is_done_and_every_calendar_was_read()
+    {
+        var done = At(24, 12, 30);
+        Assert.True(View(done).Tile(Agenda(done), null, null).IconOnly);
+        Assert.False(View(done).Tile(Agenda(done) with { Problems = ["Calendar 2: not found (404)"] }, null, null).IconOnly);
+        Assert.False(View(done).Tile(Agenda(done), null, "Could not reach Google Calendar").IconOnly);
+        var before = At(24, 9, 48);
+        Assert.False(View(before).Tile(Agenda(before), null, null).IconOnly);
+        var during = At(24, 10, 40);
+        Assert.False(View(during).Tile(Agenda(during), null, null).IconOnly);
+        Assert.False(CalendarView.SetupTile(null).IconOnly);
+    }
 }

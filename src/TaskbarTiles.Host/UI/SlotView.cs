@@ -33,6 +33,7 @@ public sealed class SlotView : Grid
     bool _resizing, _gripOnLeft;
     double _resizeStartX, _resizeStartWidth;
     bool _compact;
+    bool _wantsIconOnly;
     bool _editing;
     bool _dropHighlight;
 
@@ -43,7 +44,8 @@ public sealed class SlotView : Grid
         {
             // The slot subscribes before its tiles: the runtime wraps the whole invocation in one catch,
             // so a tile whose render throws must not stop the slot from seeing an urgent member.
-            if (slot.IsStack) foreach (var runtime in slot.Members) runtime.StateChanged += OnMemberStateChanged;
+            foreach (var runtime in slot.Members) runtime.StateChanged += OnMemberStateChanged;
+            _wantsIconOnly = slot.WantsIconOnly;
 
             foreach (var runtime in slot.Members)
             {
@@ -290,8 +292,18 @@ public sealed class SlotView : Grid
         foreach (var m in _members) m.Detach();
     }
 
+    /// <summary>Raised when the slot's tiles start or stop asking to be shown as just an icon; the bar lays out again.</summary>
+    public event EventHandler? IconOnlyChanged;
+
+    public bool WantsIconOnly => _wantsIconOnly;
+
     void OnMemberStateChanged(object? sender, EventArgs e)
     {
+        if (Slot.WantsIconOnly != _wantsIconOnly)
+        {
+            _wantsIconOnly = !_wantsIconOnly;
+            IconOnlyChanged?.Invoke(this, EventArgs.Empty);
+        }
         if (Rotation is null || sender is not TileRuntime runtime) return;
         for (var i = 0; i < Slot.Members.Count; i++)
             if (ReferenceEquals(Slot.Members[i], runtime)) Changed(Rotation.SetUrgent(i, runtime.State.Urgent));

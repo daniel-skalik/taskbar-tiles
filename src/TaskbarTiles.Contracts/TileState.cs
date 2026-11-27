@@ -55,5 +55,12 @@ public sealed record TileState
     /// </summary>
     public double? SparklineMax { get; init; }
     public bool Urgent { get; init; }
+
+    /// <summary>
+    /// Asks the bar to show the tile as just its icon (40 DIP), as when space runs out, until a state without it
+    /// arrives: say, a calendar with nothing left today. Hovering shows the title and subtitle. A stack shrinks only while
+    /// every member asks; edit mode shows tiles at full width either way.
+    /// </summary>
+    public bool IconOnly { get; init; }
     public string? Tooltip { get; init; }
 }

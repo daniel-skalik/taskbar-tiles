@@ -18,7 +18,7 @@ public static class ScriptOutput
     static readonly JsonDocumentOptions Options = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
 
     static readonly HashSet<string> TileFields = new(StringComparer.Ordinal)
-        { "title", "subtitle", "tooltip", "icon", "image", "imageColor", "buttons", "progress", "progressMark", "progressForecast", "sparkline", "urgent" };
+        { "title", "subtitle", "tooltip", "icon", "image", "imageColor", "buttons", "progress", "progressMark", "progressForecast", "sparkline", "urgent", "iconOnly" };
 
     static readonly HashSet<string> FlyoutFields = new(StringComparer.Ordinal)
         { "title", "subtitle", "rows", "actions", "image", "tint", "input", "stayOpen" };
@@ -63,6 +63,7 @@ public static class ScriptOutput
             ProgressForecast = Number(o, "progressForecast", w),
             Sparkline = Numbers(o, "sparkline", w),
             Urgent = Bool(o, "urgent", w) ?? false,
+            IconOnly = Bool(o, "iconOnly", w) ?? false,
         };
     }
 
